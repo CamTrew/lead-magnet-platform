@@ -59,8 +59,9 @@ function defaultAccount(ownerUserId: string): AccountSettings {
     ownerUserId,
     name: 'Demo Workspace',
     subdomain: 'get',
-    domain: 'example.com',
+    domain: 'your-domain.com',
     logoUrl: '',
+    logoText: 'Your Brand',
     brand: {
       primary: '#2d7373',
       accent: '#7c3aed',
@@ -97,7 +98,21 @@ function initialData(): PlatformData {
 async function readData(): Promise<PlatformData> {
   try {
     const raw = await readFile(dataFile, 'utf8');
-    return JSON.parse(raw) as PlatformData;
+    const data = JSON.parse(raw) as PlatformData;
+    let changed = false;
+
+    for (const account of data.accounts) {
+      if (!account.logoText) {
+        account.logoText = account.name;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await writeData(data);
+    }
+
+    return data;
   } catch {
     const seed = initialData();
     await writeData(seed);
@@ -261,4 +276,3 @@ export async function recordSubmission(submission: Omit<Submission, 'id' | 'crea
     return saved;
   });
 }
-

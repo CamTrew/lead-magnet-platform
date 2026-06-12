@@ -19,6 +19,7 @@ export interface AccountSettings {
   subdomain: string;
   domain: string;
   logoUrl: string;
+  logoText: string;
   brand: BrandSettings;
   resendApiKey: string;
   resendFromEmail: string;
@@ -71,4 +72,3 @@ export interface DashboardPayload {
   account: AccountSettings;
   leadMagnets: LeadMagnet[];
 }
-

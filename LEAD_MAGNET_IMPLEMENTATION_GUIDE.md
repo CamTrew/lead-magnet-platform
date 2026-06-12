@@ -13,18 +13,20 @@ Core tables to create later:
 
 ## Domains
 
-Each account stores:
+Each account stores a future-ready custom domain shape:
 
 - `domain`
 - `subdomain`
 
-The default subdomain is `get`, producing URLs like:
+For the current UI, users only choose the subdomain. The default subdomain is `get`.
+
+Later custom-domain URLs can look like:
 
 ```txt
 https://get.example.com/ai-pipeline-playbook
 ```
 
-Suggested DNS records shown in the dashboard:
+When custom-domain setup is added, suggested DNS records can be:
 
 ```txt
 CNAME get -> cname.vercel-dns.com

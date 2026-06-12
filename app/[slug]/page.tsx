@@ -70,7 +70,7 @@ export default async function LeadMagnetPage({
               <img src={account.logoUrl} alt={account.name} className="max-h-24 max-w-[260px] object-contain" />
             ) : (
               <span className="text-2xl font-extrabold tracking-tight" style={{ color: account.brand.primary }}>
-                {account.name}
+                {account.logoText}
               </span>
             )}
           </Link>
@@ -146,4 +146,3 @@ export default async function LeadMagnetPage({
     </div>
   );
 }
-

@@ -13,6 +13,7 @@ The platform UI uses a restrained teal SaaS palette. Public lead magnet pages in
 Public pages keep:
 
 - centered logo header
+- text-logo fallback when no logo is uploaded
 - large gradient headline
 - two-column landing page layout
 - image preview

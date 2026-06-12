@@ -10,13 +10,14 @@ The current build uses a local file-backed Neon-shaped stub for auth, account se
 - Creates a stub Neon Auth session from the login screen
 - Lets each account configure:
   - workspace name
-  - custom domain and subdomain, with `get` as the default
+  - subdomain preference, with `get` as the default
   - logo upload
+  - text logo fallback
   - primary, accent, and success colors
   - Resend API key and verified sender
   - Beehiiv API key and publication ID
 - Lets users create lead magnet pages using the same fields as the original Airtable setup
-- Renders public pages at `/slug` locally and `https://get.customer-domain.com/slug` when the host matches an account
+- Renders public pages at `/slug` locally. The store still keeps a domain field for the future custom-domain layer, but the current UI does not ask the user for it.
 - Sends lead magnet emails through the user's Resend key
 - Adds subscribers to the user's Beehiiv list when Beehiiv settings are present
 
@@ -31,6 +32,14 @@ Open:
 
 ```txt
 http://localhost:3000/login
+```
+
+Main app routes:
+
+```txt
+/dashboard
+/dashboard/pages
+/<lead-magnet-slug>
 ```
 
 The local stub database is stored at:
