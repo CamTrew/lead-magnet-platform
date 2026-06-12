@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { AccountSettings, DashboardPayload, LeadMagnet } from '@/lib/types';
+import type { DashboardPayload, LeadMagnet } from '@/lib/types';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -49,7 +49,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Header({ account, onLogout }: { account: AccountSettings; onLogout: () => void }) {
+function Header({ onLogout }: { onLogout: () => void }) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
@@ -57,7 +57,7 @@ function Header({ account, onLogout }: { account: AccountSettings; onLogout: () 
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-teal-600">
             Lead Magnet Platform
           </p>
-          <h1 className="text-xl font-bold text-brand-teal-900">{account.name}</h1>
+          <h1 className="text-xl font-bold text-brand-teal-900">Pages</h1>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -199,7 +199,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
 
   return (
     <main className="min-h-screen bg-slate-50 text-gray-900">
-      <Header account={initialData.account} onLogout={logout} />
+      <Header onLogout={logout} />
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[320px_1fr] lg:px-8">
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

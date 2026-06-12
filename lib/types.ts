@@ -15,13 +15,11 @@ export interface BrandSettings {
 export interface AccountSettings {
   id: string;
   ownerUserId: string;
-  name: string;
   subdomain: string;
   domain: string;
   logoUrl: string;
   logoText: string;
   brand: BrandSettings;
-  resendApiKey: string;
   resendFromEmail: string;
   beehiivApiKey: string;
   beehiivPublicationId: string;

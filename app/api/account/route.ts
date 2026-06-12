@@ -4,8 +4,8 @@ import { requireDashboardPayload } from '@/lib/auth';
 import { updateAccount } from '@/lib/platform-store';
 
 const schema = z.object({
-  name: z.string().trim().min(1),
   subdomain: z.string().trim().min(1).regex(/^[a-z0-9-]+$/),
+  domain: z.string().trim().min(1),
   logoUrl: z.string(),
   logoText: z.string().trim().min(1),
   brand: z.object({
@@ -13,7 +13,6 @@ const schema = z.object({
     accent: z.string().trim().min(4),
     success: z.string().trim().min(4),
   }),
-  resendApiKey: z.string(),
   resendFromEmail: z.string().trim(),
   beehiivApiKey: z.string(),
   beehiivPublicationId: z.string(),

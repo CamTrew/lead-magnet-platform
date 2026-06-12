@@ -67,7 +67,7 @@ export default async function LeadMagnetPage({
         <div className="mx-auto flex max-w-7xl justify-center px-4 py-5 text-center sm:px-6 lg:px-8">
           <Link href={`https://${account.domain}`} className="inline-flex items-center justify-center transition-transform hover:scale-105">
             {account.logoUrl ? (
-              <img src={account.logoUrl} alt={account.name} className="max-h-24 max-w-[260px] object-contain" />
+              <img src={account.logoUrl} alt={account.logoText} className="max-h-24 max-w-[260px] object-contain" />
             ) : (
               <span className="text-2xl font-extrabold tracking-tight" style={{ color: account.brand.primary }}>
                 {account.logoText}
@@ -140,7 +140,7 @@ export default async function LeadMagnetPage({
 
       <footer className="border-t py-8 backdrop-blur-sm" style={{ borderColor: alpha(account.brand.primary, 0.18), backgroundColor: alpha(account.brand.primary, 0.04) }}>
         <div className="mx-auto max-w-7xl px-4 text-center text-sm sm:px-6 lg:px-8" style={{ color: account.brand.primary }}>
-          <span>© {new Date().getFullYear()} {account.name}. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} {account.logoText}. All rights reserved.</span>
         </div>
       </footer>
     </div>

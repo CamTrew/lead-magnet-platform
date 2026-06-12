@@ -57,7 +57,6 @@ function defaultAccount(ownerUserId: string): AccountSettings {
   return {
     id: demoAccountId,
     ownerUserId,
-    name: 'Demo Workspace',
     subdomain: 'get',
     domain: 'your-domain.com',
     logoUrl: '',
@@ -67,7 +66,6 @@ function defaultAccount(ownerUserId: string): AccountSettings {
       accent: '#7c3aed',
       success: '#84cc16',
     },
-    resendApiKey: '',
     resendFromEmail: 'hello@example.com',
     beehiivApiKey: '',
     beehiivPublicationId: '',
@@ -102,8 +100,26 @@ async function readData(): Promise<PlatformData> {
     let changed = false;
 
     for (const account of data.accounts) {
-      if (!account.logoText) {
-        account.logoText = account.name;
+      if (
+        !account.logoText ||
+        account.logoText === 'Demo Workspace' ||
+        account.logoText.endsWith("'s Workspace")
+      ) {
+        const legacyName = (account as AccountSettings & { name?: string }).name?.trim();
+        account.logoText =
+          legacyName && legacyName !== 'Demo Workspace' && !legacyName.endsWith("'s Workspace")
+            ? legacyName
+            : 'Your Brand';
+        changed = true;
+      }
+
+      if (!account.domain) {
+        account.domain = 'your-domain.com';
+        changed = true;
+      }
+
+      if (!account.resendFromEmail) {
+        account.resendFromEmail = `hello@${account.domain}`;
         changed = true;
       }
     }
@@ -154,7 +170,6 @@ export async function ensureUser(email: string, name?: string): Promise<NeonAuth
     if (!account) {
       const newAccount = defaultAccount(user.id);
       newAccount.id = id('acct');
-      newAccount.name = `${user.name}'s Workspace`;
       data.accounts.push(newAccount);
       data.leadMagnets.push(defaultLeadMagnet(newAccount.id));
     }

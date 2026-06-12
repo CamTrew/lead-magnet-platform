@@ -13,20 +13,20 @@ Core tables to create later:
 
 ## Domains
 
-Each account stores a future-ready custom domain shape:
+Each account stores the custom domain shape used by the dashboard:
 
 - `domain`
 - `subdomain`
 
-For the current UI, users only choose the subdomain. The default subdomain is `get`.
+Users choose the domain and subdomain. The recommended default subdomain is `get`.
 
-Later custom-domain URLs can look like:
+Custom-domain URLs can look like:
 
 ```txt
 https://get.example.com/ai-pipeline-playbook
 ```
 
-When custom-domain setup is added, suggested DNS records can be:
+The dashboard shows page publishing records:
 
 ```txt
 CNAME get -> cname.vercel-dns.com
@@ -35,10 +35,17 @@ TXT _lead-magnet.get -> lmp_verify_<account_id>
 
 ## Integrations
 
-Each account supplies its own:
+Email is platform-managed. Users do not need their own Resend account or API key.
 
-- Resend API key
-- Resend verified sender
+Platform email configuration:
+
+- `PLATFORM_RESEND_API_KEY`
+- fallback: `RESEND_API_KEY`
+
+Each account supplies:
+
+- sender email address
+- email DNS records for the sending domain
 - Beehiiv API key
 - Beehiiv publication ID
 

@@ -49,7 +49,30 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Header({ account, onLogout }: { account: AccountSettings; onLogout: () => void }) {
+function DnsRecord({
+  type,
+  name,
+  value,
+}: {
+  type: string;
+  name: string;
+  value: string;
+}) {
+  return (
+    <div className="grid gap-2 border-t border-slate-200 px-4 py-3 text-sm first:border-t-0 md:grid-cols-[96px_1fr_1.5fr]">
+      <span className="font-bold text-brand-teal-800">{type}</span>
+      <code className="break-all rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-700">{name}</code>
+      <code className="break-all rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-700">{value}</code>
+    </div>
+  );
+}
+
+function emailDomain(value: string, fallback: string) {
+  const match = value.match(/@([^>\s]+)>?$/);
+  return match?.[1] || fallback;
+}
+
+function Header({ onLogout }: { onLogout: () => void }) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
@@ -57,7 +80,7 @@ function Header({ account, onLogout }: { account: AccountSettings; onLogout: () 
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-teal-600">
             Lead Magnet Platform
           </p>
-          <h1 className="text-xl font-bold text-brand-teal-900">{account.name}</h1>
+          <h1 className="text-xl font-bold text-brand-teal-900">Settings</h1>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -111,12 +134,11 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: account.name,
           subdomain: account.subdomain,
+          domain: account.domain,
           logoUrl: account.logoUrl,
           logoText: account.logoText,
           brand: account.brand,
-          resendApiKey: account.resendApiKey,
           resendFromEmail: account.resendFromEmail,
           beehiivApiKey: account.beehiivApiKey,
           beehiivPublicationId: account.beehiivPublicationId,
@@ -139,9 +161,15 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
     router.refresh();
   }
 
+  const pageSubdomain = account.subdomain || 'get';
+  const pageDomain = account.domain || 'your-domain.com';
+  const pageHost = `${pageSubdomain}.${pageDomain}`;
+  const fromDomain = emailDomain(account.resendFromEmail, pageDomain);
+  const verificationToken = `lmp_verify_${account.id}`;
+
   return (
     <main className="min-h-screen bg-slate-50 text-gray-900">
-      <Header account={account} onLogout={logout} />
+      <Header onLogout={logout} />
 
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         {error && <p className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-600">{error}</p>}
@@ -149,9 +177,9 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-brand-teal-900">Workspace</h2>
+              <h2 className="text-lg font-bold text-brand-teal-900">Brand</h2>
               <p className="text-sm text-gray-500">
-                Choose the brand shown on your lead magnet pages.
+                Choose the logo, fallback text, and colors shown on lead magnet pages.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -163,12 +191,6 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Workspace name">
-              <Input value={account.name} onChange={(event) => patchAccount({ name: event.target.value })} className={inputClass} />
-            </Field>
-            <Field label="Subdomain">
-              <Input value={account.subdomain} onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() })} className={inputClass} />
-            </Field>
             <Field label="Logo upload">
               <Input type="file" accept="image/*" onChange={handleLogoUpload} className="h-11 rounded-xl border-2 border-brand-teal-200 bg-white text-sm" />
             </Field>
@@ -186,7 +208,7 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
             </Field>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               {account.logoUrl ? (
-                <img src={account.logoUrl} alt={account.name} className="max-h-16 max-w-full object-contain" />
+                <img src={account.logoUrl} alt={account.logoText} className="max-h-16 max-w-full object-contain" />
               ) : (
                 <p className="text-sm font-semibold text-brand-teal-700">{account.logoText}</p>
               )}
@@ -195,12 +217,58 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-5 text-lg font-bold text-brand-teal-900">Integrations</h2>
+          <div className="mb-5">
+            <h2 className="text-lg font-bold text-brand-teal-900">Publishing DNS</h2>
+            <p className="text-sm text-gray-500">
+              Pick the domain people will use for every lead magnet page.
+            </p>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Resend API key">
-              <Input value={account.resendApiKey} onChange={(event) => patchAccount({ resendApiKey: event.target.value })} className={inputClass} placeholder="re_..." />
+            <Field label="Domain">
+              <Input
+                value={account.domain}
+                onChange={(event) =>
+                  patchAccount({
+                    domain: event.target.value
+                      .toLowerCase()
+                      .replace(/^https?:\/\//, '')
+                      .replace(/\/.*/, ''),
+                  })
+                }
+                className={inputClass}
+                placeholder="example.com"
+              />
             </Field>
-            <Field label="Verified sender">
+            <Field label="Lead magnet subdomain">
+              <Input
+                value={account.subdomain}
+                onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() })}
+                className={inputClass}
+                placeholder="get"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+            <div className="bg-slate-50 px-4 py-3">
+              <p className="text-sm font-bold text-brand-teal-900">Records for {pageHost}</p>
+              <p className="text-xs text-gray-500">Add these where DNS is managed for {pageDomain}.</p>
+            </div>
+            <DnsRecord type="CNAME" name={pageSubdomain} value="cname.vercel-dns.com" />
+            <DnsRecord type="TXT" name={`_lead-magnet.${pageSubdomain}`} value={verificationToken} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-5">
+            <h2 className="text-lg font-bold text-brand-teal-900">Email Delivery</h2>
+            <p className="text-sm text-gray-500">
+              Lead Magnet Platform sends the download email. Users only verify their sending domain.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="From email">
               <Input value={account.resendFromEmail} onChange={(event) => patchAccount({ resendFromEmail: event.target.value })} className={inputClass} placeholder="Brand <hello@example.com>" />
             </Field>
             <Field label="Beehiiv API key">
@@ -209,6 +277,19 @@ export function DashboardClient({ initialData }: { initialData: DashboardPayload
             <Field label="Beehiiv publication ID">
               <Input value={account.beehiivPublicationId} onChange={(event) => patchAccount({ beehiivPublicationId: event.target.value })} className={inputClass} />
             </Field>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+            <div className="bg-slate-50 px-4 py-3">
+              <p className="text-sm font-bold text-brand-teal-900">Email records for {fromDomain}</p>
+              <p className="text-xs text-gray-500">
+                DKIM records appear here once this sending domain is connected.
+              </p>
+            </div>
+            <DnsRecord type="MX" name="send" value="feedback-smtp.us-east-1.amazonses.com" />
+            <DnsRecord type="TXT" name="send" value="v=spf1 include:amazonses.com ~all" />
+            <DnsRecord type="CNAME" name="<generated>._domainkey" value="<generated>.dkim.amazonses.com" />
+            <DnsRecord type="TXT" name="_dmarc" value="v=DMARC1; p=none;" />
           </div>
         </section>
 
