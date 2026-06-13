@@ -1,4 +1,5 @@
-import { resolveTxt } from 'node:dns/promises';
+import { promises as dns, Resolver as CallbackResolver } from 'node:dns';
+import { promisify } from 'node:util';
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireDashboardPayload } from '@/lib/auth';
 import {
@@ -25,6 +26,41 @@ function isMissingDnsError(error: unknown) {
     'code' in error &&
     ['ENODATA', 'ENOTFOUND', 'ENOTIMP', 'ESERVFAIL', 'ETIMEOUT'].includes(String(error.code))
   );
+}
+
+/**
+ * Resolve TXT for a host. We do NOT use Node's default DNS path because:
+ *  - libuv's system resolver caches negative answers aggressively, so a "not
+ *    found" can persist for minutes after the record actually goes live.
+ *  - On serverless platforms the upstream resolver can be stale or shared,
+ *    so two different invocations may see different answers for the same
+ *    name within the same minute.
+ *
+ * We query a public resolver directly and fall back to the system path if
+ * that fails. Returns an array of full TXT strings (multi-chunk records are
+ * already joined for us by Node's TXT parser).
+ */
+async function resolveTxtFresh(host: string): Promise<string[]> {
+  const tryWith = async (servers: string[] | null) => {
+    const resolver = new CallbackResolver();
+    if (servers) resolver.setServers(servers);
+    const resolveTxt = promisify(resolver.resolveTxt.bind(resolver));
+    const records = await resolveTxt(host) as unknown as string[][];
+    return records.map((parts) => parts.join('').trim());
+  };
+
+  // Cloudflare and Google. Whichever responds first wins. If both fail we
+  // bubble the error so the caller can show "not propagated yet".
+  try {
+    return await tryWith(['1.1.1.1', '8.8.8.8']);
+  } catch {
+    // Fall back to the system resolver. If that errors too, the caller's
+    // try/catch wraps it as "not propagated yet" without leaking the
+    // upstream error to the user.
+    return dns.resolveTxt(host).then((records) =>
+      records.map((parts) => parts.join('').trim())
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -64,11 +100,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
-    const recordName = `_magnets-verify.${domain}`;
+    // Use "magnets-verify.<domain>" (no leading underscore) — DNS providers
+    // like Namecheap mishandle underscore-prefixed hosts in their UI.
+    const recordName = `magnets-verify.${domain}`;
     let found: string[] = [];
     try {
-      const raw = await resolveTxt(recordName);
-      found = raw.map((parts) => parts.join('').trim());
+      found = await resolveTxtFresh(recordName);
     } catch (err) {
       if (!isMissingDnsError(err)) {
         log.warn('TXT lookup error', {
@@ -87,14 +124,21 @@ export async function POST(request: NextRequest) {
     }
 
     if (!found.includes(token)) {
+      // Help diagnose mismatches without dumping random TXT values back to
+      // the UI — only show the user the *prefix* of any unexpected record
+      // we found so they can tell whether it's their old verify token or
+      // an unrelated DNS entry.
+      const preview = found.map((v) =>
+        v.length > 60 ? `${v.slice(0, 60)}…` : v
+      );
       return NextResponse.json({
         verified: false,
         message:
           found.length > 0
-            ? 'Found a TXT record at that host, but the value does not match. Copy the value exactly.'
-            : 'No TXT record found yet. DNS can take a few minutes to propagate.',
+            ? `Found ${found.length} TXT record(s) at ${recordName}, but none match the expected value. Copy it exactly, including the "magnets-verify-" prefix. If you recently changed your domain in Configure, the token may have rotated — copy the value shown below.`
+            : `No TXT record found at ${recordName} yet. DNS can take 1 to 60 minutes to propagate after you save it at your DNS provider.`,
         expected: { type: 'TXT', name: recordName, value: token },
-        found,
+        found: preview,
       });
     }
 

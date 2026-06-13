@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       verificationRecord: token
         ? {
             type: 'TXT',
-            name: `_magnets-verify.${domain}`,
+            name: `magnets-verify.${domain}`,
             value: token,
           }
         : null,

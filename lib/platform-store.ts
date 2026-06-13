@@ -843,13 +843,13 @@ export async function updateAccount(
     ? existingAccount.resend_api_key
     : encryptSecret(updates.resendApiKey);
 
-  // If the user changes domain or subdomain, invalidate any existing ownership
-  // verification and detach state. The next attach attempt will go through the
-  // verify-ownership step again. The Vercel detach itself happens at the API
-  // layer (route handler), not here.
-  const domainChanged =
-    (updates.domain !== undefined && updates.domain !== existingAccount.domain) ||
-    (updates.subdomain !== undefined && updates.subdomain !== existingAccount.subdomain);
+  // Only the apex domain affects the ownership TXT (which lives at
+  // magnets-verify.<apex>). Changing the subdomain does not invalidate the
+  // ownership proof — but it does invalidate the attached host (handled at
+  // the route layer). Rotating on every subdomain edit would silently break
+  // users who already pasted the TXT into their DNS.
+  const apexChanged =
+    updates.domain !== undefined && updates.domain !== existingAccount.domain;
 
   const result = await query<AccountRow>(
     `
@@ -867,7 +867,8 @@ export async function updateAccount(
         substack_publication = $11,
         domain_verification_token = case when $12::boolean then '' else domain_verification_token end,
         domain_verified_at = case when $12::boolean then null else domain_verified_at end,
-        domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end
+        domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end,
+        domain_attached_host = case when $12::boolean then '' else domain_attached_host end
       where id = $1
       returning *
     `,
@@ -883,7 +884,7 @@ export async function updateAccount(
       beehiivApiKey,
       updates.beehiivPublicationId,
       updates.substackPublication,
-      domainChanged,
+      apexChanged,
     ]
   );
 

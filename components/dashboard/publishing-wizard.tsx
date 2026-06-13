@@ -39,6 +39,7 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
   const [attaching, setAttaching] = useState(false);
   const [verifyMessage, setVerifyMessage] = useState<string>('');
   const [verifyError, setVerifyError] = useState<string>('');
+  const [verifyFound, setVerifyFound] = useState<string[]>([]);
   const [attachError, setAttachError] = useState<string>('');
 
   const refresh = useCallback(async () => {
@@ -82,10 +83,11 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
     setVerifying(true);
     setVerifyError('');
     setVerifyMessage('');
+    setVerifyFound([]);
     try {
       const response = await fetch('/api/domain/verify-ownership', { method: 'POST' });
       const data = (await response.json().catch(() => null)) as
-        | { verified?: boolean; message?: string; error?: string }
+        | { verified?: boolean; message?: string; error?: string; found?: string[] }
         | null;
       if (!response.ok) {
         setVerifyError(data?.error || 'Verification check failed.');
@@ -94,6 +96,7 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
         await refresh();
       } else {
         setVerifyMessage(data?.message || 'Not found yet.');
+        setVerifyFound(data?.found || []);
       }
     } catch {
       setVerifyError('Verification check failed.');
@@ -167,13 +170,25 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
           <>
             <RecordRow record={status.verificationRecord} />
             {!ownershipDone && (
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <AceternityButton onClick={verifyOwnership} disabled={verifying} variant="secondary">
-                  {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Check ownership
-                </AceternityButton>
-                {verifyMessage && <span className="text-xs text-ink-500">{verifyMessage}</span>}
-                {verifyError && <span className="text-xs text-red-700">{verifyError}</span>}
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <AceternityButton onClick={verifyOwnership} disabled={verifying} variant="secondary">
+                    {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Check ownership
+                  </AceternityButton>
+                  {verifyMessage && <span className="text-xs leading-5 text-ink-600">{verifyMessage}</span>}
+                  {verifyError && <span className="text-xs text-red-700">{verifyError}</span>}
+                </div>
+                {verifyFound.length > 0 && (
+                  <div className="rounded-md border border-ink-200 bg-ink-50 p-2 text-[11px]">
+                    <p className="font-medium text-ink-700">What we found at that host:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-ink-700">
+                      {verifyFound.map((v, i) => (
+                        <li key={i} className="break-all">{v}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
             {ownershipDone && (
