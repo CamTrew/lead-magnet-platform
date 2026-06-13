@@ -94,8 +94,12 @@ export async function GET(request: NextRequest) {
       verificationRecord: token
         ? {
             type: 'TXT',
-            name: `magnets-verify.${domain}`,
+            // Bare label is what DNS providers' Host fields expect (Namecheap
+            // in particular rewrites or rejects fully-qualified hosts). The
+            // resolver on the server side reconstructs the FQDN.
+            name: 'magnets-verify',
             value: token,
+            fullName: `magnets-verify.${domain}`,
           }
         : null,
       cnameRecord: account.domainAttachedHost && account.domainRecommendedCname

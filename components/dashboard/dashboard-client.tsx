@@ -24,7 +24,6 @@ import {
   AceternityCard,
   AceternityInput,
   Field,
-  StatusPill,
 } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import { PublishingWizard } from '@/components/dashboard/publishing-wizard';
@@ -366,12 +365,26 @@ function SectionSave({
   onSave: () => void;
   state: SaveState;
 }) {
+  const isSaving = state === 'saving';
+  const isSaved = state === 'saved';
+  const isError = state === 'error';
+
   return (
     <div className="flex items-center justify-end gap-2 border-t border-[#e4e4e7] pt-4">
-      <StatusPill state={state} />
-      <AceternityButton disabled={disabled || state === 'saving'} onClick={onSave}>
-        <Save className="h-4 w-4" />
-        {label}
+      {isError && (
+        <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700">
+          Could not save
+        </span>
+      )}
+      <AceternityButton disabled={disabled || isSaving} onClick={onSave}>
+        {isSaving ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : isSaved ? (
+          <Check className="h-4 w-4" />
+        ) : (
+          <Save className="h-4 w-4" />
+        )}
+        {isSaving ? 'Saving' : isSaved ? 'Saved' : label}
       </AceternityButton>
     </div>
   );
