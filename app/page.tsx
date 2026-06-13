@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     'Build branded lead-magnet landing pages, deliver the resource by email, collect signups. Free forever. Bring your own Resend, Beehiiv, or Substack keys.',
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: 'Magnets — free lead-magnet pages on your own domain',
+    title: 'Magnets. free lead-magnet pages on your own domain',
     description:
       'Build branded lead-magnet landing pages, deliver the resource by email, and collect signups. Free forever. Bring your own keys.',
     url: SITE_URL,
@@ -74,12 +74,12 @@ const features = [
   {
     icon: Mail,
     title: 'Your sender, your list',
-    copy: 'Send through your own Resend key. Forward signups to Beehiiv or Substack — your call.',
+    copy: 'Send through your own Resend key. Forward signups to Beehiiv or Substack. your call.',
   },
 ];
 
 const checklist = [
-  'Free forever — no card, no clock',
+  'Free forever. no card, no clock',
   'Bring your own keys, keep your data',
   'Custom domains and DKIM out of the box',
   'Leave any time you want, take everything with you',
@@ -106,7 +106,7 @@ export default function HomePage() {
             <Link href="#features" className="hover:text-ink-900">Features</Link>
             <Link href="#integrations" className="hover:text-ink-900">Integrations</Link>
             <Link href="#setup" className="hover:text-ink-900">Setup</Link>
-            <Link href="/privacy" className="hover:text-ink-900">Privacy</Link>
+            <a href="/privacy" className="hover:text-ink-900" target="_blank" rel="noreferrer">Privacy</a>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export default function HomePage() {
               Lead magnets, given away for free.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-balance text-base leading-7 text-ink-600 sm:text-lg">
-              Lead-magnet software has been gatekept behind $99 plans for too long. Build the page, deliver the resource, collect the email — on your own domain, with your own keys. We don&apos;t charge you. We don&apos;t hold your list.
+              Lead-magnet software has been gatekept behind $99 plans for too long. Build the page, deliver the resource, collect the email. on your own domain, with your own keys. We don&apos;t charge you. We don&apos;t hold your list.
             </p>
 
             <div className="mt-8 flex flex-wrap justify-center gap-2">
@@ -178,7 +178,7 @@ export default function HomePage() {
                 Power to the people, not to the SaaS bill.
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-600">
-                Magnets is the Robin Hood of lead-magnet tools. The expensive bits — the email send, the newsletter integration, the domain — are services you can already use cheaply or for free elsewhere. So we let you bring those yourself and we charge nothing on top.
+                Magnets is the Robin Hood of lead-magnet tools. The expensive bits. the email send, the newsletter integration, the domain. are services you can already use cheaply or for free elsewhere. So we let you bring those yourself and we charge nothing on top.
               </p>
             </div>
             <Link
@@ -299,7 +299,7 @@ export default function HomePage() {
               No card. No clock. No catch.
             </h2>
             <p className="mt-2 text-sm leading-6 text-ink-600">
-              The whole product is free. Pages, signup list, CSV export, custom domains. If we ever charge for anything, it will be obvious and optional — and the free tier will keep doing what it does today.
+              The whole product is free. Pages, signup list, CSV export, custom domains. If we ever charge for anything, it will be obvious and optional. and the free tier will keep doing what it does today.
             </p>
             <div className="mt-3 flex items-center gap-2 text-xs text-ink-500">
               <Users className="h-4 w-4" />
@@ -329,8 +329,8 @@ export default function HomePage() {
             <Link href="#features" className="hover:text-ink-900">Features</Link>
             <Link href="#integrations" className="hover:text-ink-900">Integrations</Link>
             <Link href="#setup" className="hover:text-ink-900">Setup</Link>
-            <Link href="/privacy" className="hover:text-ink-900">Privacy</Link>
-            <Link href="/terms" className="hover:text-ink-900">Terms</Link>
+            <a href="/privacy" className="hover:text-ink-900" target="_blank" rel="noreferrer">Privacy</a>
+            <a href="/terms" className="hover:text-ink-900" target="_blank" rel="noreferrer">Terms</a>
             <Link href="/login" className="hover:text-ink-900">Sign in</Link>
           </div>
           <p className="text-sm text-ink-500">© {new Date().getFullYear()} Magnets</p>

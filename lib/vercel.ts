@@ -182,6 +182,54 @@ export async function getDomainStatus(host: string) {
 }
 
 /**
+ * Fetch the per-project DNS recommendation Vercel hands out for `host`.
+ * This is the right CNAME target to show the user (e.g. <hash>.vercel-dns-017.com)
+ * rather than the generic cname.vercel-dns.com.
+ *
+ * Returns `null` when Vercel isn't configured. Otherwise returns the best
+ * (rank 1) recommended CNAME / IPv4, plus whether Vercel currently observes
+ * the domain as misconfigured.
+ */
+export async function getDomainConfig(host: string) {
+  const config = vercelConfig();
+  if (!config) return null;
+  if (!host || !isValidHost(host)) return null;
+
+  const url = new URL(`${API_BASE}/v6/domains/${encodeURIComponent(host)}/config`);
+  url.searchParams.set('projectIdOrName', config.projectId);
+  if (config.teamId) url.searchParams.set('teamId', config.teamId);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${config.token}` },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const envelope = await readEnvelope(response);
+    const message = envelope?.error?.message || `Vercel responded ${response.status}`;
+    throw new VercelApiError(response.status, message, envelope?.error?.code);
+  }
+
+  const data = (await response.json()) as {
+    configuredBy?: 'A' | 'CNAME' | 'dns-01' | 'http' | null;
+    misconfigured?: boolean;
+    recommendedCNAME?: Array<{ rank: number; value: string }>;
+    recommendedIPv4?: Array<{ rank: number; value: string[] }>;
+  };
+
+  const cnameSorted = [...(data.recommendedCNAME || [])].sort((a, b) => a.rank - b.rank);
+  const ipv4Sorted = [...(data.recommendedIPv4 || [])].sort((a, b) => a.rank - b.rank);
+
+  return {
+    configuredBy: data.configuredBy ?? null,
+    misconfigured: Boolean(data.misconfigured),
+    recommendedCname: cnameSorted[0]?.value || '',
+    recommendedIpv4: ipv4Sorted[0]?.value?.[0] || '',
+  };
+}
+
+/**
  * Reconcile Vercel project domains with the host the user just saved.
  * - If the host changed, attach the new one and detach the old one.
  * - Returns a partial status report — never throws to the caller.

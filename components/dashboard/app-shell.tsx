@@ -135,7 +135,7 @@ function SidebarContent({
             aria-label="Open sidebar"
             className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition hover:bg-ink-50 lg:flex"
             onClick={onCollapseToggle}
-            title={`Open sidebar — ${userName || userEmail}`}
+            title={`Open sidebar. ${userName || userEmail}`}
             type="button"
           >
             <span className="text-[10px] font-semibold text-ink-700">
@@ -337,8 +337,8 @@ export function DashboardLayoutShell({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>Magnets</span>
               <div className="flex gap-3">
-                <Link href="/privacy" className="hover:text-ink-900">Privacy</Link>
-                <Link href="/terms" className="hover:text-ink-900">Terms</Link>
+                <a href="/privacy" className="hover:text-ink-900" target="_blank" rel="noreferrer">Privacy</a>
+                <a href="/terms" className="hover:text-ink-900" target="_blank" rel="noreferrer">Terms</a>
               </div>
             </div>
           </footer>

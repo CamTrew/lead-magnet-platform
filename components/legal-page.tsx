@@ -57,8 +57,8 @@ export function LegalPage({
           <span>© {new Date().getFullYear()} Magnets</span>
           <div className="flex gap-3">
             <Link href="/" className="hover:text-ink-900">Home</Link>
-            <Link href="/privacy" className="hover:text-ink-900">Privacy</Link>
-            <Link href="/terms" className="hover:text-ink-900">Terms</Link>
+            <a href="/privacy" className="hover:text-ink-900" target="_blank" rel="noreferrer">Privacy</a>
+            <a href="/terms" className="hover:text-ink-900" target="_blank" rel="noreferrer">Terms</a>
           </div>
         </div>
       </footer>

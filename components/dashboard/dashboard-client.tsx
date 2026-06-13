@@ -1,7 +1,7 @@
 'use client';
 
 import type { ChangeEvent, ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   AlertCircle,
   AtSign,
@@ -16,6 +16,8 @@ import {
   Palette,
   RefreshCw,
   Save,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   AceternityButton,
@@ -25,9 +27,9 @@ import {
   StatusPill,
 } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { PublishingWizard } from '@/components/dashboard/publishing-wizard';
 import {
   buildEmailDnsRecords,
-  buildPageDnsRecords,
   parseSenderEmail,
   type DnsRecordDefinition,
 } from '@/lib/dns-records';
@@ -36,7 +38,7 @@ import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSection = 'brand' | 'publishing' | 'delivery';
-type DnsSection = 'publishing' | 'delivery';
+type DnsSection = 'delivery';
 type DnsRecordStatus = 'verified' | 'missing' | 'error';
 type DnsCheckStatus = 'idle' | 'checking' | DnsRecordStatus;
 
@@ -364,9 +366,16 @@ export function DashboardClient({
   });
   const [dnsChecks, setDnsChecks] = useState<Record<DnsSection, DnsSectionCheck>>({
     delivery: idleDnsCheck(),
-    publishing: idleDnsCheck(),
   });
   const [error, setError] = useState('');
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+
+  function removeLogo() {
+    if (!account.logoUrl) return;
+    patchAccount({ logoUrl: '' }, 'brand');
+    if (logoInputRef.current) logoInputRef.current.value = '';
+    setError('');
+  }
 
   function setSaveState(section: SaveSection, state: SaveState) {
     setSectionState((current) => ({ ...current, [section]: state }));
@@ -375,8 +384,8 @@ export function DashboardClient({
   function markChanged(section: SaveSection) {
     setError('');
     setSaveState(section, 'idle');
-    if (section === 'publishing' || section === 'delivery') {
-      setDnsChecks((current) => ({ ...current, [section]: idleDnsCheck() }));
+    if (section === 'delivery') {
+      setDnsChecks((current) => ({ ...current, delivery: idleDnsCheck() }));
     }
   }
 
@@ -509,11 +518,6 @@ export function DashboardClient({
   const fromDomain = sender?.domain || '';
   const displayFromDomain = fromDomain || displayDomain;
   const brandLabel = account.logoText.trim() || 'Your logo text';
-  const pageDnsRecords = buildPageDnsRecords({
-    accountId: account.id,
-    domain: displayDomain,
-    subdomain: pageSubdomain,
-  });
   const deliveryDnsRecords = buildEmailDnsRecords(displayFromDomain);
   const checkedDeliveryDnsRecords = dnsChecks.delivery.recordOrder
     .map((id) => dnsChecks.delivery.records[id])
@@ -586,31 +590,57 @@ export function DashboardClient({
             />
 
             <div className="space-y-5">
-              <div className="flex items-center gap-4 rounded-lg border border-[#e4e4e7] bg-white p-4 shadow-sm">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#e4e4e7] bg-[#fafafa]">
+              <div className="flex items-center gap-4 rounded-lg border border-ink-200 bg-white p-4">
+                <div className="group/logo relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ink-200 bg-ink-50">
                   {account.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={account.logoUrl} alt={brandLabel} className="h-full w-full object-contain p-2" />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={account.logoUrl} alt={brandLabel} className="h-full w-full object-contain p-2" />
+                      <button
+                        aria-label="Remove logo"
+                        className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-ink-950 text-white shadow-sm transition hover:bg-red-600 group-hover/logo:flex focus:flex"
+                        onClick={removeLogo}
+                        title="Remove logo"
+                        type="button"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </>
                   ) : (
-                    <span className="text-lg font-black" style={{ color: account.brand.primary }}>
+                    <span className="text-lg font-semibold" style={{ color: account.brand.primary }}>
                       {brandLabel.slice(0, 1).toUpperCase()}
                     </span>
                   )}
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-[#09090b]">{brandLabel}</p>
-                  <p className="mt-1 text-xs text-[#71717a]">Shown on pages and emails.</p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink-950">{brandLabel}</p>
+                  <p className="mt-1 text-xs text-ink-500">
+                    {account.logoUrl
+                      ? 'Image uploaded. Save brand to apply.'
+                      : 'No image. The first letter shows on pages and emails.'}
+                  </p>
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Logo image" hint="PNG, JPG, WebP, or GIF — up to 1 MB. Logo text is used when this is empty.">
+                <Field label="Logo image" hint="PNG, JPG, WebP, or GIF. up to 1 MB. Logo text is used when this is empty.">
                   <AceternityInput
                     accept="image/png,image/jpeg,image/webp,image/gif"
-                    className="py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#f4f4f5] file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#18181b]"
+                    className="py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-ink-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-900"
                     onChange={handleLogoUpload}
+                    ref={logoInputRef}
                     type="file"
                   />
+                  {account.logoUrl && (
+                    <button
+                      className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2 text-xs font-medium text-ink-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                      onClick={removeLogo}
+                      type="button"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remove logo
+                    </button>
+                  )}
                 </Field>
                 <Field label="Logo text" hint="Used when no logo image is uploaded.">
                   <AceternityInput
@@ -676,32 +706,7 @@ export function DashboardClient({
                 </Field>
               </div>
 
-              <DnsTable
-                checkState={dnsChecks.publishing}
-                title="Page DNS records"
-                description={
-                  configuredDomain
-                    ? `Add these where DNS is managed for ${configuredDomain}.`
-                    : 'Add your root domain above. Until then these show exactly what the records will look like.'
-                }
-                help={
-                  'These two records make get.yourdomain.com show your published magnets.\n\n' +
-                  'Where to add them: log in to wherever you bought your domain — Cloudflare, GoDaddy, Namecheap, Google Domains, Vercel, Squarespace — and open the DNS settings for the domain. Look for "DNS", "DNS records", or "Manage DNS".\n\n' +
-                  'For each row below, click "Add record", pick the Type (CNAME or TXT), paste the Host into the Name field, and paste the Value into the Value/Content field. Leave TTL as the default (Auto or 3600).\n\n' +
-                  'Tip: some providers want the Host without your domain (e.g. "get"), others want it with (e.g. "get.example.com"). Both usually work — try without first.\n\n' +
-                  'After saving, click "Check DNS" here. Records can take a few minutes to a couple of hours to show up.'
-                }
-                onVerify={() => verifyDns('publishing')}
-                verifyDisabled={!configuredDomain}
-              >
-                {pageDnsRecords.map((record) => (
-                  <DnsRecord
-                    key={record.id}
-                    check={dnsChecks.publishing.records[record.id]}
-                    record={record}
-                  />
-                ))}
-              </DnsTable>
+              <PublishingWizard hasDomain={Boolean(configuredDomain)} />
 
               <SectionSave
                 label="Save publishing"
@@ -813,10 +818,10 @@ export function DashboardClient({
                       label={
                         <LabelHelp
                           label="Substack publication"
-                          help="The subdomain on Substack — for example, type 'myletter' for myletter.substack.com. Substack has no official subscriber API, so this uses their public subscribe endpoint and may break if Substack changes it."
+                          help="The subdomain on Substack. for example, type 'myletter' for myletter.substack.com. Substack has no official subscriber API, so this uses their public subscribe endpoint and may break if Substack changes it."
                         />
                       }
-                      hint="Just the subdomain — myletter, not myletter.substack.com"
+                      hint="Just the subdomain. myletter, not myletter.substack.com"
                     >
                       <AceternityInput
                         value={account.substackPublication}
@@ -842,13 +847,13 @@ export function DashboardClient({
                       : 'Add a sender email above. Until then these use the publishing domain as an example.'
                   }
                   help={
-                    'These records prove to Gmail and Outlook that you own the domain you send from — without them, your emails land in spam.\n\n' +
+                    'These records prove to Gmail and Outlook that you own the domain you send from. without them, your emails land in spam.\n\n' +
                     'Where to add them: log in to wherever DNS is managed for your sender domain (Cloudflare, GoDaddy, Namecheap, etc.). Open DNS records.\n\n' +
                     'There are three kinds:\n' +
-                    '• MX — directs return-path mail. Pick "MX" as the type, paste Host into Name, paste Value into the mail-server field. Priority is 10.\n' +
-                    '• TXT (SPF / DKIM / DMARC) — pick "TXT", paste Host into Name, paste the whole Value (quotes included) into the Value/Content field.\n\n' +
+                    '• MX. directs return-path mail. Pick "MX" as the type, paste Host into Name, paste Value into the mail-server field. Priority is 10.\n' +
+                    '• TXT (SPF / DKIM / DMARC). pick "TXT", paste Host into Name, paste the whole Value (quotes included) into the Value/Content field.\n\n' +
                     'Click "Check DNS" here once added. Records often appear within minutes but can take a few hours.\n\n' +
-                    'These records come straight from your Resend account — they are unique to your sender, so do not copy them from anywhere else.'
+                    'These records come straight from your Resend account. they are unique to your sender, so do not copy them from anywhere else.'
                   }
                   onVerify={() => verifyDns('delivery')}
                   verifyDisabled={!fromDomain}

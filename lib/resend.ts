@@ -1,5 +1,13 @@
 import { Resend } from 'resend';
+import { log } from './logger';
 import type { AccountSettings, LeadMagnet } from './types';
+
+export class EmailDeliveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailDeliveryError';
+  }
+}
 
 function escapeHtml(value: string) {
   return value
@@ -17,6 +25,28 @@ function renderParagraphs(value: string) {
     .join('');
 }
 
+function scrubResendErrorMessage(message: string) {
+  // The Resend SDK occasionally echoes the key back in error messages. Strip
+  // anything that looks like one before we hand it to a caller that may end up
+  // logging or returning it to the public form-submit endpoint.
+  return message
+    .replace(/re_[A-Za-z0-9_-]{8,}/g, '<redacted>')
+    .replace(/Bearer\s+[A-Za-z0-9._-]{8,}/gi, 'Bearer <redacted>');
+}
+
+/**
+ * Sends the magnet's resource email to `to`. Caller must pass an account loaded
+ * with revealSecrets so account.resendApiKey is the plaintext key.
+ *
+ * Behaviour:
+ *  - No key set + NODE_ENV !== 'production' → no-op, logs at info, returns
+ *    { skipped: true } so dev/preview can still submit forms without sending.
+ *  - No key set + NODE_ENV === 'production' → throws EmailDeliveryError so the
+ *    public submit endpoint fails loudly instead of recording an undelivered
+ *    submission silently.
+ *  - Resend returns an error → throws EmailDeliveryError with the message
+ *    scrubbed of any API-key fragments.
+ */
 export async function sendLeadMagnetEmail({
   account,
   magnet,
@@ -27,40 +57,75 @@ export async function sendLeadMagnetEmail({
   magnet: LeadMagnet;
   to: string;
   name: string;
-}) {
+}): Promise<{ skipped: true } | { messageId: string }> {
   if (!account.resendApiKey) {
-    console.info('Skipping Resend send because the account has no Resend API key configured.');
-    return { data: { id: 'local-preview' }, error: null };
+    if (process.env.NODE_ENV === 'production') {
+      throw new EmailDeliveryError(
+        'Email could not be sent because this account has no sender configured.'
+      );
+    }
+    log.info('Email send skipped (no API key, dev only)', {
+      route: 'lib/resend',
+      accountId: account.id,
+      extra: { magnetId: magnet.id },
+    });
+    return { skipped: true };
+  }
+
+  if (!account.resendFromEmail) {
+    throw new EmailDeliveryError(
+      'Email could not be sent because no sender address is set.'
+    );
   }
 
   const resend = new Resend(account.resendApiKey);
   const body = magnet.emailBody
     .replace(/{name}/g, name)
-    .replace(/{download_link}/g, magnet.downloadLink);
-  const text = body.includes(magnet.downloadLink) ? body : `${body}\n\n${magnet.downloadLink}`;
+    .replace(/{download_link}/g, magnet.downloadLink || '');
+  const text = magnet.downloadLink && !body.includes(magnet.downloadLink)
+    ? `${body}\n\n${magnet.downloadLink}`
+    : body;
   const buttonLabel = magnet.ctaText.trim() || 'Download';
+  const safePrimary = /^#[0-9a-fA-F]{6}$/.test(account.brand.primary)
+    ? account.brand.primary
+    : '#111111';
 
-  return resend.emails.send({
-    from: account.resendFromEmail,
-    to,
-    subject: magnet.emailSubject,
-    text,
-    html: `
-      <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(magnet.emailPreview)}</div>
-      <main style="margin:0;background:#f8f5ff;padding:32px;font-family:Arial,sans-serif;color:#25193b">
-        <section style="margin:0 auto;max-width:640px;border:1px solid #e5defb;background:#ffffff;border-radius:8px;padding:40px">
-          <p style="margin:0 0 28px;color:${escapeHtml(account.brand.primary)};font-size:22px;font-weight:800">${escapeHtml(account.logoText)}</p>
-          <div style="font-size:16px;line-height:1.7;color:#4a405c">${renderParagraphs(text)}</div>
-          <p style="margin:32px 0 0">
-            <a href="${escapeHtml(magnet.downloadLink)}" style="display:inline-block;background:${escapeHtml(account.brand.primary)};color:white;border-radius:8px;padding:14px 22px;text-decoration:none;font-weight:700">
-              ${escapeHtml(buttonLabel)}
-            </a>
+  let result;
+  try {
+    result = await resend.emails.send({
+      from: account.resendFromEmail,
+      to,
+      subject: magnet.emailSubject,
+      text,
+      html: `
+        <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(magnet.emailPreview)}</div>
+        <main style="margin:0;background:#fafafa;padding:32px;font-family:Inter,Arial,sans-serif;color:#18181b">
+          <section style="margin:0 auto;max-width:640px;border:1px solid #e4e4e7;background:#ffffff;border-radius:8px;padding:40px">
+            <p style="margin:0 0 28px;color:${escapeHtml(safePrimary)};font-size:22px;font-weight:700">${escapeHtml(account.logoText)}</p>
+            <div style="font-size:16px;line-height:1.7;color:#3f3f46">${renderParagraphs(text)}</div>
+            ${magnet.downloadLink
+              ? `<p style="margin:32px 0 0">
+                  <a href="${escapeHtml(magnet.downloadLink)}" style="display:inline-block;background:${escapeHtml(safePrimary)};color:white;border-radius:8px;padding:14px 22px;text-decoration:none;font-weight:600">
+                    ${escapeHtml(buttonLabel)}
+                  </a>
+                </p>`
+              : ''}
+          </section>
+          <p style="margin:24px auto 0;max-width:640px;text-align:center;font-size:12px;color:#71717a">
+            Sent with <a href="https://magnets.so" style="color:#52525b;text-decoration:underline">magnets.so</a>
           </p>
-        </section>
-        <p style="margin:24px auto 0;max-width:640px;text-align:center;font-size:12px;color:#8a7fa3">
-          Lead magnet sent with <a href="https://magnets.so" style="color:#6d55ff;text-decoration:none;font-weight:700">magnets.so</a>
-        </p>
-      </main>
-    `,
-  });
+        </main>
+      `,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new EmailDeliveryError(scrubResendErrorMessage(message));
+  }
+
+  if (result.error) {
+    const message = result.error.message || 'The email provider rejected the message.';
+    throw new EmailDeliveryError(scrubResendErrorMessage(message));
+  }
+
+  return { messageId: result.data?.id || '' };
 }

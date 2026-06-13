@@ -9,7 +9,7 @@ import {
   RateLimitError,
   requestIp,
 } from '@/lib/rate-limit';
-import { sendLeadMagnetEmail } from '@/lib/resend';
+import { EmailDeliveryError, sendLeadMagnetEmail } from '@/lib/resend';
 import { log } from '@/lib/logger';
 
 const ROUTE = '/api/submit';
@@ -48,12 +48,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
 
-    await sendLeadMagnetEmail({
-      account: result.account,
-      magnet: result.leadMagnet,
-      to: email,
-      name,
-    });
+    try {
+      await sendLeadMagnetEmail({
+        account: result.account,
+        magnet: result.leadMagnet,
+        to: email,
+        name,
+      });
+    } catch (sendError) {
+      if (sendError instanceof EmailDeliveryError) {
+        log.warn('Email delivery failed', {
+          route: ROUTE,
+          method: 'POST',
+          accountId,
+          extra: { leadMagnetId, error: sendError },
+        });
+        return NextResponse.json(
+          {
+            error:
+              'We could not send the resource right now. Please try again in a minute or contact the page owner.',
+          },
+          { status: 502 }
+        );
+      }
+      throw sendError;
+    }
 
     try {
       await addToBeehiiv(result.account, email, name);

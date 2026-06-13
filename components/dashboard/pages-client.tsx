@@ -376,7 +376,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                           const url = branded || fallback;
                           const title = branded
                             ? branded
-                            : `Open on magnets.so — your branded URL appears once your domain is set up.`;
+                            : `Open on magnets.so. your branded URL appears once your domain is set up.`;
                           return (
                             <a
                               aria-label={`View ${leadMagnet.title}`}

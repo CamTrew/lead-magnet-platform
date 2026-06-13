@@ -36,6 +36,21 @@ export const accounts = pgTable(
     beehiivApiKey: text('beehiiv_api_key').notNull().default(''),
     beehiivPublicationId: text('beehiiv_publication_id').notNull().default(''),
     substackPublication: text('substack_publication').notNull().default(''),
+    // The TXT-record proof token that customers paste into DNS to prove ownership
+    // before we attach the domain to the Vercel project. Rotated when the domain
+    // or subdomain changes — invalidates the existing verification.
+    domainVerificationToken: text('domain_verification_token').notNull().default(''),
+    // When the ownership TXT was last observed. Null = unverified; presence does
+    // NOT mean the domain is currently attached to Vercel (see domainAttachedHost).
+    domainVerifiedAt: timestamp('domain_verified_at', { withTimezone: true }),
+    // The hostname currently attached on the Vercel project. Empty when nothing
+    // is attached. We track this so detach/attach diffs are precise even if the
+    // domain or subdomain fields are edited mid-way.
+    domainAttachedHost: text('domain_attached_host').notNull().default(''),
+    // The CNAME target Vercel returned for this domain. Empty until step 3.
+    // Hardcoding cname.vercel-dns.com is wrong — Vercel hands out per-project
+    // hashed targets like <hash>.vercel-dns-017.com.
+    domainRecommendedCname: text('domain_recommended_cname').notNull().default(''),
     onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
     onboardingBusinessName: text('onboarding_business_name').notNull().default(''),
     onboardingBusinessType: text('onboarding_business_type').notNull().default(''),

@@ -10,7 +10,8 @@ import {
 } from '@/lib/dns-records';
 import { updateAccount } from '@/lib/platform-store';
 import { SecretConfigurationError } from '@/lib/secrets';
-import { syncProjectDomain } from '@/lib/vercel';
+import { clearDomainAttached } from '@/lib/platform-store';
+import { removeDomain } from '@/lib/vercel';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -82,11 +83,12 @@ function isUniqueViolation(error: unknown) {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
 }
 
-function buildHosts(subdomain: string, domain: string): string[] {
-  if (!domain) return [];
-  const apex = domain.toLowerCase();
-  const sub = subdomain ? `${subdomain.toLowerCase()}.${apex}` : '';
-  return [sub, apex].filter(Boolean);
+function buildHost(subdomain: string, domain: string): string {
+  // The product only ever serves on a subdomain (default "get") — we do not
+  // attach the apex domain. Keeping the host singular keeps Vercel domain
+  // bookkeeping precise.
+  if (!domain || !subdomain) return '';
+  return `${subdomain.toLowerCase()}.${domain.toLowerCase()}`;
 }
 
 export async function PUT(request: NextRequest) {
@@ -115,25 +117,38 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const previousHosts = buildHosts(payload.account.subdomain, payload.account.domain);
+    const previousHost = buildHost(payload.account.subdomain, payload.account.domain);
+    const previousAttachedHost = payload.account.domainAttachedHost;
     const account = await updateAccount(payload.account.id, parsed.data);
 
     if (!account) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
-    const currentHosts = buildHosts(account.subdomain, account.domain);
-    let vercel: Awaited<ReturnType<typeof syncProjectDomain>> | null = null;
-    try {
-      vercel = await syncProjectDomain({ previous: previousHosts, current: currentHosts });
-    } catch (vercelError) {
-      log.error('Vercel domain sync failed', {
-        route: ROUTE,
-        method: 'PUT',
-        userId: payload.user.id,
-        accountId: payload.account.id,
-        extra: { error: vercelError },
-      });
+    const currentHost = buildHost(account.subdomain, account.domain);
+
+    // If the publishing host changed AND we previously attached one, detach the
+    // old host. We do not auto-attach the new one — that requires explicit
+    // ownership verification via /api/domain/verify-ownership first.
+    let detached = false;
+    let detachError: string | null = null;
+    const shouldDetach =
+      previousAttachedHost &&
+      previousAttachedHost !== currentHost;
+    if (shouldDetach) {
+      try {
+        detached = await removeDomain(previousAttachedHost);
+        await clearDomainAttached(payload.account.id);
+      } catch (detachErr) {
+        detachError = (detachErr as Error).message;
+        log.error('Detach failed during account save', {
+          route: ROUTE,
+          method: 'PUT',
+          userId: payload.user.id,
+          accountId: payload.account.id,
+          extra: { error: detachErr },
+        });
+      }
     }
 
     log.info('Account updated', {
@@ -145,13 +160,13 @@ export async function PUT(request: NextRequest) {
       extra: {
         subdomainChanged: payload.account.subdomain !== account.subdomain,
         domainChanged: payload.account.domain !== account.domain,
-        vercelAttached: vercel?.attached.length || 0,
-        vercelDetached: vercel?.detached.length || 0,
-        vercelErrors: vercel?.errors.length || 0,
+        previousHost,
+        currentHost,
+        detached,
       },
     });
 
-    return NextResponse.json({ account, vercel });
+    return NextResponse.json({ account, detached, detachError });
   } catch (err) {
     if (err instanceof RateLimitError) {
       return rateLimitResponse(err);

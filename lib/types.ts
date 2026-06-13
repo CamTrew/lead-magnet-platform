@@ -19,6 +19,13 @@ export interface OnboardingAnswers {
   cadence: string;
 }
 
+export type DomainStage =
+  | 'no-domain'           // domain field empty
+  | 'unverified'          // domain set, ownership TXT not yet observed
+  | 'verified'            // ownership proven, not yet attached to Vercel
+  | 'attached-pending'    // attached to Vercel, CNAME not resolving yet
+  | 'live';               // Vercel reports the domain as verified
+
 export interface AccountSettings {
   id: string;
   ownerUserId: string;
@@ -32,6 +39,10 @@ export interface AccountSettings {
   beehiivApiKey: string;
   beehiivPublicationId: string;
   substackPublication: string;
+  domainVerificationToken: string;
+  domainVerifiedAt: string | null;
+  domainAttachedHost: string;
+  domainRecommendedCname: string;
   onboardingCompletedAt: string | null;
   onboarding: OnboardingAnswers;
   createdAt: string;

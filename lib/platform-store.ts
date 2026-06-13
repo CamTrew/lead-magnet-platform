@@ -43,6 +43,10 @@ type AccountRow = {
   beehiiv_api_key: string;
   beehiiv_publication_id: string;
   substack_publication: string;
+  domain_verification_token: string;
+  domain_verified_at: Date | null;
+  domain_attached_host: string;
+  domain_recommended_cname: string;
   onboarding_completed_at: Date | null;
   onboarding_business_name: string;
   onboarding_business_type: string;
@@ -115,6 +119,10 @@ type DashboardBaseRow = {
   account_beehiiv_api_key: string;
   account_beehiiv_publication_id: string;
   account_substack_publication: string;
+  account_domain_verification_token: string;
+  account_domain_verified_at: Date | null;
+  account_domain_attached_host: string;
+  account_domain_recommended_cname: string;
   account_onboarding_completed_at: Date | null;
   account_onboarding_business_name: string;
   account_onboarding_business_type: string;
@@ -188,6 +196,10 @@ function mapAccount(row: AccountRow, options: { revealSecrets?: boolean } = {}):
       : redactSecret(row.beehiiv_api_key),
     beehiivPublicationId: row.beehiiv_publication_id,
     substackPublication: row.substack_publication,
+    domainVerificationToken: row.domain_verification_token,
+    domainVerifiedAt: row.domain_verified_at ? iso(row.domain_verified_at) : null,
+    domainAttachedHost: row.domain_attached_host,
+    domainRecommendedCname: row.domain_recommended_cname,
     onboardingCompletedAt: row.onboarding_completed_at ? iso(row.onboarding_completed_at) : null,
     onboarding: {
       businessName: row.onboarding_business_name,
@@ -257,6 +269,10 @@ function mapDashboardBase(row: DashboardBaseRow) {
       beehiiv_api_key: row.account_beehiiv_api_key,
       beehiiv_publication_id: row.account_beehiiv_publication_id,
       substack_publication: row.account_substack_publication,
+      domain_verification_token: row.account_domain_verification_token,
+      domain_verified_at: row.account_domain_verified_at,
+      domain_attached_host: row.account_domain_attached_host,
+      domain_recommended_cname: row.account_domain_recommended_cname,
       onboarding_completed_at: row.account_onboarding_completed_at,
       onboarding_business_name: row.account_onboarding_business_name,
       onboarding_business_type: row.account_onboarding_business_type,
@@ -334,6 +350,10 @@ async function getDashboardBaseByUserId(userId: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        a.domain_verification_token as account_domain_verification_token,
+        a.domain_verified_at as account_domain_verified_at,
+        a.domain_attached_host as account_domain_attached_host,
+        a.domain_recommended_cname as account_domain_recommended_cname,
         a.onboarding_completed_at as account_onboarding_completed_at,
         a.onboarding_business_name as account_onboarding_business_name,
         a.onboarding_business_type as account_onboarding_business_type,
@@ -408,6 +428,10 @@ async function getDashboardBaseBySessionToken(token: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        a.domain_verification_token as account_domain_verification_token,
+        a.domain_verified_at as account_domain_verified_at,
+        a.domain_attached_host as account_domain_attached_host,
+        a.domain_recommended_cname as account_domain_recommended_cname,
         a.onboarding_completed_at as account_onboarding_completed_at,
         a.onboarding_business_name as account_onboarding_business_name,
         a.onboarding_business_type as account_onboarding_business_type,
@@ -664,6 +688,74 @@ export async function getAccountWithSecrets(accountId: string) {
   return result.rows[0] ? mapAccount(result.rows[0], { revealSecrets: true }) : null;
 }
 
+/**
+ * Look up an existing token, or mint a new one if none is set. The token is the
+ * value the user pastes into a TXT record on their DNS to prove ownership; we
+ * only check matches against `domain_verification_token`, so rotating it
+ * silently breaks an in-flight verification (intentional — happens when the
+ * domain itself changes).
+ */
+export async function getOrCreateDomainVerificationToken(accountId: string) {
+  const existing = await query<{ domain_verification_token: string }>(
+    'select domain_verification_token from public.magnets_accounts where id = $1 limit 1',
+    [accountId]
+  );
+  if (!existing.rows[0]) return null;
+  if (existing.rows[0].domain_verification_token) {
+    return existing.rows[0].domain_verification_token;
+  }
+
+  const token = `magnets-verify-${randomBytes(16).toString('hex')}`;
+  await query(
+    'update public.magnets_accounts set domain_verification_token = $2 where id = $1',
+    [accountId, token]
+  );
+  return token;
+}
+
+export async function markDomainVerified(accountId: string) {
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set domain_verified_at = now()
+      where id = $1
+      returning *
+    `,
+    [accountId]
+  );
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+}
+
+export async function recordDomainAttached(
+  accountId: string,
+  host: string,
+  recommendedCname: string
+) {
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set
+        domain_attached_host = $2,
+        domain_recommended_cname = $3
+      where id = $1
+      returning *
+    `,
+    [accountId, host, recommendedCname]
+  );
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+}
+
+export async function clearDomainAttached(accountId: string) {
+  await query(
+    `
+      update public.magnets_accounts
+      set domain_attached_host = '', domain_recommended_cname = ''
+      where id = $1
+    `,
+    [accountId]
+  );
+}
+
 export async function completeOnboarding(
   accountId: string,
   answers: { businessName: string; businessType: string; magnetType: string; cadence: string }
@@ -751,6 +843,14 @@ export async function updateAccount(
     ? existingAccount.resend_api_key
     : encryptSecret(updates.resendApiKey);
 
+  // If the user changes domain or subdomain, invalidate any existing ownership
+  // verification and detach state. The next attach attempt will go through the
+  // verify-ownership step again. The Vercel detach itself happens at the API
+  // layer (route handler), not here.
+  const domainChanged =
+    (updates.domain !== undefined && updates.domain !== existingAccount.domain) ||
+    (updates.subdomain !== undefined && updates.subdomain !== existingAccount.subdomain);
+
   const result = await query<AccountRow>(
     `
       update public.magnets_accounts
@@ -764,7 +864,10 @@ export async function updateAccount(
         resend_api_key = $8,
         beehiiv_api_key = $9,
         beehiiv_publication_id = $10,
-        substack_publication = $11
+        substack_publication = $11,
+        domain_verification_token = case when $12::boolean then '' else domain_verification_token end,
+        domain_verified_at = case when $12::boolean then null else domain_verified_at end,
+        domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end
       where id = $1
       returning *
     `,
@@ -780,6 +883,7 @@ export async function updateAccount(
       beehiivApiKey,
       updates.beehiivPublicationId,
       updates.substackPublication,
+      domainChanged,
     ]
   );
 

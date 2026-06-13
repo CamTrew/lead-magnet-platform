@@ -205,7 +205,7 @@ export function SignupsClient({
                       </p>
                       <p className="mt-1 text-sm text-ink-500">
                         {totalCount === 0
-                          ? 'Signups appear here once someone enters their email on a published magnet — or use Import CSV / Add manually.'
+                          ? 'Signups appear here once someone enters their email on a published magnet. or use Import CSV / Add manually.'
                           : 'Try a different search term.'}
                       </p>
                     </td>

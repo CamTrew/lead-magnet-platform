@@ -185,9 +185,9 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
           {mode === 'register' && (
             <p className="text-center text-[11px] leading-5 text-ink-500">
               By creating an account you agree to the{' '}
-              <Link href="/terms" className="text-ink-700 underline-offset-4 hover:underline">Terms</Link>{' '}
+              <a href="/terms" className="text-ink-700 underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Terms</a>{' '}
               and{' '}
-              <Link href="/privacy" className="text-ink-700 underline-offset-4 hover:underline">Privacy Policy</Link>.
+              <a href="/privacy" className="text-ink-700 underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Privacy Policy</a>.
             </p>
           )}
         </form>

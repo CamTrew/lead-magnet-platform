@@ -29,7 +29,7 @@ export async function generateMetadata({
     leadMagnet.subtitle.trim() ||
     leadMagnet.emailPreview.trim() ||
     leadMagnet.description.trim() ||
-    `${titleText} — a free resource from ${brandName}.`;
+    `${titleText}, a free resource from ${brandName}.`;
   const description = leadMagnetMetadataSnippet(descriptionSource);
 
   return {

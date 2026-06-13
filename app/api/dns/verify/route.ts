@@ -4,11 +4,6 @@ import { Resend } from 'resend';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
 import {
-  buildPageDnsRecords,
-  isValidRootDomain,
-  isValidSubdomain,
-  normaliseRootDomain,
-  normaliseSubdomain,
   parseSenderEmail,
   type DnsRecordDefinition,
 } from '@/lib/dns-records';
@@ -212,21 +207,13 @@ export async function POST(request: NextRequest) {
     let records: DnsRecordDefinition[];
 
     if (parsed.data.section === 'publishing') {
-      const domain = normaliseRootDomain(parsed.data.domain || '');
-      const subdomain = normaliseSubdomain(parsed.data.subdomain || '');
-
-      if (!isValidRootDomain(domain) || !isValidSubdomain(subdomain)) {
-        return NextResponse.json(
-          { error: 'Enter a valid root domain and subdomain before checking DNS.' },
-          { status: 400 }
-        );
-      }
-
-      records = buildPageDnsRecords({
-        accountId: payload.account.id,
-        domain,
-        subdomain,
-      });
+      // The publishing flow now lives in /api/domain/* (ownership TXT + attach +
+      // status). Returning a clear 410 makes legacy clients fail loudly instead
+      // of silently checking the wrong DNS values.
+      return NextResponse.json(
+        { error: 'This endpoint no longer handles publishing DNS. Use /api/domain/* instead.' },
+        { status: 410 }
+      );
     } else {
       const sender = parseSenderEmail(parsed.data.resendFromEmail || '');
 

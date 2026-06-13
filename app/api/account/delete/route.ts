@@ -9,7 +9,7 @@ import {
   RateLimitError,
   requestIp,
 } from '@/lib/rate-limit';
-import { syncProjectDomain } from '@/lib/vercel';
+import { removeDomain } from '@/lib/vercel';
 import { log } from '@/lib/logger';
 
 const ROUTE = '/api/account/delete';
@@ -66,24 +66,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password is incorrect.' }, { status: 401 });
     }
 
-    // Detach the account's domains from Vercel before we drop the row so the
-    // hostnames are reusable by another account in the future.
-    const previousHosts = [
-      payload.account.subdomain && payload.account.domain
-        ? `${payload.account.subdomain}.${payload.account.domain}`
-        : '',
-      payload.account.domain,
-    ].filter(Boolean);
-    try {
-      await syncProjectDomain({ previous: previousHosts, current: [] });
-    } catch (vercelErr) {
-      log.warn('Vercel detach during account delete failed (non-fatal)', {
-        route: ROUTE,
-        method: 'POST',
-        userId,
-        accountId,
-        extra: { error: vercelErr },
-      });
+    // Detach the account's hostname from the project before we drop the row so
+    // the hostname is reusable by another account in the future. We only ever
+    // attach the subdomain (e.g. get.example.com), not the apex.
+    const attachedHost = payload.account.domainAttachedHost;
+    if (attachedHost) {
+      try {
+        await removeDomain(attachedHost);
+      } catch (detachErr) {
+        log.warn('Detach during account delete failed (non-fatal)', {
+          route: ROUTE,
+          method: 'POST',
+          userId,
+          accountId,
+          extra: { error: detachErr },
+        });
+      }
     }
 
     await deleteUserAndAccount(payload.user.id);

@@ -34,7 +34,7 @@ export async function generateMetadata({
     leadMagnet.subtitle.trim() ||
     leadMagnet.emailPreview.trim() ||
     leadMagnet.description.trim() ||
-    `${titleText} — a free resource from ${brandName}.`;
+    `${titleText}, a free resource from ${brandName}.`;
   const description = leadMagnetMetadataSnippet(descriptionSource);
   const protocol = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https';
   const canonical = host ? `${protocol}://${host}/${leadMagnet.slug}` : undefined;

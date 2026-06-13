@@ -60,7 +60,7 @@ export function LeadMagnetPageView({
 
   return (
     <div className="relative flex min-h-screen flex-col bg-white text-slate-900" style={brandStyle}>
-      {/* Top gradient blur — Kleo-style soft halo behind the hero */}
+      {/* Top gradient blur. Kleo-style soft halo behind the hero */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[820px]"

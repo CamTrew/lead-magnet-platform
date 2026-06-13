@@ -6,7 +6,7 @@ import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
 const SITE_NAME = 'Magnets';
-const DEFAULT_TITLE = 'Magnets — free lead-magnet pages on your own domain';
+const DEFAULT_TITLE = 'Magnets. free lead-magnet pages on your own domain';
 const DEFAULT_DESCRIPTION =
   'Build branded lead-magnet landing pages, deliver the resource by email, and collect signups. Free forever. Bring your own Resend, Beehiiv, and Substack keys.';
 const DEFAULT_KEYWORDS = [
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: DEFAULT_TITLE,
-    template: '%s — Magnets',
+    template: '%s. Magnets',
   },
   description: DEFAULT_DESCRIPTION,
   keywords: DEFAULT_KEYWORDS,
