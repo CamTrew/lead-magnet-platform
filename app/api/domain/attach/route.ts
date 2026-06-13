@@ -107,7 +107,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const updated = await recordDomainAttached(accountId, host, recommendedCname);
+    let updated;
+    try {
+      updated = await recordDomainAttached(accountId, host, recommendedCname);
+    } catch (dbErr) {
+      // 23505 = postgres unique violation. magnets_accounts_attached_host_unique
+      // ensures no two accounts can hold the same attached host at once.
+      if (typeof dbErr === 'object' && dbErr !== null && 'code' in dbErr && dbErr.code === '23505') {
+        log.warn('Attach blocked by host uniqueness', {
+          route: ROUTE,
+          method: 'POST',
+          status: 409,
+          userId,
+          accountId,
+          extra: { host },
+        });
+        return NextResponse.json(
+          {
+            error:
+              'That subdomain is already connected to another account. Pick a different subdomain or contact support.',
+          },
+          { status: 409 }
+        );
+      }
+      throw dbErr;
+    }
 
     log.info('Domain attached', {
       route: ROUTE,

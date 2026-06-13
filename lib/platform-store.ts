@@ -1036,15 +1036,19 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
   const hostname = host.split(':')[0].toLowerCase();
   const canUseLocalFallback =
     hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+  // Only resolve to accounts that have actually attached this hostname through
+  // the verify-ownership + attach flow. We do NOT match by the user-typed
+  // `subdomain || '.' || domain` field, which is unverified user input — that
+  // is what previously allowed one account to claim another account's apex.
+  // The hostname must equal domain_attached_host exactly.
   const accountResult = await query<AccountRow>(
     `
       select *
       from public.magnets_accounts
-      where lower(subdomain || '.' || domain) = $1
-        or lower(domain) = $1
-      order by
-        case when lower(subdomain || '.' || domain) = $1 then 0 else 1 end,
-        created_at asc
+      where lower(domain_attached_host) = $1
+        and domain_attached_host <> ''
+      order by created_at asc
       limit 1
     `,
     [hostname]
