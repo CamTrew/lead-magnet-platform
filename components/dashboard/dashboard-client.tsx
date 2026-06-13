@@ -282,26 +282,61 @@ function ColorField({
 }
 
 function HelpTooltip({ ariaLabel, help, width = 'w-64' }: { ariaLabel: string; help: string; width?: string }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  // Position via fixed coords so the tooltip escapes any ancestor with
+  // `overflow: hidden` (which is true of every AceternityCard). We compute
+  // coords just-in-time on hover/focus.
+  function recalc() {
+    const el = triggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPosition({
+      top: rect.top, // tooltip sits above the icon — translate -100% Y via CSS
+      left: rect.right, // anchor to the right edge of the icon — translate -100% X via CSS
+    });
+  }
+
   return (
-    <span className="group/help relative inline-flex">
+    <>
       <span
         aria-label={ariaLabel}
         className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[#e4e4e7] bg-[#fafafa] text-[#52525b] outline-none transition hover:border-[#d4d4d8] hover:text-[#18181b] focus:border-[#09090b] focus:text-[#18181b]"
+        onBlur={() => setOpen(false)}
+        onFocus={() => {
+          recalc();
+          setOpen(true);
+        }}
+        onMouseEnter={() => {
+          recalc();
+          setOpen(true);
+        }}
+        onMouseLeave={() => setOpen(false)}
+        ref={triggerRef}
         role="button"
         tabIndex={0}
       >
         <CircleHelp className="h-3.5 w-3.5" />
       </span>
-      <span
-        className={cn(
-          'pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden whitespace-pre-line rounded-lg border border-[#e4e4e7] bg-white p-3 text-left text-xs font-medium leading-5 text-[#3f3f46] shadow-sm group-hover/help:block group-focus-within/help:block',
-          width
-        )}
-        role="tooltip"
-      >
-        {help}
-      </span>
-    </span>
+      {open && position && (
+        <span
+          className={cn(
+            'pointer-events-none fixed z-[60] whitespace-pre-line rounded-lg border border-ink-200 bg-white p-3 text-left text-xs font-medium leading-5 text-ink-700 shadow-lg',
+            width
+          )}
+          role="tooltip"
+          style={{
+            top: position.top - 8,
+            left: position.left,
+            transform: 'translate(-100%, -100%)',
+          }}
+        >
+          {help}
+        </span>
+      )}
+    </>
   );
 }
 
