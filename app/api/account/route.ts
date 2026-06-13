@@ -1,32 +1,176 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
+import {
+  isValidRootDomain,
+  isValidSubdomain,
+  normaliseRootDomain,
+  normaliseSubdomain,
+  parseSenderEmail,
+} from '@/lib/dns-records';
 import { updateAccount } from '@/lib/platform-store';
+import { SecretConfigurationError } from '@/lib/secrets';
+import { syncProjectDomain } from '@/lib/vercel';
+import {
+  enforceRateLimits,
+  rateLimitResponse,
+  RateLimitError,
+  requestIp,
+} from '@/lib/rate-limit';
+import {
+  logoValidationMessage,
+  MAX_LOGO_DATA_URL_LENGTH,
+  validateLogoDataUrl,
+} from '@/lib/upload';
+import { log } from '@/lib/logger';
+
+const ROUTE = '/api/account';
+
+const hexColorSchema = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
+const logoSchema = z
+  .string()
+  .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
+  .superRefine((value, ctx) => {
+    const result = validateLogoDataUrl(value);
+    if (!result.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: logoValidationMessage(result.reason) });
+    }
+  });
+const domainSchema = z
+  .string()
+  .trim()
+  .max(253)
+  .transform(normaliseRootDomain)
+  .refine(
+    (value) => value === '' || isValidRootDomain(value),
+    'Enter a valid root domain'
+  );
 
 const schema = z.object({
-  subdomain: z.string().trim().min(1).regex(/^[a-z0-9-]+$/),
-  domain: z.string().trim().min(1),
-  logoUrl: z.string(),
-  logoText: z.string().trim().min(1),
+  subdomain: z
+    .string()
+    .trim()
+    .max(63)
+    .transform(normaliseSubdomain)
+    .refine(
+      isValidSubdomain,
+      'Enter a valid subdomain'
+    ),
+  domain: domainSchema,
+  logoUrl: logoSchema,
+  logoText: z.string().trim().max(80),
   brand: z.object({
-    primary: z.string().trim().min(4),
-    accent: z.string().trim().min(4),
-    success: z.string().trim().min(4),
+    primary: hexColorSchema,
+    accent: hexColorSchema,
+    success: hexColorSchema,
   }),
-  resendFromEmail: z.string().trim(),
-  beehiivApiKey: z.string(),
-  beehiivPublicationId: z.string(),
-});
+  resendFromEmail: z
+    .string()
+    .trim()
+    .max(320)
+    .refine(
+      (value) => value === '' || parseSenderEmail(value) !== null,
+      'Enter a sender like Your Brand <hello@example.com>'
+    ),
+  resendApiKey: z.string().max(2000),
+  beehiivApiKey: z.string().max(2000),
+  beehiivPublicationId: z.string().trim().max(200),
+  substackPublication: z.string().trim().max(200),
+}).strict();
+
+function isUniqueViolation(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
+}
+
+function buildHosts(subdomain: string, domain: string): string[] {
+  if (!domain) return [];
+  const apex = domain.toLowerCase();
+  const sub = subdomain ? `${subdomain.toLowerCase()}.${apex}` : '';
+  return [sub, apex].filter(Boolean);
+}
 
 export async function PUT(request: NextRequest) {
-  const payload = await requireDashboardPayload();
-  const body = await request.json();
-  const updates = schema.parse(body);
-  const account = await updateAccount(payload.account.id, updates);
+  try {
+    const payload = await requireDashboardPayload();
+    await enforceRateLimits([
+      {
+        identifier: payload.user.id,
+        limit: 60,
+        scope: 'account:update:user',
+        windowSeconds: 60 * 5,
+      },
+      {
+        identifier: requestIp(request),
+        limit: 120,
+        scope: 'account:update:ip',
+        windowSeconds: 60 * 5,
+      },
+    ]);
 
-  if (!account) {
-    return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    const body = await request.json().catch(() => null);
+    const parsed = schema.safeParse(body);
+
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message || 'Check the configuration fields and try again.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    const previousHosts = buildHosts(payload.account.subdomain, payload.account.domain);
+    const account = await updateAccount(payload.account.id, parsed.data);
+
+    if (!account) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+
+    const currentHosts = buildHosts(account.subdomain, account.domain);
+    let vercel: Awaited<ReturnType<typeof syncProjectDomain>> | null = null;
+    try {
+      vercel = await syncProjectDomain({ previous: previousHosts, current: currentHosts });
+    } catch (vercelError) {
+      log.error('Vercel domain sync failed', {
+        route: ROUTE,
+        method: 'PUT',
+        userId: payload.user.id,
+        accountId: payload.account.id,
+        extra: { error: vercelError },
+      });
+    }
+
+    log.info('Account updated', {
+      route: ROUTE,
+      method: 'PUT',
+      status: 200,
+      userId: payload.user.id,
+      accountId: payload.account.id,
+      extra: {
+        subdomainChanged: payload.account.subdomain !== account.subdomain,
+        domainChanged: payload.account.domain !== account.domain,
+        vercelAttached: vercel?.attached.length || 0,
+        vercelDetached: vercel?.detached.length || 0,
+        vercelErrors: vercel?.errors.length || 0,
+      },
+    });
+
+    return NextResponse.json({ account, vercel });
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return rateLimitResponse(err);
+    }
+
+    if (err instanceof SecretConfigurationError) {
+      return NextResponse.json({ error: 'Secret encryption is not configured.' }, { status: 500 });
+    }
+
+    if (isUniqueViolation(err)) {
+      return NextResponse.json({ error: 'That domain and subdomain are already in use.' }, { status: 409 });
+    }
+
+    log.error('Account update failed', {
+      route: ROUTE,
+      method: 'PUT',
+      status: 500,
+      extra: { error: err },
+    });
+    return NextResponse.json({ error: 'Could not save settings' }, { status: 500 });
   }
-
-  return NextResponse.json({ account });
 }

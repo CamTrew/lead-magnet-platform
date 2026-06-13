@@ -1,0 +1,6 @@
+-- The database schema is managed by Drizzle.
+-- Source schema: db/schema.ts
+-- SQL migrations: db/migrations
+--
+-- Apply migrations with:
+--   pnpm db:migrate

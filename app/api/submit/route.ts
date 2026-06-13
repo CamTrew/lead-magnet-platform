@@ -1,21 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addToBeehiiv } from '@/lib/beehiiv';
+import { addToSubstack } from '@/lib/substack';
 import { findLeadMagnet, recordSubmission } from '@/lib/platform-store';
+import {
+  enforceRateLimits,
+  rateLimitResponse,
+  RateLimitError,
+  requestIp,
+} from '@/lib/rate-limit';
 import { sendLeadMagnetEmail } from '@/lib/resend';
+import { log } from '@/lib/logger';
+
+const ROUTE = '/api/submit';
 
 const schema = z.object({
-  accountId: z.string().min(1),
-  leadMagnetId: z.string().min(1),
-  slug: z.string().min(1),
-  name: z.string().trim().min(1),
-  email: z.string().trim().email(),
-});
+  accountId: z.string().uuid(),
+  leadMagnetId: z.string().uuid(),
+  slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/),
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(254),
+}).strict();
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
     const { accountId, leadMagnetId, slug, name, email } = schema.parse(body);
+
+    await enforceRateLimits([
+      {
+        identifier: requestIp(request),
+        limit: 40,
+        scope: 'submit:ip',
+        windowSeconds: 15 * 60,
+      },
+      {
+        identifier: `${leadMagnetId}:${email}`,
+        limit: 5,
+        scope: 'submit:lead-magnet-email',
+        windowSeconds: 60 * 60,
+      },
+    ]);
+
     const result = await findLeadMagnet(accountId, leadMagnetId);
 
     if (!result || result.leadMagnet.slug !== slug || !result.leadMagnet.published) {
@@ -32,7 +58,23 @@ export async function POST(request: NextRequest) {
     try {
       await addToBeehiiv(result.account, email, name);
     } catch (beehiivError) {
-      console.error('Beehiiv error (non-fatal):', beehiivError);
+      log.warn('Beehiiv subscribe failed (non-fatal)', {
+        route: ROUTE,
+        method: 'POST',
+        accountId,
+        extra: { leadMagnetId, error: beehiivError },
+      });
+    }
+
+    try {
+      await addToSubstack(result.account, email);
+    } catch (substackError) {
+      log.warn('Substack subscribe failed (non-fatal)', {
+        route: ROUTE,
+        method: 'POST',
+        accountId,
+        extra: { leadMagnetId, error: substackError },
+      });
     }
 
     await recordSubmission({
@@ -42,10 +84,16 @@ export async function POST(request: NextRequest) {
       email,
     });
 
+    log.info('Submission accepted', {
+      route: ROUTE,
+      method: 'POST',
+      status: 200,
+      accountId,
+      extra: { leadMagnetId },
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Submission error:', error);
-
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Please enter a valid name and email address' },
@@ -53,10 +101,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (error instanceof RateLimitError) {
+      return rateLimitResponse(error);
+    }
+
+    log.error('Submission failed', {
+      route: ROUTE,
+      method: 'POST',
+      status: 500,
+      extra: { error },
+    });
+
     return NextResponse.json(
       { error: 'Failed to process submission' },
       { status: 500 }
     );
   }
 }
-

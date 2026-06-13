@@ -18,7 +18,7 @@ export async function addToBeehiiv(account: AccountSettings, email: string, name
         email,
         reactivate_existing: false,
         send_welcome_email: false,
-        utm_source: 'lead_magnet_platform',
+        utm_source: 'magnets',
         custom_fields: [
           {
             name: 'first_name',
@@ -35,4 +35,3 @@ export async function addToBeehiiv(account: AccountSettings, email: string, name
 
   return response.json();
 }
-

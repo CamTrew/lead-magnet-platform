@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Check, Loader2 } from 'lucide-react';
 import type { LeadMagnet } from '@/lib/types';
 
 export function LeadMagnetForm({ accountId, magnet }: { accountId: string; magnet: LeadMagnet }) {
@@ -38,65 +37,65 @@ export function LeadMagnetForm({ accountId, magnet }: { accountId: string; magne
   }
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border p-8 shadow-xl" style={{ borderColor: 'var(--brand-primary-soft)', background: `linear-gradient(135deg, var(--brand-primary-faint), #ffffff, var(--brand-primary-faint))`, boxShadow: '0 24px 70px var(--brand-primary-soft)' }}>
-      <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full blur-3xl" style={{ background: `linear-gradient(135deg, var(--brand-primary-soft), var(--brand-accent-faint))` }} />
-      <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full blur-3xl" style={{ background: `linear-gradient(135deg, var(--brand-accent-faint), var(--brand-success))`, opacity: 0.18 }} />
-
-      <div className="relative">
+    <div
+      className="rounded-lg border bg-white p-6 sm:p-8"
+      style={{
+        borderColor: 'var(--brand-primary-soft)',
+        boxShadow: '0 26px 72px rgb(var(--brand-primary-rgb) / 0.18)',
+      }}
+    >
+      <div>
         {isSuccess ? (
           <div className="text-center">
-            <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-full shadow-lg" style={{ background: `linear-gradient(135deg, var(--brand-primary), var(--brand-primary-dark))` }}>
-              <svg className="h-10 w-10 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
-                <path d="M5 13l4 4L19 7" />
-              </svg>
+            <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-lg bg-[var(--brand-primary)] shadow-[0_18px_42px_rgb(var(--brand-primary-rgb)/0.28)]">
+              <Check className="h-8 w-8 text-white" strokeWidth={3} />
             </div>
-            <h2 className="mb-3 text-3xl font-bold" style={{ color: 'var(--brand-primary-dark)' }}>Check your email!</h2>
-            <p className="text-lg" style={{ color: 'var(--brand-primary)' }}>
+            <h2 className="mb-3 text-2xl font-black text-[var(--brand-primary-dark)]">Check your email</h2>
+            <p className="text-base leading-7 text-slate-600">
               We have sent you the download link. Check your inbox (and spam folder).
             </p>
           </div>
         ) : (
           <>
-            <h2 className="mb-2 text-center text-3xl font-bold" style={{ color: 'var(--brand-primary-dark)' }}>{magnet.formHeading}</h2>
-            <p className="mb-8 text-center text-sm" style={{ color: 'var(--brand-primary)' }}>
+            <h2 className="mb-2 text-center text-2xl font-black tracking-tight text-[var(--brand-primary-dark)]">{magnet.formHeading}</h2>
+            <p className="mb-8 text-center text-sm leading-6 text-slate-600">
               {magnet.formSubtext}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              <Input
+              <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="h-14 rounded-2xl border-2 bg-white/80 px-6 text-base shadow-sm backdrop-blur-sm transition-all focus:bg-white"
-                style={{ borderColor: 'var(--brand-primary-soft)' }}
+                className="h-12 w-full rounded-lg border border-[var(--brand-primary-soft)] bg-white px-4 text-base text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[var(--brand-primary)] focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
                 placeholder="Name"
                 required
               />
 
-              <Input
+              <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="h-14 rounded-2xl border-2 bg-white/80 px-6 text-base shadow-sm backdrop-blur-sm transition-all focus:bg-white"
-                style={{ borderColor: 'var(--brand-primary-soft)' }}
+                className="h-12 w-full rounded-lg border border-[var(--brand-primary-soft)] bg-white px-4 text-base text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[var(--brand-primary)] focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
                 placeholder="Email"
                 required
               />
 
               {error && (
-                <div className="rounded-2xl bg-red-50 p-4 text-sm font-medium text-red-600">
+                <div className="rounded-lg bg-red-50 p-4 text-sm font-medium text-red-600">
                   {error}
                 </div>
               )}
 
-              <Button
+              <button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-14 w-full rounded-2xl text-base font-bold uppercase tracking-wide text-white shadow-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl disabled:opacity-50"
-                style={{ background: `linear-gradient(90deg, var(--brand-primary-dark), var(--brand-primary))`, boxShadow: '0 24px 48px var(--brand-primary-soft)' }}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[var(--brand-primary)] text-base font-black text-white shadow-xl transition hover:brightness-95 disabled:opacity-50"
+                style={{ boxShadow: '0 18px 40px rgb(var(--brand-primary-rgb) / 0.28)' }}
               >
-                {isSubmitting ? 'Submitting...' : magnet.ctaText}
-              </Button>
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isSubmitting ? 'Sending resource' : magnet.ctaText}
+              </button>
             </form>
           </>
         )}

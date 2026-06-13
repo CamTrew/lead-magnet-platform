@@ -1,0 +1,1 @@
+ALTER TABLE "magnets_accounts" ADD COLUMN "resend_api_key" text DEFAULT '' NOT NULL;

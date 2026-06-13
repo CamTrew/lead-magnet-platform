@@ -2,20 +2,20 @@ import Link from 'next/link';
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-teal-50 via-white to-brand-teal-50/30">
-      <div className="text-center">
-        <h1 className="mb-4 text-6xl font-bold text-brand-teal-800">404</h1>
-        <h2 className="mb-4 text-2xl font-semibold text-brand-teal-700">
-          Page Not Found
+    <div className="premium-page-bg flex min-h-screen items-center justify-center px-4 text-[#09090b]">
+      <div className="rounded-lg border border-[#e4e4e7] bg-white p-8 text-center shadow-sm">
+        <h1 className="mb-4 text-6xl font-black text-[#09090b]">404</h1>
+        <h2 className="mb-4 text-2xl font-black text-[#09090b]">
+          Page not found
         </h2>
-        <p className="mb-8 text-brand-teal-600">
+        <p className="mb-8 text-[#52525b]">
           This page does not exist yet.
         </p>
         <Link
           href="/dashboard"
-          className="rounded-lg bg-gradient-to-r from-brand-teal-700 to-brand-teal-600 px-6 py-3 font-semibold text-white transition-transform hover:scale-105 shadow-lg shadow-brand-teal-700/30"
+          className="rounded-lg bg-[#09090b] px-6 py-3 font-bold text-white shadow-sm transition hover:bg-[#27272a]"
         >
-          Go to Dashboard
+          Go to dashboard
         </Link>
       </div>
     </div>

@@ -1,17 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createStubSession } from '@/lib/auth';
+import { AuthActionError, createLoginSession } from '@/lib/auth';
+import {
+  enforceRateLimits,
+  rateLimitResponse,
+  RateLimitError,
+  requestIp,
+} from '@/lib/rate-limit';
 
 const schema = z.object({
   email: z.string().trim().email(),
-  name: z.string().trim().optional(),
+  password: z.string().min(8),
 });
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { email, name } = schema.parse(body);
-  const user = await createStubSession(email, name);
+  try {
+    const body = await request.json().catch(() => null);
+    const parsed = schema.safeParse(body);
 
-  return NextResponse.json({ user });
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Enter a valid email and password.' }, { status: 400 });
+    }
+
+    const { email, password } = parsed.data;
+    await enforceRateLimits([
+      {
+        identifier: requestIp(request),
+        limit: 30,
+        scope: 'auth:login:ip',
+        windowSeconds: 15 * 60,
+      },
+      {
+        identifier: email,
+        limit: 8,
+        scope: 'auth:login:email',
+        windowSeconds: 15 * 60,
+      },
+    ]);
+
+    const user = await createLoginSession(email, password);
+
+    return NextResponse.json({ user });
+  } catch (err) {
+    if (err instanceof AuthActionError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+
+    if (err instanceof RateLimitError) {
+      return rateLimitResponse(err);
+    }
+
+    throw err;
+  }
 }
-

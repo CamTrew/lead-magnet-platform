@@ -1,0 +1,2 @@
+ALTER TABLE "magnets_accounts" ADD COLUMN IF NOT EXISTS "substack_publication" text DEFAULT '' NOT NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "magnets_submissions_account_email_idx" ON "magnets_submissions" USING btree ("account_id",lower("email"));

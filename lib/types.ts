@@ -1,4 +1,4 @@
-export interface NeonAuthUser {
+export interface PlatformUser {
   id: string;
   email: string;
   name: string;
@@ -12,6 +12,13 @@ export interface BrandSettings {
   success: string;
 }
 
+export interface OnboardingAnswers {
+  businessName: string;
+  businessType: string;
+  magnetType: string;
+  cadence: string;
+}
+
 export interface AccountSettings {
   id: string;
   ownerUserId: string;
@@ -21,8 +28,12 @@ export interface AccountSettings {
   logoText: string;
   brand: BrandSettings;
   resendFromEmail: string;
+  resendApiKey: string;
   beehiivApiKey: string;
   beehiivPublicationId: string;
+  substackPublication: string;
+  onboardingCompletedAt: string | null;
+  onboarding: OnboardingAnswers;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,15 +69,25 @@ export interface Submission {
   createdAt: string;
 }
 
+export interface AccountSignup {
+  email: string;
+  name: string;
+  firstLeadMagnetTitle: string;
+  firstLeadMagnetSlug: string;
+  firstSignupAt: string;
+  latestSignupAt: string;
+  signupCount: number;
+}
+
 export interface PlatformData {
-  users: NeonAuthUser[];
+  users: PlatformUser[];
   accounts: AccountSettings[];
   leadMagnets: LeadMagnet[];
   submissions: Submission[];
 }
 
 export interface DashboardPayload {
-  user: NeonAuthUser;
+  user: PlatformUser;
   account: AccountSettings;
   leadMagnets: LeadMagnet[];
 }

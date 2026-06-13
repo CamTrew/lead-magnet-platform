@@ -1,227 +1,869 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import path from 'path';
+import { createHash, randomBytes } from 'node:crypto';
+import { query } from './db';
+import {
+  decryptSecret,
+  encryptSecret,
+  isMaskedSecret,
+  redactSecret,
+} from './secrets';
 import type {
   AccountSettings,
+  AccountSignup,
+  BrandSettings,
   DashboardPayload,
   LeadMagnet,
-  NeonAuthUser,
-  PlatformData,
+  PlatformUser,
   Submission,
 } from './types';
 
-const dataDir = path.join(process.cwd(), '.data');
-const dataFile = path.join(dataDir, 'lead-magnet-platform.json');
+const defaultBrand: BrandSettings = {
+  primary: '#8b76e8',
+  accent: '#d8c8ff',
+  success: '#22c55e',
+};
 
-const now = () => new Date().toISOString();
-const id = (prefix: string) => `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+type UserRow = {
+  id: string;
+  email: string;
+  name: string;
+  created_at: Date;
+  updated_at: Date;
+};
 
-const demoUserId = 'user_demo';
-const demoAccountId = 'acct_demo';
+type AccountRow = {
+  id: string;
+  owner_user_id: string;
+  subdomain: string;
+  domain: string;
+  logo_url: string;
+  logo_text: string;
+  brand: BrandSettings | string | null;
+  resend_from_email: string;
+  resend_api_key: string;
+  beehiiv_api_key: string;
+  beehiiv_publication_id: string;
+  substack_publication: string;
+  onboarding_completed_at: Date | null;
+  onboarding_business_name: string;
+  onboarding_business_type: string;
+  onboarding_magnet_type: string;
+  onboarding_cadence: string;
+  created_at: Date;
+  updated_at: Date;
+};
 
-function defaultLeadMagnet(accountId: string): LeadMagnet {
-  const timestamp = now();
+type CredentialRow = {
+  user_id: string;
+  password_hash: string;
+};
 
-  return {
-    id: 'lm_demo',
-    accountId,
-    slug: 'ai-pipeline-playbook',
-    title: 'The AI Pipeline Playbook for Revenue Teams',
-    subtitle: 'A practical guide to turning anonymous website traffic into qualified meetings.',
-    description:
-      'Most website visitors leave before they ever speak to sales. This playbook shows how teams can identify, engage, qualify, and route buyers while momentum is still fresh.\n\nUse it to map the moments where a lead magnet can capture intent and move visitors toward a booked meeting.',
-    bullets: [
-      'Spot the signals that separate casual browsers from qualified buyers',
-      'Design capture flows that feel helpful instead of scripted',
-      'Connect captured intent to your email and newsletter workflow',
-      'Measure meetings, influenced pipeline, and conversion lift',
-    ],
-    bulletsHeading: 'Inside the guide:',
-    ctaText: 'Get the playbook',
-    formHeading: 'Send me the playbook',
-    formSubtext: 'Enter your details and we will email the download link.',
-    imageUrl: '',
-    downloadLink: 'https://example.com/playbook',
-    emailSubject: 'Your AI Pipeline Playbook',
-    emailBody:
-      'Hi {name},\n\nHere is your AI Pipeline Playbook:\n\n{download_link}\n\nUse it to find the moments where your website can answer, qualify, and convert more visitors.',
-    emailPreview: 'Your playbook is ready.',
-    published: true,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
+type LeadMagnetRow = {
+  id: string;
+  account_id: string;
+  slug: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  bullets: string[] | string | null;
+  bullets_heading: string;
+  cta_text: string;
+  form_heading: string;
+  form_subtext: string;
+  image_url: string;
+  download_link: string;
+  email_subject: string;
+  email_body: string;
+  email_preview: string;
+  published: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type SubmissionRow = {
+  id: string;
+  account_id: string;
+  lead_magnet_id: string;
+  name: string;
+  email: string;
+  created_at: Date;
+};
+
+type UserWithCredentialRow = UserRow & {
+  password_hash: string | null;
+};
+
+type UserWithSessionRow = UserRow & {
+  existing_password_hash: string | null;
+  session_token: string | null;
+};
+
+type DashboardBaseRow = {
+  user_id: string;
+  user_email: string;
+  user_name: string;
+  user_created_at: Date;
+  user_updated_at: Date;
+  account_id: string;
+  account_owner_user_id: string;
+  account_subdomain: string;
+  account_domain: string;
+  account_logo_url: string;
+  account_logo_text: string;
+  account_brand: BrandSettings | string | null;
+  account_resend_from_email: string;
+  account_resend_api_key: string;
+  account_beehiiv_api_key: string;
+  account_beehiiv_publication_id: string;
+  account_substack_publication: string;
+  account_onboarding_completed_at: Date | null;
+  account_onboarding_business_name: string;
+  account_onboarding_business_type: string;
+  account_onboarding_magnet_type: string;
+  account_onboarding_cadence: string;
+  account_created_at: Date;
+  account_updated_at: Date;
+};
+
+type DashboardPayloadRow = DashboardBaseRow & {
+  lead_magnets: LeadMagnetRow[] | string | null;
+};
+
+function iso(value: Date | string) {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function defaultAccount(ownerUserId: string): AccountSettings {
-  const timestamp = now();
+function parseBrand(value: AccountRow['brand']): BrandSettings {
+  if (!value) return defaultBrand;
+  let parsed: Partial<BrandSettings>;
 
-  return {
-    id: demoAccountId,
-    ownerUserId,
-    subdomain: 'get',
-    domain: 'your-domain.com',
-    logoUrl: '',
-    logoText: 'Your Brand',
-    brand: {
-      primary: '#2d7373',
-      accent: '#7c3aed',
-      success: '#84cc16',
-    },
-    resendFromEmail: 'hello@example.com',
-    beehiivApiKey: '',
-    beehiivPublicationId: '',
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-function initialData(): PlatformData {
-  const timestamp = now();
-  const user: NeonAuthUser = {
-    id: demoUserId,
-    email: 'founder@example.com',
-    name: 'Founder',
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-  const account = defaultAccount(user.id);
-
-  return {
-    users: [user],
-    accounts: [account],
-    leadMagnets: [defaultLeadMagnet(account.id)],
-    submissions: [],
-  };
-}
-
-async function readData(): Promise<PlatformData> {
   try {
-    const raw = await readFile(dataFile, 'utf8');
-    const data = JSON.parse(raw) as PlatformData;
-    let changed = false;
-
-    for (const account of data.accounts) {
-      if (
-        !account.logoText ||
-        account.logoText === 'Demo Workspace' ||
-        account.logoText.endsWith("'s Workspace")
-      ) {
-        const legacyName = (account as AccountSettings & { name?: string }).name?.trim();
-        account.logoText =
-          legacyName && legacyName !== 'Demo Workspace' && !legacyName.endsWith("'s Workspace")
-            ? legacyName
-            : 'Your Brand';
-        changed = true;
-      }
-
-      if (!account.domain) {
-        account.domain = 'your-domain.com';
-        changed = true;
-      }
-
-      if (!account.resendFromEmail) {
-        account.resendFromEmail = `hello@${account.domain}`;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      await writeData(data);
-    }
-
-    return data;
+    parsed = typeof value === 'string' ? JSON.parse(value) : value;
   } catch {
-    const seed = initialData();
-    await writeData(seed);
-    return seed;
+    return defaultBrand;
+  }
+
+  return {
+    primary: parsed.primary || defaultBrand.primary,
+    accent: parsed.accent || defaultBrand.accent,
+    success: parsed.success || defaultBrand.success,
+  };
+}
+
+function parseBullets(value: LeadMagnetRow['bullets']) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
   }
 }
 
-async function writeData(data: PlatformData) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(dataFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+function mapUser(row: UserRow): PlatformUser {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
 }
 
-async function mutateData<T>(mutator: (data: PlatformData) => T | Promise<T>) {
-  const data = await readData();
-  const result = await mutator(data);
-  await writeData(data);
-  return result;
+function mapAccount(row: AccountRow, options: { revealSecrets?: boolean } = {}): AccountSettings {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    subdomain: row.subdomain,
+    domain: row.domain,
+    logoUrl: row.logo_url,
+    logoText: row.logo_text,
+    brand: parseBrand(row.brand),
+    resendFromEmail: row.resend_from_email,
+    resendApiKey: options.revealSecrets
+      ? decryptSecret(row.resend_api_key)
+      : redactSecret(row.resend_api_key),
+    beehiivApiKey: options.revealSecrets
+      ? decryptSecret(row.beehiiv_api_key)
+      : redactSecret(row.beehiiv_api_key),
+    beehiivPublicationId: row.beehiiv_publication_id,
+    substackPublication: row.substack_publication,
+    onboardingCompletedAt: row.onboarding_completed_at ? iso(row.onboarding_completed_at) : null,
+    onboarding: {
+      businessName: row.onboarding_business_name,
+      businessType: row.onboarding_business_type,
+      magnetType: row.onboarding_magnet_type,
+      cadence: row.onboarding_cadence,
+    },
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
 }
 
-export async function ensureUser(email: string, name?: string): Promise<NeonAuthUser> {
+function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    slug: row.slug,
+    title: row.title,
+    subtitle: row.subtitle,
+    description: row.description,
+    bullets: parseBullets(row.bullets),
+    bulletsHeading: row.bullets_heading,
+    ctaText: row.cta_text,
+    formHeading: row.form_heading,
+    formSubtext: row.form_subtext,
+    imageUrl: row.image_url,
+    downloadLink: row.download_link,
+    emailSubject: row.email_subject,
+    emailBody: row.email_body,
+    emailPreview: row.email_preview,
+    published: row.published,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
+}
+
+function mapSubmission(row: SubmissionRow): Submission {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    leadMagnetId: row.lead_magnet_id,
+    name: row.name,
+    email: row.email,
+    createdAt: iso(row.created_at),
+  };
+}
+
+function mapDashboardBase(row: DashboardBaseRow) {
+  return {
+    user: mapUser({
+      id: row.user_id,
+      email: row.user_email,
+      name: row.user_name,
+      created_at: row.user_created_at,
+      updated_at: row.user_updated_at,
+    }),
+    account: mapAccount({
+      id: row.account_id,
+      owner_user_id: row.account_owner_user_id,
+      subdomain: row.account_subdomain,
+      domain: row.account_domain,
+      logo_url: row.account_logo_url,
+      logo_text: row.account_logo_text,
+      brand: row.account_brand,
+      resend_from_email: row.account_resend_from_email,
+      resend_api_key: row.account_resend_api_key,
+      beehiiv_api_key: row.account_beehiiv_api_key,
+      beehiiv_publication_id: row.account_beehiiv_publication_id,
+      substack_publication: row.account_substack_publication,
+      onboarding_completed_at: row.account_onboarding_completed_at,
+      onboarding_business_name: row.account_onboarding_business_name,
+      onboarding_business_type: row.account_onboarding_business_type,
+      onboarding_magnet_type: row.account_onboarding_magnet_type,
+      onboarding_cadence: row.account_onboarding_cadence,
+      created_at: row.account_created_at,
+      updated_at: row.account_updated_at,
+    }),
+  };
+}
+
+function parseLeadMagnetRows(value: DashboardPayloadRow['lead_magnets']) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(mapLeadMagnet);
+
+  try {
+    const parsed = JSON.parse(value) as LeadMagnetRow[];
+    return Array.isArray(parsed) ? parsed.map(mapLeadMagnet) : [];
+  } catch {
+    return [];
+  }
+}
+
+function mapDashboardPayload(row: DashboardPayloadRow): DashboardPayload {
+  return {
+    ...mapDashboardBase(row),
+    leadMagnets: parseLeadMagnetRows(row.lead_magnets),
+  };
+}
+
+async function getDashboardBaseByUserId(userId: string) {
+  const result = await query<DashboardPayloadRow>(
+    `
+      with user_row as (
+        select
+          id,
+          email,
+          name,
+          "createdAt" as created_at,
+          "updatedAt" as updated_at
+        from neon_auth."user"
+        where id = $1::uuid
+        limit 1
+      ),
+      inserted_account as (
+        insert into public.magnets_accounts (owner_user_id)
+        select id from user_row
+        on conflict (owner_user_id) do nothing
+        returning *
+      ),
+      account_row as (
+        select * from inserted_account
+        union all
+        select a.*
+        from public.magnets_accounts a
+        join user_row u on u.id = a.owner_user_id
+        where not exists (select 1 from inserted_account)
+        limit 1
+      )
+      select
+        u.id as user_id,
+        u.email as user_email,
+        u.name as user_name,
+        u.created_at as user_created_at,
+        u.updated_at as user_updated_at,
+        a.id as account_id,
+        a.owner_user_id as account_owner_user_id,
+        a.subdomain as account_subdomain,
+        a.domain as account_domain,
+        a.logo_url as account_logo_url,
+        a.logo_text as account_logo_text,
+        a.brand as account_brand,
+        a.resend_from_email as account_resend_from_email,
+        a.resend_api_key as account_resend_api_key,
+        a.beehiiv_api_key as account_beehiiv_api_key,
+        a.beehiiv_publication_id as account_beehiiv_publication_id,
+        a.substack_publication as account_substack_publication,
+        a.onboarding_completed_at as account_onboarding_completed_at,
+        a.onboarding_business_name as account_onboarding_business_name,
+        a.onboarding_business_type as account_onboarding_business_type,
+        a.onboarding_magnet_type as account_onboarding_magnet_type,
+        a.onboarding_cadence as account_onboarding_cadence,
+        a.created_at as account_created_at,
+        a.updated_at as account_updated_at,
+        coalesce(
+          (
+            select jsonb_agg(to_jsonb(lm) order by lm.updated_at desc)
+            from public.magnets_lead_magnets lm
+            where lm.account_id = a.id
+          ),
+          '[]'::jsonb
+        ) as lead_magnets
+      from user_row u
+      join account_row a on true
+    `,
+    [userId]
+  );
+
+  return result.rows[0] ? mapDashboardPayload(result.rows[0]) : null;
+}
+
+async function getDashboardBaseBySessionToken(token: string) {
+  const result = await query<DashboardPayloadRow>(
+    `
+      with user_row as (
+        select
+          u.id,
+          u.email,
+          u.name,
+          u."createdAt" as created_at,
+          u."updatedAt" as updated_at
+        from neon_auth.session s
+        join neon_auth."user" u on u.id = s."userId"
+        where s.token = any($1::text[])
+          and s."expiresAt" > now()
+          and coalesce(u.banned, false) = false
+        limit 1
+      ),
+      inserted_account as (
+        insert into public.magnets_accounts (owner_user_id)
+        select id from user_row
+        on conflict (owner_user_id) do nothing
+        returning *
+      ),
+      account_row as (
+        select * from inserted_account
+        union all
+        select a.*
+        from public.magnets_accounts a
+        join user_row u on u.id = a.owner_user_id
+        where not exists (select 1 from inserted_account)
+        limit 1
+      )
+      select
+        u.id as user_id,
+        u.email as user_email,
+        u.name as user_name,
+        u.created_at as user_created_at,
+        u.updated_at as user_updated_at,
+        a.id as account_id,
+        a.owner_user_id as account_owner_user_id,
+        a.subdomain as account_subdomain,
+        a.domain as account_domain,
+        a.logo_url as account_logo_url,
+        a.logo_text as account_logo_text,
+        a.brand as account_brand,
+        a.resend_from_email as account_resend_from_email,
+        a.resend_api_key as account_resend_api_key,
+        a.beehiiv_api_key as account_beehiiv_api_key,
+        a.beehiiv_publication_id as account_beehiiv_publication_id,
+        a.substack_publication as account_substack_publication,
+        a.onboarding_completed_at as account_onboarding_completed_at,
+        a.onboarding_business_name as account_onboarding_business_name,
+        a.onboarding_business_type as account_onboarding_business_type,
+        a.onboarding_magnet_type as account_onboarding_magnet_type,
+        a.onboarding_cadence as account_onboarding_cadence,
+        a.created_at as account_created_at,
+        a.updated_at as account_updated_at,
+        coalesce(
+          (
+            select jsonb_agg(to_jsonb(lm) order by lm.updated_at desc)
+            from public.magnets_lead_magnets lm
+            where lm.account_id = a.id
+          ),
+          '[]'::jsonb
+        ) as lead_magnets
+      from user_row u
+      join account_row a on true
+    `,
+    [[token, sessionTokenHash(token)]]
+  );
+
+  return result.rows[0] ? mapDashboardPayload(result.rows[0]) : null;
+}
+
+export async function ensureUser(email: string, name?: string): Promise<PlatformUser> {
   const normalizedEmail = email.trim().toLowerCase();
+  const displayName = name?.trim() || normalizedEmail.split('@')[0] || 'User';
+  const user = await query<UserRow>(
+    `
+      with user_row as (
+        insert into neon_auth."user" (email, name, "emailVerified")
+        values ($1, $2, false)
+        on conflict (email) do update
+          set name = excluded.name,
+              "updatedAt" = now()
+        returning id, email, name, "createdAt" as created_at, "updatedAt" as updated_at
+      ),
+      account_row as (
+        insert into public.magnets_accounts (owner_user_id)
+        select id from user_row
+        on conflict (owner_user_id) do nothing
+      )
+      select id, email, name, created_at, updated_at
+      from user_row
+    `,
+    [normalizedEmail, displayName]
+  );
 
-  return mutateData((data) => {
-    let user = data.users.find((item) => item.email === normalizedEmail);
+  return mapUser(user.rows[0]);
+}
 
-    if (!user) {
-      const timestamp = now();
-      user = {
-        id: id('user'),
-        email: normalizedEmail,
-        name: name?.trim() || normalizedEmail.split('@')[0] || 'User',
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-      data.users.push(user);
-    }
+export async function findUserByEmail(email: string): Promise<PlatformUser | null> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const result = await query<UserRow>(
+    `
+      select
+        id,
+        email,
+        name,
+        "createdAt" as created_at,
+        "updatedAt" as updated_at
+      from neon_auth."user"
+      where email = $1
+      limit 1
+    `,
+    [normalizedEmail]
+  );
 
-    const account = data.accounts.find((item) => item.ownerUserId === user.id);
-    if (!account) {
-      const newAccount = defaultAccount(user.id);
-      newAccount.id = id('acct');
-      data.accounts.push(newAccount);
-      data.leadMagnets.push(defaultLeadMagnet(newAccount.id));
-    }
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
 
-    return user;
-  });
+export async function findUserWithPasswordByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const result = await query<UserWithCredentialRow>(
+    `
+      select
+        u.id,
+        u.email,
+        u.name,
+        u."createdAt" as created_at,
+        u."updatedAt" as updated_at,
+        c.password_hash
+      from neon_auth."user" u
+      left join public.magnets_auth_credentials c on c.user_id = u.id
+      where u.email = $1
+      limit 1
+    `,
+    [normalizedEmail]
+  );
+  const row = result.rows[0];
+
+  return row
+    ? {
+        user: mapUser(row),
+        passwordHash: row.password_hash,
+      }
+    : null;
+}
+
+export async function createUserWithPasswordSession(
+  email: string,
+  passwordHash: string,
+  name?: string
+) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const displayName = name?.trim() || normalizedEmail.split('@')[0] || 'User';
+  const token = randomBytes(32).toString('hex');
+  const storedToken = sessionTokenHash(token);
+
+  const result = await query<UserWithSessionRow>(
+    `
+      with inserted_user as (
+        insert into neon_auth."user" (email, name, "emailVerified")
+        values ($1, $2, false)
+        on conflict (email) do nothing
+        returning
+          id,
+          email,
+          name,
+          "createdAt" as created_at,
+          "updatedAt" as updated_at
+      ),
+      existing_user as (
+        select
+          id,
+          email,
+          name,
+          "createdAt" as created_at,
+          "updatedAt" as updated_at
+        from neon_auth."user"
+        where email = $1
+          and not exists (select 1 from inserted_user)
+        limit 1
+      ),
+      user_row as (
+        select * from inserted_user
+        union all
+        select * from existing_user
+      ),
+      existing_credential as (
+        select c.password_hash
+        from public.magnets_auth_credentials c
+        join user_row u on u.id = c.user_id
+        limit 1
+      ),
+      inserted_account as (
+        insert into public.magnets_accounts (owner_user_id)
+        select id from user_row
+        on conflict (owner_user_id) do nothing
+        returning id
+      ),
+      inserted_credential as (
+        insert into public.magnets_auth_credentials (user_id, password_hash)
+        select id, $3
+        from user_row
+        where not exists (select 1 from existing_credential)
+        on conflict (user_id) do nothing
+        returning user_id
+      ),
+      inserted_session as (
+        insert into neon_auth.session (token, "userId", "expiresAt", "updatedAt")
+        select $4, user_id, now() + interval '30 days', now()
+        from inserted_credential
+        returning token
+      )
+      select
+        u.id,
+        u.email,
+        u.name,
+        u.created_at,
+        u.updated_at,
+        (select password_hash from existing_credential) as existing_password_hash,
+        (select token from inserted_session) as session_token,
+        (select count(*) from inserted_account) as account_inserted
+      from user_row u
+    `,
+    [normalizedEmail, displayName, passwordHash, storedToken]
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    existingPasswordHash: row.existing_password_hash,
+    sessionToken: row.session_token ? token : null,
+    user: mapUser(row),
+  };
+}
+
+export async function createPasswordCredential(userId: string, passwordHash: string) {
+  await query(
+    `
+      insert into public.magnets_auth_credentials (user_id, password_hash)
+      values ($1, $2)
+    `,
+    [userId, passwordHash]
+  );
+}
+
+export async function getPasswordHashForUser(userId: string) {
+  const result = await query<CredentialRow>(
+    `
+      select user_id, password_hash
+      from public.magnets_auth_credentials
+      where user_id = $1
+      limit 1
+    `,
+    [userId]
+  );
+
+  return result.rows[0]?.password_hash || null;
+}
+
+export async function createDatabaseSession(userId: string) {
+  const token = randomBytes(32).toString('hex');
+  const storedToken = sessionTokenHash(token);
+  await query(
+    `
+      insert into neon_auth.session (token, "userId", "expiresAt", "updatedAt")
+      values ($1, $2::uuid, now() + interval '30 days', now())
+    `,
+    [storedToken, userId]
+  );
+
+  return token;
+}
+
+function sessionTokenHash(token: string) {
+  return `sha256:${createHash('sha256').update(token).digest('hex')}`;
+}
+
+export async function deleteDatabaseSession(token: string) {
+  await query('delete from neon_auth.session where token = any($1::text[])', [
+    [token, sessionTokenHash(token)],
+  ]);
+}
+
+export async function getDashboardPayloadBySessionToken(
+  token: string
+): Promise<DashboardPayload | null> {
+  return getDashboardBaseBySessionToken(token);
 }
 
 export async function getDashboardPayload(userId: string): Promise<DashboardPayload | null> {
-  const data = await readData();
-  const user = data.users.find((item) => item.id === userId);
-  if (!user) return null;
+  return getDashboardBaseByUserId(userId);
+}
 
-  const account = data.accounts.find((item) => item.ownerUserId === user.id);
-  if (!account) return null;
+export async function getAccountWithSecrets(accountId: string) {
+  const result = await query<AccountRow>(
+    'select * from public.magnets_accounts where id = $1 limit 1',
+    [accountId]
+  );
 
-  return {
-    user,
-    account,
-    leadMagnets: data.leadMagnets.filter((item) => item.accountId === account.id),
-  };
+  return result.rows[0] ? mapAccount(result.rows[0], { revealSecrets: true }) : null;
+}
+
+export async function completeOnboarding(
+  accountId: string,
+  answers: { businessName: string; businessType: string; magnetType: string; cadence: string }
+) {
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set
+        onboarding_completed_at = now(),
+        onboarding_business_name = $2,
+        onboarding_business_type = $3,
+        onboarding_magnet_type = $4,
+        onboarding_cadence = $5,
+        logo_text = case when logo_text = '' then $2 else logo_text end,
+        updated_at = now()
+      where id = $1
+      returning *
+    `,
+    [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence]
+  );
+
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+}
+
+export async function updateUserPasswordHash(userId: string, passwordHash: string) {
+  await query(
+    `
+      update public.magnets_auth_credentials
+      set password_hash = $2, updated_at = now()
+      where user_id = $1
+    `,
+    [userId, passwordHash]
+  );
+}
+
+/**
+ * Hard-delete the user, their account, magnets, submissions, password row, and
+ * Neon Auth session rows. ON DELETE CASCADE on magnets/submissions handles
+ * those automatically once the account row is gone.
+ */
+export async function deleteUserAndAccount(userId: string) {
+  await query(
+    `
+      with deleted_account as (
+        delete from public.magnets_accounts
+        where owner_user_id = $1::uuid
+        returning id
+      ),
+      deleted_credentials as (
+        delete from public.magnets_auth_credentials
+        where user_id = $1::uuid
+        returning user_id
+      ),
+      deleted_sessions as (
+        delete from neon_auth.session
+        where "userId" = $1::uuid
+        returning token
+      ),
+      deleted_user as (
+        delete from neon_auth."user"
+        where id = $1::uuid
+        returning id
+      )
+      select (select count(*) from deleted_account) as accounts_deleted
+    `,
+    [userId]
+  );
 }
 
 export async function updateAccount(
   accountId: string,
   updates: Partial<Omit<AccountSettings, 'id' | 'ownerUserId' | 'createdAt' | 'updatedAt'>>
 ) {
-  return mutateData((data) => {
-    const account = data.accounts.find((item) => item.id === accountId);
-    if (!account) return null;
+  const existing = await query<AccountRow>(
+    'select * from public.magnets_accounts where id = $1 limit 1',
+    [accountId]
+  );
+  const existingAccount = existing.rows[0];
+  if (!existingAccount) return null;
 
-    Object.assign(account, updates, { updatedAt: now() });
-    return account;
-  });
+  const beehiivApiKey = isMaskedSecret(updates.beehiivApiKey)
+    ? existingAccount.beehiiv_api_key
+    : encryptSecret(updates.beehiivApiKey);
+  const resendApiKey = isMaskedSecret(updates.resendApiKey)
+    ? existingAccount.resend_api_key
+    : encryptSecret(updates.resendApiKey);
+
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set
+        subdomain = $2,
+        domain = $3,
+        logo_url = $4,
+        logo_text = $5,
+        brand = $6::jsonb,
+        resend_from_email = $7,
+        resend_api_key = $8,
+        beehiiv_api_key = $9,
+        beehiiv_publication_id = $10,
+        substack_publication = $11
+      where id = $1
+      returning *
+    `,
+    [
+      accountId,
+      updates.subdomain,
+      updates.domain,
+      updates.logoUrl,
+      updates.logoText,
+      JSON.stringify(updates.brand || defaultBrand),
+      updates.resendFromEmail,
+      resendApiKey,
+      beehiivApiKey,
+      updates.beehiivPublicationId,
+      updates.substackPublication,
+    ]
+  );
+
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
 }
 
-export async function createLeadMagnet(accountId: string) {
-  return mutateData((data) => {
-    const template = defaultLeadMagnet(accountId);
-    const leadMagnet: LeadMagnet = {
-      ...template,
-      id: id('lm'),
-      slug: `new-resource-${data.leadMagnets.filter((item) => item.accountId === accountId).length + 1}`,
-      title: 'Untitled Lead Magnet',
-      published: false,
-      createdAt: now(),
-      updatedAt: now(),
-    };
+function slugifyTitle(title: string) {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'resource';
+}
 
-    data.leadMagnets.push(leadMagnet);
-    return leadMagnet;
-  });
+async function uniqueLeadMagnetSlug(accountId: string, title: string) {
+  const baseSlug = slugifyTitle(title);
+  const existing = await query<{ slug: string }>(
+    `
+      select slug
+      from public.magnets_lead_magnets
+      where account_id = $1
+        and (slug = $2 or slug like $3)
+    `,
+    [accountId, baseSlug, `${baseSlug}-%`]
+  );
+  const usedSlugs = new Set(existing.rows.map((row) => row.slug));
+
+  if (!usedSlugs.has(baseSlug)) return baseSlug;
+
+  let suffix = 2;
+  while (usedSlugs.has(`${baseSlug}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseSlug}-${suffix}`;
+}
+
+export async function createLeadMagnet(accountId: string, title: string, downloadLink: string) {
+  const cleanTitle = title.trim();
+  const cleanLink = downloadLink.trim();
+  const slug = await uniqueLeadMagnetSlug(accountId, cleanTitle);
+  const result = await query<LeadMagnetRow>(
+    `
+      insert into public.magnets_lead_magnets (
+        account_id,
+        slug,
+        title,
+        subtitle,
+        description,
+        bullets,
+        bullets_heading,
+        cta_text,
+        form_heading,
+        form_subtext,
+        download_link,
+        email_subject,
+        email_body,
+        email_preview,
+        published
+      )
+      values (
+        $1,
+        $2,
+        $3,
+        'A short line about what people will get.',
+        'Explain what the resource helps with and why it is worth downloading.',
+        '["What the resource covers", "Who it is for", "What to do next"]'::jsonb,
+        'Inside the resource:',
+        'Send me the resource',
+        'Send me the resource',
+        'Enter your details and we will email the download link.',
+        $4,
+        'Your resource is ready',
+        'Hi {name},\n\nHere is your download:\n\n{download_link}',
+        'Your resource is ready.',
+        false
+      )
+      returning *
+    `,
+    [accountId, slug, cleanTitle, cleanLink]
+  );
+
+  return mapLeadMagnet(result.rows[0]);
 }
 
 export async function updateLeadMagnet(
@@ -229,65 +871,295 @@ export async function updateLeadMagnet(
   leadMagnetId: string,
   updates: Partial<Omit<LeadMagnet, 'id' | 'accountId' | 'createdAt' | 'updatedAt'>>
 ) {
-  return mutateData((data) => {
-    const leadMagnet = data.leadMagnets.find(
-      (item) => item.id === leadMagnetId && item.accountId === accountId
-    );
-    if (!leadMagnet) return null;
+  const result = await query<LeadMagnetRow>(
+    `
+      update public.magnets_lead_magnets
+      set
+        slug = $3,
+        title = $4,
+        subtitle = $5,
+        description = $6,
+        bullets = $7::jsonb,
+        bullets_heading = $8,
+        cta_text = $9,
+        form_heading = $10,
+        form_subtext = $11,
+        image_url = $12,
+        download_link = $13,
+        email_subject = $14,
+        email_body = $15,
+        email_preview = $16,
+        published = $17
+      where account_id = $1
+        and id = $2
+      returning *
+    `,
+    [
+      accountId,
+      leadMagnetId,
+      updates.slug,
+      updates.title,
+      updates.subtitle,
+      updates.description,
+      JSON.stringify(updates.bullets || []),
+      updates.bulletsHeading,
+      updates.ctaText,
+      updates.formHeading,
+      updates.formSubtext,
+      updates.imageUrl,
+      updates.downloadLink,
+      updates.emailSubject,
+      updates.emailBody,
+      updates.emailPreview,
+      updates.published,
+    ]
+  );
 
-    Object.assign(leadMagnet, updates, { updatedAt: now() });
-    return leadMagnet;
-  });
+  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
 }
 
 export async function deleteLeadMagnet(accountId: string, leadMagnetId: string) {
-  return mutateData((data) => {
-    const before = data.leadMagnets.length;
-    data.leadMagnets = data.leadMagnets.filter(
-      (item) => item.id !== leadMagnetId || item.accountId !== accountId
-    );
+  const result = await query(
+    'delete from public.magnets_lead_magnets where account_id = $1 and id = $2',
+    [accountId, leadMagnetId]
+  );
 
-    return data.leadMagnets.length < before;
-  });
+  return Number(result.rowCount || 0) > 0;
 }
 
 export async function findPublishedLeadMagnet(host: string, slug: string) {
-  const data = await readData();
   const hostname = host.split(':')[0].toLowerCase();
-  const account =
-    data.accounts.find((item) => `${item.subdomain}.${item.domain}`.toLowerCase() === hostname) ||
-    data.accounts.find((item) => item.domain.toLowerCase() === hostname) ||
-    data.accounts[0];
+  const canUseLocalFallback =
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  const accountResult = await query<AccountRow>(
+    `
+      select *
+      from public.magnets_accounts
+      where lower(subdomain || '.' || domain) = $1
+        or lower(domain) = $1
+      order by
+        case when lower(subdomain || '.' || domain) = $1 then 0 else 1 end,
+        created_at asc
+      limit 1
+    `,
+    [hostname]
+  );
+  const accountRow = accountResult.rows[0];
 
-  if (!account) return null;
+  if (!accountRow && canUseLocalFallback) {
+    const localLeadMagnet = await query<LeadMagnetRow>(
+      `
+        select *
+        from public.magnets_lead_magnets
+        where slug = $1
+          and published = true
+        order by updated_at desc
+        limit 1
+      `,
+      [slug]
+    );
+    const leadMagnetRow = localLeadMagnet.rows[0];
 
-  const leadMagnet = data.leadMagnets.find(
-    (item) => item.accountId === account.id && item.slug === slug && item.published
+    if (leadMagnetRow) {
+      const localAccount = await query<AccountRow>(
+        'select * from public.magnets_accounts where id = $1 limit 1',
+        [leadMagnetRow.account_id]
+      );
+
+      if (localAccount.rows[0]) {
+        return { account: mapAccount(localAccount.rows[0]), leadMagnet: mapLeadMagnet(leadMagnetRow) };
+      }
+    }
+  }
+
+  if (!accountRow) return null;
+
+  const account = mapAccount(accountRow);
+  const leadMagnet = await query<LeadMagnetRow>(
+    `
+      select *
+      from public.magnets_lead_magnets
+      where account_id = $1
+        and slug = $2
+        and published = true
+      limit 1
+    `,
+    [account.id, slug]
   );
 
-  if (!leadMagnet) return null;
+  if (!leadMagnet.rows[0]) return null;
 
-  return { account, leadMagnet };
+  return { account, leadMagnet: mapLeadMagnet(leadMagnet.rows[0]) };
+}
+
+export async function findPublishedLeadMagnetById(leadMagnetId: string) {
+  const magnetRow = await query<LeadMagnetRow>(
+    `
+      select *
+      from public.magnets_lead_magnets
+      where id = $1
+        and published = true
+      limit 1
+    `,
+    [leadMagnetId]
+  );
+
+  if (!magnetRow.rows[0]) return null;
+
+  const accountRow = await query<AccountRow>(
+    'select * from public.magnets_accounts where id = $1 limit 1',
+    [magnetRow.rows[0].account_id]
+  );
+  if (!accountRow.rows[0]) return null;
+
+  return {
+    account: mapAccount(accountRow.rows[0]),
+    leadMagnet: mapLeadMagnet(magnetRow.rows[0]),
+  };
 }
 
 export async function findLeadMagnet(accountId: string, leadMagnetId: string) {
-  const data = await readData();
-  const account = data.accounts.find((item) => item.id === accountId);
-  const leadMagnet = data.leadMagnets.find(
-    (item) => item.id === leadMagnetId && item.accountId === accountId
+  const account = await query<AccountRow>(
+    'select * from public.magnets_accounts where id = $1 limit 1',
+    [accountId]
+  );
+  const leadMagnet = await query<LeadMagnetRow>(
+    'select * from public.magnets_lead_magnets where id = $1 and account_id = $2 limit 1',
+    [leadMagnetId, accountId]
   );
 
-  return account && leadMagnet ? { account, leadMagnet } : null;
+  return account.rows[0] && leadMagnet.rows[0]
+    ? {
+        account: mapAccount(account.rows[0], { revealSecrets: true }),
+        leadMagnet: mapLeadMagnet(leadMagnet.rows[0]),
+      }
+    : null;
+}
+
+type SignupRow = {
+  email: string;
+  name: string;
+  first_lead_magnet_title: string;
+  first_lead_magnet_slug: string;
+  first_signup_at: Date;
+  latest_signup_at: Date;
+  signup_count: string;
+};
+
+function mapSignup(row: SignupRow): AccountSignup {
+  return {
+    email: row.email,
+    name: row.name,
+    firstLeadMagnetTitle: row.first_lead_magnet_title,
+    firstLeadMagnetSlug: row.first_lead_magnet_slug,
+    firstSignupAt: iso(row.first_signup_at),
+    latestSignupAt: iso(row.latest_signup_at),
+    signupCount: Number(row.signup_count) || 0,
+  };
+}
+
+export async function listAccountSignups(accountId: string): Promise<AccountSignup[]> {
+  const result = await query<SignupRow>(
+    `
+      with ranked as (
+        select
+          s.email,
+          s.name,
+          s.created_at,
+          lm.title as lead_magnet_title,
+          lm.slug as lead_magnet_slug,
+          row_number() over (
+            partition by lower(s.email)
+            order by s.created_at asc
+          ) as first_rank,
+          row_number() over (
+            partition by lower(s.email)
+            order by s.created_at desc
+          ) as latest_rank,
+          count(*) over (partition by lower(s.email)) as signup_count,
+          min(s.created_at) over (partition by lower(s.email)) as first_signup_at,
+          max(s.created_at) over (partition by lower(s.email)) as latest_signup_at
+        from public.magnets_submissions s
+        join public.magnets_lead_magnets lm on lm.id = s.lead_magnet_id
+        where s.account_id = $1
+      )
+      select
+        latest.email,
+        latest.name,
+        first.lead_magnet_title as first_lead_magnet_title,
+        first.lead_magnet_slug as first_lead_magnet_slug,
+        first.first_signup_at,
+        first.latest_signup_at,
+        first.signup_count::text as signup_count
+      from ranked first
+      join ranked latest
+        on lower(latest.email) = lower(first.email)
+       and latest.latest_rank = 1
+      where first.first_rank = 1
+      order by first.latest_signup_at desc
+    `,
+    [accountId]
+  );
+
+  return result.rows.map(mapSignup);
 }
 
 export async function recordSubmission(submission: Omit<Submission, 'id' | 'createdAt'>) {
-  return mutateData((data) => {
-    const saved: Submission = {
-      ...submission,
-      id: id('sub'),
-      createdAt: now(),
-    };
-    data.submissions.push(saved);
-    return saved;
-  });
+  const result = await query<SubmissionRow>(
+    `
+      insert into public.magnets_submissions (account_id, lead_magnet_id, name, email)
+      values ($1, $2, $3, $4)
+      returning *
+    `,
+    [submission.accountId, submission.leadMagnetId, submission.name, submission.email]
+  );
+
+  return mapSubmission(result.rows[0]);
+}
+
+export async function leadMagnetBelongsToAccount(accountId: string, leadMagnetId: string) {
+  const result = await query<{ id: string }>(
+    'select id from public.magnets_lead_magnets where id = $1 and account_id = $2 limit 1',
+    [leadMagnetId, accountId]
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Bulk-insert submissions. Rows are sent as a single jsonb_to_recordset insert
+ * so the whole batch is one round-trip. The caller is responsible for already
+ * having validated each row and resolved the lead_magnet_id.
+ */
+export async function bulkRecordSubmissions(
+  accountId: string,
+  rows: Array<{ leadMagnetId: string; name: string; email: string }>
+) {
+  if (rows.length === 0) return { inserted: 0 };
+
+  const payload = rows.map((row) => ({
+    lead_magnet_id: row.leadMagnetId,
+    name: row.name.slice(0, 120),
+    email: row.email.slice(0, 254),
+  }));
+
+  const result = await query<{ count: string }>(
+    `
+      with input as (
+        select
+          lead_magnet_id::uuid as lead_magnet_id,
+          name,
+          email
+        from jsonb_to_recordset($2::jsonb) as rows(lead_magnet_id text, name text, email text)
+      ),
+      inserted as (
+        insert into public.magnets_submissions (account_id, lead_magnet_id, name, email)
+        select $1::uuid, lead_magnet_id, name, email from input
+        returning 1
+      )
+      select count(*)::text as count from inserted
+    `,
+    [accountId, JSON.stringify(payload)]
+  );
+
+  return { inserted: Number(result.rows[0]?.count || 0) };
 }

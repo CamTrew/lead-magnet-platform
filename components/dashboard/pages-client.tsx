@@ -1,331 +1,419 @@
 'use client';
 
-import type { ChangeEvent, ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  ExternalLink,
+  Loader2,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
+import {
+  AceternityButton,
+  AceternityCard,
+  AceternityInput,
+} from '@/components/ui/aceternity';
+import { PageHeader } from '@/components/dashboard/app-shell';
 import type { DashboardPayload, LeadMagnet } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-const textareaClass =
-  'min-h-28 w-full rounded-xl border-2 border-brand-teal-200 bg-white px-4 py-3 text-sm leading-6 text-gray-700 shadow-sm outline-none transition focus:border-brand-teal-500 focus:ring-1 focus:ring-brand-teal-500';
-const inputClass =
-  'h-11 rounded-xl border-2 border-brand-teal-200 bg-white px-4 text-sm shadow-sm transition focus:border-brand-teal-500 focus:ring-1 focus:ring-brand-teal-500';
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('en', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(value));
 }
 
-function StatusPill({ state }: { state: SaveState }) {
-  if (state === 'idle') return null;
-
-  const label = state === 'saving' ? 'Saving' : state === 'saved' ? 'Saved' : 'Error';
-  const className =
-    state === 'error'
-      ? 'bg-red-50 text-red-600'
-      : state === 'saved'
-        ? 'bg-brand-lime-100 text-brand-lime-700'
-        : 'bg-brand-teal-50 text-brand-teal-700';
-
-  return <span className={`rounded-full px-3 py-1 text-xs font-bold ${className}`}>{label}</span>;
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function CreatePageModal({
+  downloadLink,
+  error,
+  isCreating,
+  onClose,
+  onSubmit,
+  setDownloadLink,
+  setTitle,
+  title,
+}: {
+  downloadLink: string;
+  error: string;
+  isCreating: boolean;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  setDownloadLink: (value: string) => void;
+  setTitle: (value: string) => void;
+  title: string;
+}) {
   return (
-    <label className="block">
-      <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-brand-teal-700">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#09090b]/20 p-4 backdrop-blur-sm">
+      <button
+        aria-label="Close new page dialog"
+        className="absolute inset-0"
+        disabled={isCreating}
+        onClick={onClose}
+        type="button"
+      />
+      <div
+        aria-label="Create page"
+        aria-modal="true"
+        className="relative z-10 w-full max-w-md rounded-lg border border-[#d4d4d8] bg-white p-6 shadow-sm"
+        role="dialog"
+      >
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-950">Create a magnet</h2>
+            <p className="mt-1 text-sm leading-6 text-ink-600">
+              Name the page and add the link people will get by email.
+            </p>
+          </div>
+          <button
+            aria-label="Close"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition hover:bg-[#f4f4f5] hover:text-[#18181b] disabled:opacity-50"
+            disabled={isCreating}
+            onClick={onClose}
+            type="button"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-function Header({ onLogout }: { onLogout: () => void }) {
-  return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-teal-600">
-            Lead Magnet Platform
-          </p>
-          <h1 className="text-xl font-bold text-brand-teal-900">Pages</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard"
-            className="rounded-lg border border-brand-teal-200 px-4 py-2 text-sm font-semibold text-brand-teal-700 transition hover:border-brand-teal-500 hover:bg-brand-teal-50"
-          >
-            Settings
-          </Link>
-          <Link
-            href="/dashboard/pages"
-            className="rounded-lg bg-brand-teal-50 px-4 py-2 text-sm font-semibold text-brand-teal-700"
-          >
-            Pages
-          </Link>
-          <Button variant="outline" onClick={onLogout} className="rounded-lg">
-            Logout
-          </Button>
-        </div>
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">Page name</span>
+            <AceternityInput
+              autoFocus
+              disabled={isCreating}
+              maxLength={120}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="AI Pipeline Playbook"
+              required
+              value={title}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">Resource URL</span>
+            <AceternityInput
+              disabled={isCreating}
+              maxLength={2048}
+              onChange={(event) => setDownloadLink(event.target.value)}
+              placeholder="https://example.com/my-guide.pdf"
+              required
+              type="url"
+              value={downloadLink}
+            />
+            <span className="mt-1.5 block text-xs leading-5 text-ink-500">
+              Where the download button in the email points. You can change this later.
+            </span>
+          </label>
+
+          {error && (
+            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+              {error}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 border-t border-[#e4e4e7] pt-4">
+            <AceternityButton disabled={isCreating} onClick={onClose} type="button" variant="secondary">
+              Cancel
+            </AceternityButton>
+            <AceternityButton disabled={isCreating || !title.trim() || !downloadLink.trim()} type="submit">
+              {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {isCreating ? 'Creating page' : 'Create page'}
+            </AceternityButton>
+          </div>
+        </form>
       </div>
-    </header>
+    </div>
   );
+}
+
+function publicUrl(account: DashboardPayload['account'], slug: string) {
+  const subdomain = account.subdomain?.trim();
+  const domain = account.domain?.trim();
+  if (!domain) return null;
+  const host = subdomain ? `${subdomain}.${domain}` : domain;
+  return `https://${host}/${slug}`;
+}
+
+function platformUrl(id: string) {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/p/${id}`;
+  }
+  return `/p/${id}`;
 }
 
 export function PagesClient({ initialData }: { initialData: DashboardPayload }) {
   const router = useRouter();
+  const account = initialData.account;
+  const [isPending, startTransition] = useTransition();
   const [leadMagnets, setLeadMagnets] = useState<LeadMagnet[]>(initialData.leadMagnets);
-  const [selectedId, setSelectedId] = useState(initialData.leadMagnets[0]?.id || '');
-  const [leadMagnetState, setLeadMagnetState] = useState<SaveState>('idle');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createDownloadLink, setCreateDownloadLink] = useState('');
+  const [createState, setCreateState] = useState<SaveState>('idle');
+  const [openingPageId, setOpeningPageId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [createError, setCreateError] = useState('');
+  const isCreating = createState === 'saving';
+  const isOpening = Boolean(openingPageId) || isPending;
+  const actionLabel = isOpening ? 'Opening editor' : isCreating ? 'Creating page' : 'New page';
+  const showBusyRow = isCreating || isOpening;
 
-  const selectedLeadMagnet = useMemo(
-    () => leadMagnets.find((leadMagnet) => leadMagnet.id === selectedId) || leadMagnets[0],
-    [leadMagnets, selectedId]
-  );
-
-  const localPreviewUrl = selectedLeadMagnet ? `/${selectedLeadMagnet.slug}` : '/';
-
-  function patchSelectedLeadMagnet(updates: Partial<LeadMagnet>) {
-    if (!selectedLeadMagnet) return;
-    setLeadMagnets((current) =>
-      current.map((leadMagnet) =>
-        leadMagnet.id === selectedLeadMagnet.id ? { ...leadMagnet, ...updates } : leadMagnet
-      )
-    );
-  }
-
-  async function handleLeadMagnetImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    patchSelectedLeadMagnet({ imageUrl: await readFileAsDataUrl(file) });
-  }
-
-  async function createLeadMagnet() {
-    setLeadMagnetState('saving');
+  function openCreateDialog() {
+    if (isCreating || isOpening) return;
+    setCreateError('');
     setError('');
+    setCreateOpen(true);
+  }
 
-    try {
-      const response = await fetch('/api/lead-magnets', { method: 'POST' });
-      if (!response.ok) throw new Error('Lead magnet could not be created');
-      const data = (await response.json()) as { leadMagnet: LeadMagnet };
-      setLeadMagnets((current) => [...current, data.leadMagnet]);
-      setSelectedId(data.leadMagnet.id);
-      setLeadMagnetState('saved');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-      setLeadMagnetState('error');
+  function closeCreateDialog() {
+    if (isCreating) return;
+    setCreateOpen(false);
+    setCreateError('');
+  }
+
+  async function createLeadMagnet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isCreating || isOpening) return;
+
+    const title = createTitle.trim();
+    const downloadLink = createDownloadLink.trim();
+    if (!title) {
+      setCreateError('Enter a page name first.');
+      return;
     }
-  }
+    if (!downloadLink) {
+      setCreateError('Add the URL people will get by email.');
+      return;
+    }
+    try {
+      const parsed = new URL(downloadLink);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        setCreateError('Resource URL must start with http:// or https://');
+        return;
+      }
+    } catch {
+      setCreateError('Resource URL is not a valid URL.');
+      return;
+    }
 
-  async function saveLeadMagnet() {
-    if (!selectedLeadMagnet) return;
-    setLeadMagnetState('saving');
+    setCreateState('saving');
     setError('');
+    setCreateError('');
 
     try {
-      const response = await fetch(`/api/lead-magnets/${selectedLeadMagnet.id}`, {
-        method: 'PUT',
+      const response = await fetch('/api/lead-magnets', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slug: selectedLeadMagnet.slug,
-          title: selectedLeadMagnet.title,
-          subtitle: selectedLeadMagnet.subtitle,
-          description: selectedLeadMagnet.description,
-          bullets: selectedLeadMagnet.bullets,
-          bulletsHeading: selectedLeadMagnet.bulletsHeading,
-          ctaText: selectedLeadMagnet.ctaText,
-          formHeading: selectedLeadMagnet.formHeading,
-          formSubtext: selectedLeadMagnet.formSubtext,
-          imageUrl: selectedLeadMagnet.imageUrl,
-          downloadLink: selectedLeadMagnet.downloadLink,
-          emailSubject: selectedLeadMagnet.emailSubject,
-          emailBody: selectedLeadMagnet.emailBody,
-          emailPreview: selectedLeadMagnet.emailPreview,
-          published: selectedLeadMagnet.published,
-        }),
+        body: JSON.stringify({ title, downloadLink }),
       });
 
-      if (!response.ok) throw new Error('Lead magnet could not be saved');
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'Page could not be created');
+      }
+
       const data = (await response.json()) as { leadMagnet: LeadMagnet };
-      setLeadMagnets((current) =>
-        current.map((leadMagnet) =>
-          leadMagnet.id === data.leadMagnet.id ? data.leadMagnet : leadMagnet
-        )
-      );
-      setLeadMagnetState('saved');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-      setLeadMagnetState('error');
-    }
-  }
-
-  async function deleteSelectedLeadMagnet() {
-    if (!selectedLeadMagnet) return;
-    setLeadMagnetState('saving');
-    setError('');
-
-    try {
-      const response = await fetch(`/api/lead-magnets/${selectedLeadMagnet.id}`, {
-        method: 'DELETE',
+      setLeadMagnets((current) => [
+        data.leadMagnet,
+        ...current.filter((item) => item.id !== data.leadMagnet.id),
+      ]);
+      setCreateOpen(false);
+      setCreateTitle('');
+      setCreateDownloadLink('');
+      setCreateState('saved');
+      setOpeningPageId(data.leadMagnet.id);
+      window.dispatchEvent(new Event('magnets:navigation-start'));
+      startTransition(() => {
+        router.push(`/dashboard/pages/${data.leadMagnet.id}`);
       });
-
-      if (!response.ok) throw new Error('Lead magnet could not be deleted');
-      const remaining = leadMagnets.filter((leadMagnet) => leadMagnet.id !== selectedLeadMagnet.id);
-      setLeadMagnets(remaining);
-      setSelectedId(remaining[0]?.id || '');
-      setLeadMagnetState('saved');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-      setLeadMagnetState('error');
+      setCreateError(err instanceof Error ? err.message : 'Something went wrong');
+      setOpeningPageId(null);
+      setCreateState('error');
     }
   }
 
-  async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+  function openLeadMagnet(leadMagnetId: string) {
+    if (isCreating || isOpening) return;
+
+    setOpeningPageId(leadMagnetId);
+    window.dispatchEvent(new Event('magnets:navigation-start'));
+    startTransition(() => {
+      router.push(`/dashboard/pages/${leadMagnetId}`);
+    });
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-gray-900">
-      <Header onLogout={logout} />
+    <>
+      <PageHeader title="Pages" subtitle="Create and edit magnets" />
+      {createOpen && (
+        <CreatePageModal
+          downloadLink={createDownloadLink}
+          error={createError}
+          isCreating={isCreating}
+          onClose={closeCreateDialog}
+          onSubmit={createLeadMagnet}
+          setDownloadLink={setCreateDownloadLink}
+          setTitle={setCreateTitle}
+          title={createTitle}
+        />
+      )}
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[320px_1fr] lg:px-8">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-[0.16em] text-gray-500">Pages</h2>
-            <Button onClick={createLeadMagnet} size="sm" className="rounded-lg bg-brand-teal-700 text-white hover:bg-brand-teal-800">
-              New
-            </Button>
+      <div className="mx-auto max-w-6xl space-y-4">
+        {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
+
+        <AceternityCard className="overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-[#e4e4e7] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-black text-[#09090b]">All pages</h2>
+              <p className="mt-1 text-sm text-[#52525b]">
+                Open a page to edit the copy, email, and download link.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <AceternityButton className="min-w-[152px]" disabled={isCreating || isOpening} onClick={openCreateDialog}>
+                {isCreating || isOpening ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                {actionLabel}
+              </AceternityButton>
+            </div>
           </div>
-          <div className="space-y-2">
-            {leadMagnets.map((leadMagnet) => (
-              <button
-                key={leadMagnet.id}
-                onClick={() => setSelectedId(leadMagnet.id)}
-                className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                  leadMagnet.id === selectedId
-                    ? 'border-brand-teal-500 bg-brand-teal-50 text-brand-teal-900'
-                    : 'border-slate-200 bg-white hover:border-brand-teal-200'
-                }`}
-              >
-                <span className="block truncate text-sm font-bold">{leadMagnet.title}</span>
-                <span className="mt-1 block truncate text-xs text-gray-500">/{leadMagnet.slug}</span>
-              </button>
-            ))}
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b border-[#e4e4e7] bg-[#fafafa] text-xs font-black uppercase text-[#71717a]">
+                <tr>
+                  <th className="px-5 py-3">Page</th>
+                  <th className="px-5 py-3">Path</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Updated</th>
+                  <th className="w-32 px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#e4e4e7]">
+                {showBusyRow && (
+                  <tr className="bg-[#fafafa]" aria-live="polite">
+                    <td className="max-w-[320px] px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#e4e4e7] bg-white text-[#18181b]">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-black text-[#09090b]">
+                            {isCreating ? 'Creating your page' : 'Opening editor'}
+                          </p>
+                          <p className="truncate text-xs text-[#71717a]">
+                            {isCreating
+                              ? 'Opening the editor as soon as it is ready.'
+                              : 'Keeping this screen ready while the editor loads.'}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 font-mono text-xs text-[#52525b]">
+                      {isCreating ? 'Preparing' : 'Editor'}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="rounded-lg border border-[#e4e4e7] bg-[#f4f4f5] px-2 py-1 text-xs font-bold text-[#18181b]">
+                        Draft
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-[#52525b]">Now</td>
+                    <td className="px-5 py-4 text-right text-xs font-semibold text-[#71717a]">
+                      Please wait
+                    </td>
+                  </tr>
+                )}
+                {leadMagnets.length === 0 && !isCreating && (
+                  <tr className="bg-white">
+                    <td colSpan={5} className="px-5 py-10 text-center">
+                      <p className="font-black text-[#09090b]">No pages yet</p>
+                      <p className="mt-1 text-sm text-[#71717a]">Create a page when the resource is ready.</p>
+                      <AceternityButton className="mt-4 min-w-[152px]" disabled={isOpening} onClick={openCreateDialog}>
+                        <Plus className="h-4 w-4" />
+                        Create page
+                      </AceternityButton>
+                    </td>
+                  </tr>
+                )}
+                {leadMagnets.map((leadMagnet) => (
+                  <tr
+                    key={leadMagnet.id}
+                    className="bg-white transition hover:bg-[#fafafa]"
+                  >
+                    <td className="max-w-[320px] px-5 py-4">
+                      <p className="truncate font-black text-[#09090b]">{leadMagnet.title}</p>
+                      <p className="truncate text-xs text-[#71717a]">{leadMagnet.subtitle}</p>
+                    </td>
+                    <td className="px-5 py-4 font-mono text-xs text-[#52525b]">/{leadMagnet.slug}</td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={cn(
+                          'rounded-lg border px-2 py-1 text-xs font-bold',
+                          leadMagnet.published
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-[#e4e4e7] bg-[#f4f4f5] text-[#18181b]'
+                        )}
+                      >
+                        {leadMagnet.published ? 'Published' : 'Draft'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-[#52525b]">{formatDate(leadMagnet.updatedAt)}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        {leadMagnet.published && (() => {
+                          const branded = publicUrl(account, leadMagnet.slug);
+                          const fallback = platformUrl(leadMagnet.id);
+                          const url = branded || fallback;
+                          const title = branded
+                            ? branded
+                            : `Open on magnets.so — your branded URL appears once your domain is set up.`;
+                          return (
+                            <a
+                              aria-label={`View ${leadMagnet.title}`}
+                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-xs font-medium text-ink-900 transition hover:bg-ink-50"
+                              href={url}
+                              rel="noreferrer"
+                              target="_blank"
+                              title={title}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              View
+                            </a>
+                          );
+                        })()}
+                        <AceternityButton
+                          aria-label={`Open ${leadMagnet.title}`}
+                          disabled={isCreating || isOpening}
+                          onClick={() => openLeadMagnet(leadMagnet.id)}
+                          size="sm"
+                          title="Open"
+                        >
+                          {openingPageId === leadMagnet.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Pencil className="h-4 w-4" />
+                          )}
+                          Open
+                        </AceternityButton>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </aside>
-
-        <div className="space-y-6">
-          {error && <p className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-600">{error}</p>}
-
-          {selectedLeadMagnet ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold text-brand-teal-900">Lead Magnet</h2>
-                  <p className="text-sm text-gray-500">{localPreviewUrl}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <a
-                    href={localPreviewUrl}
-                    target="_blank"
-                    className="rounded-xl border border-brand-teal-200 px-4 py-2 text-sm font-bold text-brand-teal-700 transition hover:border-brand-teal-500 hover:bg-brand-teal-50"
-                  >
-                    Preview
-                  </a>
-                  <StatusPill state={leadMagnetState} />
-                  <Button variant="outline" onClick={deleteSelectedLeadMagnet} className="rounded-xl border-red-200 text-red-600 hover:bg-red-50">
-                    Delete
-                  </Button>
-                  <Button onClick={saveLeadMagnet} className="rounded-xl bg-brand-teal-700 text-white hover:bg-brand-teal-800">
-                    Save Page
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="slug">
-                  <Input value={selectedLeadMagnet.slug} onChange={(event) => patchSelectedLeadMagnet({ slug: event.target.value.toLowerCase() })} className={inputClass} />
-                </Field>
-                <Field label="published">
-                  <button
-                    type="button"
-                    onClick={() => patchSelectedLeadMagnet({ published: !selectedLeadMagnet.published })}
-                    className={`h-11 w-full rounded-xl border-2 px-4 text-left text-sm font-bold transition ${
-                      selectedLeadMagnet.published
-                        ? 'border-brand-lime-300 bg-brand-lime-50 text-brand-lime-700'
-                        : 'border-slate-200 bg-slate-50 text-gray-500'
-                    }`}
-                  >
-                    {selectedLeadMagnet.published ? 'Published' : 'Draft'}
-                  </button>
-                </Field>
-                <Field label="title">
-                  <Input value={selectedLeadMagnet.title} onChange={(event) => patchSelectedLeadMagnet({ title: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="subtitle">
-                  <Input value={selectedLeadMagnet.subtitle} onChange={(event) => patchSelectedLeadMagnet({ subtitle: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="description">
-                  <textarea value={selectedLeadMagnet.description} onChange={(event) => patchSelectedLeadMagnet({ description: event.target.value })} className={textareaClass} />
-                </Field>
-                <Field label="bullets">
-                  <textarea value={selectedLeadMagnet.bullets.join('\n')} onChange={(event) => patchSelectedLeadMagnet({ bullets: event.target.value.split('\n').filter(Boolean) })} className={textareaClass} />
-                </Field>
-                <Field label="bullets_heading">
-                  <Input value={selectedLeadMagnet.bulletsHeading} onChange={(event) => patchSelectedLeadMagnet({ bulletsHeading: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="cta_text">
-                  <Input value={selectedLeadMagnet.ctaText} onChange={(event) => patchSelectedLeadMagnet({ ctaText: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="form_heading">
-                  <Input value={selectedLeadMagnet.formHeading} onChange={(event) => patchSelectedLeadMagnet({ formHeading: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="form_subtext">
-                  <Input value={selectedLeadMagnet.formSubtext} onChange={(event) => patchSelectedLeadMagnet({ formSubtext: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="image_url">
-                  <Input type="file" accept="image/*" onChange={handleLeadMagnetImageUpload} className="h-11 rounded-xl border-2 border-brand-teal-200 bg-white text-sm" />
-                </Field>
-                <Field label="download_link">
-                  <Input value={selectedLeadMagnet.downloadLink} onChange={(event) => patchSelectedLeadMagnet({ downloadLink: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="email_subject">
-                  <Input value={selectedLeadMagnet.emailSubject} onChange={(event) => patchSelectedLeadMagnet({ emailSubject: event.target.value })} className={inputClass} />
-                </Field>
-                <Field label="email_preview">
-                  <Input value={selectedLeadMagnet.emailPreview} onChange={(event) => patchSelectedLeadMagnet({ emailPreview: event.target.value })} className={inputClass} />
-                </Field>
-                <div className="md:col-span-2">
-                  <Field label="email_body">
-                    <textarea value={selectedLeadMagnet.emailBody} onChange={(event) => patchSelectedLeadMagnet({ emailBody: event.target.value })} className={textareaClass} />
-                  </Field>
-                </div>
-              </div>
-            </section>
-          ) : (
-            <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-              <h2 className="text-lg font-bold text-brand-teal-900">No pages yet</h2>
-              <p className="mt-2 text-sm text-gray-500">Create your first lead magnet page to get started.</p>
-              <Button onClick={createLeadMagnet} className="mt-5 rounded-xl bg-brand-teal-700 text-white hover:bg-brand-teal-800">
-                Create Page
-              </Button>
-            </section>
-          )}
-        </div>
+        </AceternityCard>
       </div>
-    </main>
+    </>
   );
 }

@@ -1,0 +1,204 @@
+'use client';
+
+import { FormEvent, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { AceternityButton, AceternityInput } from '@/components/ui/aceternity';
+
+type AuthMode = 'login' | 'register';
+
+const copy = {
+  login: {
+    button: 'Sign in',
+    description: 'Use your email and password to continue.',
+    error: 'Unable to sign in',
+    pending: 'Signing in...',
+    switchHref: '/register',
+    switchLabel: 'Create one',
+    switchPrompt: 'New here?',
+    title: 'Welcome back',
+  },
+  register: {
+    button: 'Create account',
+    description: 'Free forever. No credit card.',
+    error: 'Unable to create account',
+    pending: 'Creating account...',
+    switchHref: '/login',
+    switchLabel: 'Sign in',
+    switchPrompt: 'Already have an account?',
+    title: 'Create your account',
+  },
+};
+
+export function AuthCard({ mode }: { mode: AuthMode }) {
+  const router = useRouter();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [error, setError] = useState('');
+  const activeCopy = copy[mode];
+  const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+  const isBusy = isSubmitting || isNavigating;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+
+    if (mode === 'register') {
+      if (password !== confirmPassword) {
+        setError('The two passwords do not match.');
+        return;
+      }
+      if (!name.trim()) {
+        setError('Add your name so we know what to call you.');
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    setIsNavigating(false);
+
+    try {
+      const body = mode === 'register'
+        ? { email, password, name: name.trim() }
+        : { email, password };
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || activeCopy.error);
+      }
+
+      setIsNavigating(true);
+      window.dispatchEvent(new Event('magnets:navigation-start'));
+      router.push('/dashboard');
+      return;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setIsSubmitting(false);
+      setIsNavigating(false);
+    }
+  }
+
+  return (
+    <main className="relative flex min-h-screen items-center justify-center bg-white px-4 py-10 text-ink-900">
+      <div className="vercel-grid-bg pointer-events-none absolute inset-0 opacity-50 [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_70%)]" />
+      <Link
+        className="absolute left-4 top-4 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-ink-600 transition hover:bg-ink-100 hover:text-ink-900 sm:left-6 sm:top-6"
+        href="/"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Home
+      </Link>
+
+      <div className="relative w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center gap-3">
+          <MagnetsLogoMark className="h-10 w-10" iconClassName="h-5 w-5" />
+          <div className="text-center">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink-950">{activeCopy.title}</h1>
+            <p className="mt-1.5 text-sm text-ink-600">{activeCopy.description}</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-ink-200 bg-white p-6">
+          {mode === 'register' && (
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-ink-700">Name</span>
+              <AceternityInput
+                autoComplete="name"
+                autoFocus
+                disabled={isBusy}
+                type="text"
+                placeholder="What should we call you?"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={120}
+                required
+              />
+            </label>
+          )}
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">Email</span>
+            <AceternityInput
+              autoComplete="email"
+              autoFocus={mode === 'login'}
+              disabled={isBusy}
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">Password</span>
+            <AceternityInput
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              disabled={isBusy}
+              type="password"
+              placeholder="At least 8 characters"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              minLength={8}
+              required
+            />
+          </label>
+
+          {mode === 'register' && (
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-ink-700">Confirm password</span>
+              <AceternityInput
+                autoComplete="new-password"
+                disabled={isBusy}
+                type="password"
+                placeholder="Type it again"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                minLength={8}
+                required
+              />
+            </label>
+          )}
+
+          {error && (
+            <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+              {error}
+            </p>
+          )}
+
+          <AceternityButton className="w-full" disabled={isBusy} size="md">
+            {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isNavigating ? 'Opening dashboard...' : isSubmitting ? activeCopy.pending : activeCopy.button}
+          </AceternityButton>
+
+          {mode === 'register' && (
+            <p className="text-center text-[11px] leading-5 text-ink-500">
+              By creating an account you agree to the{' '}
+              <Link href="/terms" className="text-ink-700 underline-offset-4 hover:underline">Terms</Link>{' '}
+              and{' '}
+              <Link href="/privacy" className="text-ink-700 underline-offset-4 hover:underline">Privacy Policy</Link>.
+            </p>
+          )}
+        </form>
+
+        <p className="mt-6 text-center text-sm text-ink-600">
+          {activeCopy.switchPrompt}{' '}
+          <Link className="font-medium text-ink-900 underline-offset-4 hover:underline" href={activeCopy.switchHref}>
+            {activeCopy.switchLabel}
+          </Link>
+        </p>
+      </div>
+    </main>
+  );
+}
