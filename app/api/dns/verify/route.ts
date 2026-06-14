@@ -119,7 +119,8 @@ function normaliseDomainForResend(value: string) {
 async function getResendEmailDnsRecords(
   domain: string,
   resendApiKey: string,
-  returnPath: string | null
+  returnPath: string | null,
+  rootDomain: string
 ) {
   if (!resendApiKey) {
     throw new Error('Add your Resend API key in Delivery before checking sending DNS.');
@@ -133,12 +134,23 @@ async function getResendEmailDnsRecords(
   }
 
   const want = normaliseDomainForResend(domain);
+  const root = normaliseDomainForResend(rootDomain) || want;
   const known = existingDomains.data.data.map((item) => ({
     id: item.id,
     name: item.name,
     normalised: normaliseDomainForResend(item.name),
   }));
-  const existingDomain = known.find((item) => item.normalised === want);
+  // Match priority: exact host first; otherwise pick any Resend domain that
+  // sits at the same root as our sender. e.g. for sender send.headcount.so
+  // we'll happily reuse a Resend domain at `headcount.so` (it'll have a
+  // return-path baked in that points back to `send`). This stops us from
+  // failing the plan-limit check just because the user's earlier setup
+  // landed on a slightly different Resend domain name.
+  const existingDomain =
+    known.find((item) => item.normalised === want) ??
+    known.find(
+      (item) => item.normalised === root || item.normalised.endsWith(`.${root}`)
+    );
 
   // We only pass custom_return_path on CREATE — once a domain exists on
   // Resend, the return path is baked in and can't be changed without
@@ -146,14 +158,17 @@ async function getResendEmailDnsRecords(
   // later, we have to surface that mismatch and let them decide; we never
   // delete the user's Resend domain silently.
   let domainResult;
+  let anchor: string;
   if (existingDomain) {
     domainResult = await resend.domains.get(existingDomain.id);
+    anchor = existingDomain.normalised;
   } else {
     try {
       domainResult = await resend.domains.create({
         name: want,
         ...(returnPath ? { custom_return_path: returnPath } : {}),
       } as Parameters<typeof resend.domains.create>[0]);
+      anchor = want;
     } catch (createErr) {
       // Wrap so the caller's catch can format the message correctly.
       throw createErr;
@@ -175,8 +190,14 @@ async function getResendEmailDnsRecords(
     throw new Error(message || 'Resend domain records could not be loaded.');
   }
 
+  // Resend returns record names relative to the Resend domain (the "anchor").
+  // For a domain created with custom_return_path='send' at apex headcount.so,
+  // Resend's `name` looks like 'send' / 'resend._domainkey.send' — those
+  // resolve at send.headcount.so / resend._domainkey.send.headcount.so when
+  // stitched against the anchor. Stitching them against the sender's full
+  // host instead would produce send.send.headcount.so.
   return domainResult.data.records.map((record, index) =>
-    mapResendRecord(record as ResendDnsRecord, domain, index)
+    mapResendRecord(record as ResendDnsRecord, anchor, index)
   );
 }
 
@@ -342,7 +363,8 @@ export async function POST(request: NextRequest) {
         records = await getResendEmailDnsRecords(
           senderDomain,
           accountWithSecrets.resendApiKey,
-          returnPath
+          returnPath,
+          rootDomain
         );
       } catch (error) {
         const rawMessage = error instanceof Error
