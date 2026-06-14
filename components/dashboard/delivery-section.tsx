@@ -80,6 +80,11 @@ export function DeliverySection({
 }) {
   const [unlockSubdomain, setUnlockSubdomain] = useState(false);
   const [unlockSender, setUnlockSender] = useState(false);
+  const [unlockDns, setUnlockDns] = useState(false);
+  // Lifted from SendingDnsChecker so we can collapse Step 3 into a "Verified"
+  // summary once every record resolves, matching the lock pattern Steps 1 & 2
+  // use. The checker still owns the per-record state internally.
+  const [dnsVerified, setDnsVerified] = useState(false);
   // Probed via /api/delivery/suggest the first time the user hits the
   // suggest button; we remember it for the rest of the session so we don't
   // re-probe on every render.
@@ -87,6 +92,7 @@ export function DeliverySection({
 
   const subdomainLocked = Boolean(account.resendReturnPath) && !unlockSubdomain;
   const senderLocked = Boolean(account.resendFromEmail) && !unlockSender;
+  const dnsLocked = dnsVerified && !unlockDns;
 
   // Once a save completes, re-lock everything.
   useEffect(() => {
@@ -95,6 +101,12 @@ export function DeliverySection({
       setUnlockSender(false);
     }
   }, [saveState]);
+
+  // Sender or return-path change → the records we just verified no longer
+  // apply, so drop the verified state and let Step 3 re-prompt for a check.
+  useEffect(() => {
+    setDnsVerified(false);
+  }, [account.resendFromEmail, account.resendReturnPath]);
 
   return (
     <div className="space-y-3">
@@ -143,21 +155,44 @@ export function DeliverySection({
       </Step>
 
       <Step
-        active={senderLocked}
+        active={senderLocked && !dnsLocked}
         blocked={!senderLocked}
+        done={dnsLocked}
         index={3}
         subtitle={
-          senderLocked
-            ? 'Add these to your DNS provider, then check.'
-            : 'These appear once your sender is set.'
+          dnsLocked
+            ? 'All sending DNS records resolved. Sending is ready.'
+            : senderLocked
+              ? 'Add these to your DNS provider, then check.'
+              : 'These appear once your sender is set.'
         }
         title="Add the sending DNS records"
       >
-        {senderLocked && (
-          <SendingDnsChecker
-            account={account}
-            apexHasDmarc={apexHasDmarc}
-          />
+        {dnsLocked ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-emerald-900">
+              <Check className="h-3.5 w-3.5" />
+              Verified
+            </div>
+            <button
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-emerald-200 bg-white px-2 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100"
+              onClick={() => setUnlockDns(true)}
+              type="button"
+            >
+              Re-check
+            </button>
+          </div>
+        ) : (
+          senderLocked && (
+            <SendingDnsChecker
+              account={account}
+              apexHasDmarc={apexHasDmarc}
+              onVerifiedChange={(verified) => {
+                setDnsVerified(verified);
+                if (verified) setUnlockDns(false);
+              }}
+            />
+          )
         )}
       </Step>
 
@@ -552,15 +587,18 @@ function parseStoredFrom(stored: string): { displayName: string; localPart: stri
 function SendingDnsChecker({
   account,
   apexHasDmarc,
+  onVerifiedChange,
 }: {
   account: DeliveryAccount;
   apexHasDmarc: boolean;
+  onVerifiedChange: (verified: boolean) => void;
 }) {
   const [checking, setChecking] = useState(false);
   const [records, setRecords] = useState<DnsRecordCheck[]>([]);
   const [overall, setOverall] = useState<'idle' | 'verified' | 'missing' | 'error'>('idle');
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState('');
+  const [autoChecked, setAutoChecked] = useState(false);
 
   const check = useCallback(async () => {
     if (checking) return;
@@ -594,13 +632,36 @@ function SendingDnsChecker({
         ? data.records.filter((r) => !r.id.toLowerCase().includes('dmarc'))
         : data.records;
       setRecords(filtered);
-      setOverall(data.status);
+      // Verified-from-client's-perspective: every record we *show* the user
+      // resolves. The server's `data.status` can disagree when we hide DMARC
+      // (the user has their own at the apex) — we don't want that to keep
+      // Step 3 expanded forever.
+      const allVerified = filtered.length > 0 && filtered.every((r) => r.status === 'verified');
+      setOverall(allVerified ? 'verified' : data.status);
     } catch {
       setError('DNS check failed.');
     } finally {
       setChecking(false);
     }
   }, [account.domain, account.resendFromEmail, apexHasDmarc, checking]);
+
+  // Tell the parent whenever the overall verdict flips so it can collapse
+  // Step 3 once everything resolves.
+  useEffect(() => {
+    onVerifiedChange(overall === 'verified');
+  }, [overall, onVerifiedChange]);
+
+  // Auto-check on mount so the user sees the verified state without having
+  // to click. Only runs once per mount; the user clicks the button to recheck.
+  useEffect(() => {
+    if (autoChecked) return;
+    if (!account.resendFromEmail || !account.resendApiKey) return;
+    setAutoChecked(true);
+    void check();
+    // We intentionally do NOT depend on `check` — the callback's deps include
+    // `checking` which would re-fire the effect after the request completes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account.resendFromEmail, account.resendApiKey, autoChecked]);
 
   return (
     <div className="space-y-3">
