@@ -70,29 +70,29 @@ export function LeadMagnetPageView({
       style={brandStyle}
     >
       <header className="relative z-10">
-        <div className="mx-auto flex max-w-7xl items-center justify-center px-4 pb-6 pt-8 sm:px-6 sm:pb-8 sm:pt-10 lg:px-8">
-          <Link href={homeHref} className="inline-flex min-h-12 items-center gap-3 transition-transform hover:scale-[1.01]">
+        <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 pb-7 pt-8 sm:px-6 sm:pb-8 lg:px-8">
+          <Link href={homeHref} className="inline-flex min-h-14 max-w-full items-center gap-2.5 transition-transform hover:scale-[1.01]">
             <BrandLockup account={account} displayName={displayName} />
           </Link>
         </div>
       </header>
 
       <main className="relative z-10 flex-1">
-        <div className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
+        <div className="mx-auto max-w-[1420px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
-            className="relative overflow-hidden rounded-[28px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-10 lg:p-16"
+            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-10 lg:p-[76px]"
             style={{
               boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(account.brand.primary, 0.02)}`,
             }}
           >
-            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,520px)] lg:items-start lg:gap-14">
-              <section className="min-w-0 lg:pt-4">
-                <h1 className="mb-6 max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-6xl">
+            <div className="lg:grid lg:grid-cols-[minmax(0,600px)_minmax(400px,590px)] lg:items-start lg:gap-[72px]">
+              <section className="min-w-0 lg:pt-2">
+                <h1 className="mb-7 max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-[64px] lg:leading-[1.04]">
                   {magnet.title}
                 </h1>
 
                 {magnet.subtitle && (
-                  <p className="mb-8 max-w-2xl text-xl font-medium leading-relaxed text-gray-600">
+                  <p className="mb-12 max-w-2xl text-xl font-medium leading-relaxed text-gray-600">
                     {magnet.subtitle}
                   </p>
                 )}
@@ -102,7 +102,7 @@ export function LeadMagnetPageView({
                 </div>
 
                 {magnet.description && (
-                  <div className="mb-10 max-w-2xl space-y-5 text-base leading-relaxed text-gray-600">
+                  <div className="mb-12 max-w-2xl space-y-5 text-base leading-relaxed text-gray-600">
                     {magnet.description
                       .split('\n\n')
                       .filter(Boolean)
@@ -115,11 +115,11 @@ export function LeadMagnetPageView({
                 {magnet.bullets.length > 0 && (
                   <div>
                     {magnet.bulletsHeading && (
-                      <p className="mb-5 text-base font-semibold text-gray-700">
+                      <p className="mb-6 text-base font-semibold text-gray-700">
                         {magnet.bulletsHeading}
                       </p>
                     )}
-                    <ul className="max-w-2xl space-y-4">
+                    <ul className="max-w-2xl space-y-5">
                       {magnet.bullets.map((bullet) => (
                         <li key={bullet} className="flex items-start gap-3">
                           <span
@@ -158,7 +158,7 @@ export function LeadMagnetPageView({
       </main>
 
       <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="mx-auto flex max-w-7xl items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
           <span className="mx-2 text-gray-400">·</span>
           <Link className="transition hover:text-gray-900" href="/privacy">
@@ -203,9 +203,9 @@ function BrandLockup({
   if (account.logoUrl) {
     return (
       <>
-        <img src={account.logoUrl} alt="" className="h-11 w-auto max-w-[88px] object-contain sm:h-14" />
+        <img src={account.logoUrl} alt="" className="h-11 w-auto max-w-[76px] object-contain sm:h-14" />
         {logoText && (
-          <span className="break-words text-3xl font-black leading-none text-gray-950 sm:text-4xl">
+          <span className="min-w-0 max-w-[72vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[46px] lg:text-[48px]">
             {logoText}
           </span>
         )}
@@ -214,7 +214,7 @@ function BrandLockup({
   }
 
   return (
-    <span className="break-words text-3xl font-black leading-none text-gray-950 sm:text-4xl">
+    <span className="max-w-[82vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[46px] lg:text-[48px]">
       {displayName}
     </span>
   );
@@ -228,7 +228,7 @@ function MediaAndCapture({
   magnet: LeadMagnet;
 }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       {magnet.imageUrl && <MagnetImage magnet={magnet} />}
       <CaptureCard account={account} magnet={magnet} />
     </div>
@@ -258,20 +258,20 @@ function CaptureCard({
 }) {
   return (
     <div
-      className="rounded-[24px] border bg-white p-6 backdrop-blur-sm sm:p-8"
+      className="rounded-[24px] border bg-white p-6 backdrop-blur-sm sm:p-10"
       style={{
-        borderColor: alpha(account.brand.primary, 0.18),
-        backgroundImage: `linear-gradient(180deg, #ffffff 0%, ${alpha(account.brand.primary, 0.04)} 100%)`,
-        boxShadow: `0 30px 80px -34px ${alpha(account.brand.primary, 0.48)}, 0 22px 60px -45px rgb(15 23 42 / 0.7)`,
+        borderColor: alpha(account.brand.primary, 0.12),
+        backgroundImage: 'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.96) 100%)',
+        boxShadow: '0 22px 70px -44px rgb(59 130 246 / 0.24), 0 18px 48px -42px rgb(15 23 42 / 0.22)',
       }}
     >
       {magnet.formHeading && (
-        <h2 className="mb-2 break-words text-center text-2xl font-black leading-tight text-gray-950 sm:text-3xl">
+        <h2 className="mb-2 break-words text-center text-2xl font-black leading-tight text-gray-950 sm:text-[32px]">
           {magnet.formHeading}
         </h2>
       )}
       {magnet.formSubtext && (
-        <p className="mb-6 text-center text-sm leading-6 text-gray-600 sm:mb-8">
+        <p className="mb-8 text-center text-sm leading-6 text-gray-600 sm:mb-10">
           {magnet.formSubtext}
         </p>
       )}

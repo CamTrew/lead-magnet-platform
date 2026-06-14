@@ -415,7 +415,7 @@ function PageCanvas({
   return (
     <div className="relative bg-white text-zinc-900" style={previewStyle}>
       <header className="relative z-10">
-        <div className="mx-auto flex max-w-7xl items-center justify-center px-4 pb-6 pt-8 sm:px-6 sm:pb-8 sm:pt-10 lg:px-8">
+        <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 pb-7 pt-8 sm:px-6 sm:pb-8 lg:px-8">
           <BrandPreviewLockup
             account={account}
             accountHasLogo={accountHasLogo}
@@ -425,19 +425,19 @@ function PageCanvas({
       </header>
 
       <main className="relative z-10">
-        <div className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
+        <div className="mx-auto max-w-[1420px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
-            className="relative overflow-hidden rounded-[28px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-10 lg:p-16"
+            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-10 lg:p-[76px]"
             style={{
               boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(brandPrimary, 0.02)}`,
             }}
           >
-            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,520px)] lg:items-start lg:gap-14">
-              <section className="min-w-0 lg:pt-4">
+            <div className="lg:grid lg:grid-cols-[minmax(0,600px)_minmax(400px,590px)] lg:items-start lg:gap-[72px]">
+              <section className="min-w-0 lg:pt-2">
                 <InlineText
                   ariaLabel="Page headline"
                   as="h1"
-                  className="mb-6 block max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-6xl"
+                  className="mb-7 block max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-[64px] lg:leading-[1.04]"
                   emptyPlaceholder="Your headline"
                   maxLength={140}
                   onChange={(value) => onPatch({ title: value })}
@@ -447,7 +447,7 @@ function PageCanvas({
                 <InlineText
                   ariaLabel="Page subheadline"
                   as="p"
-                  className="mb-8 block max-w-2xl text-xl font-medium leading-relaxed text-gray-600"
+                  className="mb-12 block max-w-2xl text-xl font-medium leading-relaxed text-gray-600"
                   emptyPlaceholder="Short subhead. say what they will get"
                   maxLength={220}
                   multiline
@@ -469,7 +469,7 @@ function PageCanvas({
                   />
                 </div>
 
-                <div className="mb-10 max-w-2xl">
+                <div className="mb-12 max-w-2xl">
                   <InlineParagraphs
                     ariaLabel="Page description"
                     className="text-base leading-8 text-gray-600"
@@ -483,12 +483,12 @@ function PageCanvas({
                   <InlineText
                     as="p"
                     ariaLabel="Bullets heading"
-                    className="mb-5 block text-base font-semibold text-gray-700"
+                    className="mb-6 block text-base font-semibold text-gray-700"
                     emptyPlaceholder="What they will learn"
                     onChange={(value) => onPatch({ bulletsHeading: value })}
                     value={leadMagnet.bulletsHeading}
                   />
-                  <ul className="max-w-2xl space-y-4">
+                  <ul className="max-w-2xl space-y-5">
                     {leadMagnet.bullets.length === 0 && (
                       <li className="text-sm italic text-gray-400">No bullets yet. click + to add one.</li>
                     )}
@@ -574,7 +574,7 @@ function PageCanvas({
       </main>
 
       <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="mx-auto flex max-w-7xl items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
           <span className="mx-2 text-gray-400">·</span>
           <Link
@@ -603,11 +603,11 @@ function BrandPreviewLockup({
 
   if (accountHasLogo) {
     return (
-      <div className="inline-flex min-h-12 items-center gap-3">
+      <div className="inline-flex min-h-14 max-w-full items-center gap-2.5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img alt="" className="h-11 w-auto max-w-[88px] object-contain sm:h-14" src={account.logoUrl} />
+        <img alt="" className="h-11 w-auto max-w-[76px] object-contain sm:h-14" src={account.logoUrl} />
         {logoText && (
-          <span className="break-words text-3xl font-black leading-none text-gray-950 sm:text-4xl">
+          <span className="min-w-0 max-w-[72vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[46px] lg:text-[48px]">
             {logoText}
           </span>
         )}
@@ -616,7 +616,7 @@ function BrandPreviewLockup({
   }
 
   return (
-    <span className="break-words text-3xl font-black leading-none text-gray-950 sm:text-4xl">
+    <span className="max-w-[82vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[46px] lg:text-[48px]">
       {fallback}
     </span>
   );
@@ -644,7 +644,7 @@ function MediaAndCapturePreview({
   title: string;
 }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       <ImageHotspot
         brandPrimary={brandPrimary}
         imageUrl={imageUrl}
@@ -678,17 +678,17 @@ function CaptureCardPreview({
 }) {
   return (
     <div
-      className="rounded-[24px] border bg-white p-6 sm:p-8"
+      className="rounded-[24px] border bg-white p-6 sm:p-10"
       style={{
-        borderColor: alpha(brandPrimary, 0.18),
-        backgroundImage: `linear-gradient(180deg, #ffffff 0%, ${alpha(brandPrimary, 0.04)} 100%)`,
-        boxShadow: `0 30px 80px -34px ${alpha(brandPrimary, 0.48)}, 0 22px 60px -45px rgb(15 23 42 / 0.7)`,
+        borderColor: alpha(brandPrimary, 0.12),
+        backgroundImage: 'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.96) 100%)',
+        boxShadow: '0 22px 70px -44px rgb(59 130 246 / 0.24), 0 18px 48px -42px rgb(15 23 42 / 0.22)',
       }}
     >
       <InlineText
         ariaLabel="Form heading"
         as="h2"
-        className="mb-2 block break-words text-center text-2xl font-black leading-tight text-gray-950 sm:text-3xl"
+        className="mb-2 block break-words text-center text-2xl font-black leading-tight text-gray-950 sm:text-[32px]"
         emptyPlaceholder="Download for free"
         maxLength={80}
         onChange={(value) => onPatch({ formHeading: value })}
@@ -697,22 +697,22 @@ function CaptureCardPreview({
       <InlineText
         ariaLabel="Form subtext"
         as="p"
-        className="mb-8 block text-center text-sm leading-6 text-gray-600"
+        className="mb-10 block text-center text-sm leading-6 text-gray-600"
         emptyPlaceholder="Pop your email in and we'll send it straight over."
         maxLength={140}
         multiline
         onChange={(value) => onPatch({ formSubtext: value })}
         value={formSubtext}
       />
-      <div className="space-y-4">
-        <div className="h-14 rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-500 shadow-sm flex items-center">
+      <div className="space-y-5">
+        <div className="flex h-16 items-center rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-500 shadow-sm">
           Name
         </div>
-        <div className="h-14 rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-500 shadow-sm flex items-center">
+        <div className="flex h-16 items-center rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-500 shadow-sm">
           Email
         </div>
         <EditableHotspot label="CTA button">
-          <div className="flex min-h-14 items-center justify-center rounded-2xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-base font-bold uppercase leading-tight text-white shadow-xl shadow-gray-900/30">
+          <div className="flex min-h-16 items-center justify-center rounded-2xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-base font-bold uppercase leading-tight text-white shadow-xl shadow-gray-900/30">
             <InlineText
               ariaLabel="CTA button text"
               as="span"

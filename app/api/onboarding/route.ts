@@ -21,6 +21,7 @@ const BUSINESS_TYPES = [
   'Solo creator',
   'Newsletter',
   'Small business',
+  'SaaS product',
   'Agency',
   'Consultancy',
   'Coach',

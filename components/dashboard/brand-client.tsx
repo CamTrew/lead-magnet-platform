@@ -307,11 +307,11 @@ function BrandPagePreview({
       <div className="flex items-center justify-center gap-2 px-4 py-6">
         {account.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img alt="" src={account.logoUrl} className="h-10 w-auto max-w-[86px] object-contain" />
+          <img alt="" src={account.logoUrl} className="h-10 w-auto max-w-[68px] object-contain" />
         ) : (
           <span className="h-10 w-10 rounded-lg border border-dashed border-ink-300 bg-white" />
         )}
-        <span className="truncate text-3xl font-black leading-none text-ink-950">{businessName}</span>
+        <span className="min-w-0 truncate text-[30px] font-extrabold leading-none text-ink-950">{businessName}</span>
       </div>
 
       <div className="px-5 pb-6">
@@ -380,9 +380,9 @@ function BrandPagePreview({
               <div
                 className="rounded-xl border bg-white p-4"
                 style={{
-                  borderColor: alpha(account.brand.primary, 0.18),
-                  backgroundImage: `linear-gradient(180deg, #ffffff 0%, ${alpha(account.brand.primary, 0.04)} 100%)`,
-                  boxShadow: `0 18px 42px -28px ${alpha(account.brand.primary, 0.5)}`,
+                  borderColor: alpha(account.brand.primary, 0.12),
+                  backgroundImage: 'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.96) 100%)',
+                  boxShadow: '0 14px 46px -34px rgb(59 130 246 / 0.22), 0 12px 30px -28px rgb(15 23 42 / 0.18)',
                 }}
               >
                 <p className="text-center text-lg font-black leading-tight text-ink-950">
