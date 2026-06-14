@@ -158,17 +158,14 @@ async function getResendEmailDnsRecords(
   // later, we have to surface that mismatch and let them decide; we never
   // delete the user's Resend domain silently.
   let domainResult;
-  let anchor: string;
   if (existingDomain) {
     domainResult = await resend.domains.get(existingDomain.id);
-    anchor = existingDomain.normalised;
   } else {
     try {
       domainResult = await resend.domains.create({
         name: want,
         ...(returnPath ? { custom_return_path: returnPath } : {}),
       } as Parameters<typeof resend.domains.create>[0]);
-      anchor = want;
     } catch (createErr) {
       // Wrap so the caller's catch can format the message correctly.
       throw createErr;
@@ -190,14 +187,15 @@ async function getResendEmailDnsRecords(
     throw new Error(message || 'Resend domain records could not be loaded.');
   }
 
-  // Resend returns record names relative to the Resend domain (the "anchor").
-  // For a domain created with custom_return_path='send' at apex headcount.so,
-  // Resend's `name` looks like 'send' / 'resend._domainkey.send' — those
-  // resolve at send.headcount.so / resend._domainkey.send.headcount.so when
-  // stitched against the anchor. Stitching them against the sender's full
-  // host instead would produce send.send.headcount.so.
+  // Resend returns record `name` values relative to the user's stored root
+  // domain (verified against a live Resend account). For a Resend domain
+  // `send.headcount.so` with custom_return_path='send', record names come
+  // back as `send.send` / `resend._domainkey.send` and resolve at
+  // send.send.headcount.so / resend._domainkey.send.headcount.so. So the
+  // right anchor for stitching is the apex (`headcount.so`), not the Resend
+  // domain.
   return domainResult.data.records.map((record, index) =>
-    mapResendRecord(record as ResendDnsRecord, anchor, index)
+    mapResendRecord(record as ResendDnsRecord, root, index)
   );
 }
 
