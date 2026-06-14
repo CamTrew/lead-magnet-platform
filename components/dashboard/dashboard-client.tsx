@@ -1,20 +1,14 @@
 'use client';
 
-import type { ChangeEvent, ReactNode } from 'react';
+import type { ChangeEvent } from 'react';
 import { useRef, useState } from 'react';
 import {
-  AlertCircle,
-  AtSign,
   Check,
-  CheckCircle2,
   CircleHelp,
-  Clock3,
-  Copy,
   Globe2,
   Loader2,
   Mail,
   Palette,
-  RefreshCw,
   Save,
   Trash2,
   X,
@@ -26,52 +20,15 @@ import {
   Field,
 } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { DeliverySection } from '@/components/dashboard/delivery-section';
 import { LockedField } from '@/components/dashboard/locked-field';
 import { PublishingWizard } from '@/components/dashboard/publishing-wizard';
-import {
-  buildEmailDnsRecords,
-  parseSenderEmail,
-  type DnsRecordDefinition,
-} from '@/lib/dns-records';
 import type { AccountSettings, DashboardPayload } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSection = 'brand' | 'publishing' | 'delivery';
-type DnsSection = 'delivery';
-type DnsRecordStatus = 'verified' | 'missing' | 'error';
-type DnsCheckStatus = 'idle' | 'checking' | DnsRecordStatus;
-
 type SectionIcon = typeof Palette;
-
-type DnsRecordCheck = DnsRecordDefinition & {
-  found: string[];
-  message: string;
-  status: DnsRecordStatus;
-};
-
-type DnsSectionCheck = {
-  checkedAt?: string;
-  error?: string;
-  recordOrder: string[];
-  records: Record<string, DnsRecordCheck>;
-  status: DnsCheckStatus;
-};
-
-type DnsVerifyResponse = {
-  checkedAt: string;
-  records: DnsRecordCheck[];
-  section: DnsSection;
-  status: DnsRecordStatus;
-};
-
-function idleDnsCheck(): DnsSectionCheck {
-  return {
-    recordOrder: [],
-    records: {},
-    status: 'idle',
-  };
-}
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -80,151 +37,6 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
-}
-
-function DnsStatusBadge({ check }: { check?: DnsRecordCheck }) {
-  const label = check?.status === 'verified'
-    ? 'Verified'
-    : check?.status === 'missing'
-      ? 'Missing'
-      : check?.status === 'error'
-        ? 'Error'
-        : 'Not checked';
-  const Icon = check?.status === 'verified'
-    ? CheckCircle2
-    : check?.status === 'missing' || check?.status === 'error'
-      ? AlertCircle
-      : Clock3;
-
-  return (
-    <span
-      title={check?.message}
-      className={cn(
-        'inline-flex h-7 w-fit items-center gap-1.5 rounded-lg border px-2 text-xs font-bold',
-        !check && 'border-[#e4e4e7] bg-white text-[#71717a]',
-        check?.status === 'verified' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
-        check?.status === 'missing' && 'border-amber-200 bg-amber-50 text-amber-700',
-        check?.status === 'error' && 'border-red-200 bg-red-50 text-red-700'
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </span>
-  );
-}
-
-function DnsRecord({
-  check,
-  record,
-}: {
-  check?: DnsRecordCheck;
-  record: DnsRecordDefinition;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  async function copyRecord() {
-    try {
-      await navigator.clipboard.writeText(`${record.type}\t${record.name}\t${record.value}`);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <div className="grid gap-2 border-t border-[#e4e4e7] px-4 py-3 text-sm first:border-t-0 md:grid-cols-[88px_minmax(0,1fr)_minmax(0,1.45fr)_116px_40px]">
-      <span className="font-semibold text-[#18181b]">{record.type}</span>
-      <code className="break-all rounded-md border border-[#e4e4e7] bg-[#fafafa] px-2 py-1 text-xs text-[#3f3f46]">{record.name}</code>
-      <code className="break-all rounded-md border border-[#e4e4e7] bg-[#fafafa] px-2 py-1 text-xs text-[#3f3f46]">{record.value}</code>
-      <DnsStatusBadge check={check} />
-      <button
-        aria-label={`Copy ${record.type} record`}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e4e4e7] bg-white text-[#18181b] transition hover:border-[#d4d4d8] hover:bg-[#f4f4f5]"
-        onClick={copyRecord}
-        type="button"
-      >
-        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-      </button>
-    </div>
-  );
-}
-
-function DnsTable({
-  children,
-  checkState,
-  description,
-  help,
-  onVerify,
-  title,
-  verifyDisabled,
-}: {
-  children: ReactNode;
-  checkState: DnsSectionCheck;
-  description: string;
-  help?: string;
-  onVerify: () => void;
-  title: string;
-  verifyDisabled?: boolean;
-}) {
-  const checking = checkState.status === 'checking';
-  const statusLabel = checkState.status === 'verified'
-    ? 'All records verified'
-    : checkState.status === 'missing'
-      ? 'Some records are missing'
-      : checkState.status === 'error'
-        ? 'DNS check hit an error'
-        : checking
-          ? 'Checking public DNS'
-          : '';
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-[#e4e4e7]">
-      <div className="flex flex-col gap-3 bg-[#fafafa] px-4 py-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="flex items-center gap-1.5 text-sm font-bold text-[#09090b]">
-            {title}
-            {help && <HelpTooltip ariaLabel={`${title} help`} help={help} width="w-80" />}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-[#71717a]">{description}</p>
-          {(statusLabel || checkState.error) && (
-            <p
-              className={cn(
-                'mt-2 inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold',
-                checking && 'border-[#d4d4d8] bg-white text-[#18181b]',
-                checkState.status === 'verified' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                checkState.status === 'missing' && 'border-amber-200 bg-amber-50 text-amber-700',
-                (checkState.status === 'error' || checkState.error) && 'border-red-200 bg-red-50 text-red-700'
-              )}
-            >
-              {checkState.error || statusLabel}
-              {checkState.checkedAt && checkState.status !== 'checking'
-                ? ` at ${new Date(checkState.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                : ''}
-            </p>
-          )}
-        </div>
-        <AceternityButton
-          disabled={verifyDisabled || checking}
-          onClick={onVerify}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Check DNS
-        </AceternityButton>
-      </div>
-      <div className="hidden grid-cols-[88px_minmax(0,1fr)_minmax(0,1.45fr)_116px_40px] gap-2 border-t border-[#e4e4e7] bg-white px-4 py-2 text-xs font-bold uppercase text-[#71717a] md:grid">
-        <span>Type</span>
-        <span>Host</span>
-        <span>Value</span>
-        <span>Status</span>
-        <span />
-      </div>
-      {children}
-    </div>
-  );
 }
 
 function SectionHeader({
@@ -413,9 +225,6 @@ export function DashboardClient({
     delivery: 'idle',
     publishing: 'idle',
   });
-  const [dnsChecks, setDnsChecks] = useState<Record<DnsSection, DnsSectionCheck>>({
-    delivery: idleDnsCheck(),
-  });
   const [error, setError] = useState('');
   // Once a value is committed (root domain attached, Resend key saved, etc.),
   // we hide the input behind a LockedField. Setting one of these to true
@@ -438,9 +247,6 @@ export function DashboardClient({
   function markChanged(section: SaveSection) {
     setError('');
     setSaveState(section, 'idle');
-    if (section === 'delivery') {
-      setDnsChecks((current) => ({ ...current, delivery: idleDnsCheck() }));
-    }
   }
 
   function patchAccount(updates: Partial<AccountSettings>, section: SaveSection) {
@@ -513,77 +319,11 @@ export function DashboardClient({
     }
   }
 
-  async function verifyDns(section: DnsSection) {
-    setError('');
-    setDnsChecks((current) => ({
-      ...current,
-      [section]: {
-        ...current[section],
-        error: undefined,
-        status: 'checking',
-      },
-    }));
-
-    try {
-      const response = await fetch('/api/dns/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          section,
-          domain: account.domain,
-          subdomain: account.subdomain,
-          resendFromEmail: account.resendFromEmail,
-        }),
-      });
-      const data = (await response.json().catch(() => null)) as
-        | (Partial<DnsVerifyResponse> & { error?: string })
-        | null;
-
-      const records = data?.records;
-      const status = data?.status;
-      const checkedAt = data?.checkedAt;
-
-      if (!response.ok || !records || !status || !checkedAt) {
-        throw new Error(data?.error || 'DNS could not be checked');
-      }
-
-      setDnsChecks((current) => ({
-        ...current,
-        [section]: {
-          checkedAt,
-          recordOrder: records.map((record) => record.id),
-          records: Object.fromEntries(records.map((record) => [record.id, record])),
-          status,
-        },
-      }));
-    } catch (err) {
-      setDnsChecks((current) => ({
-        ...current,
-        [section]: {
-          ...current[section],
-          error: err instanceof Error ? err.message : 'DNS could not be checked',
-          status: 'error',
-        },
-      }));
-    }
-  }
-
   const pageSubdomain = account.subdomain || 'get';
   const configuredDomain = account.domain.trim();
   const displayDomain = configuredDomain || 'example.com';
   const pageHost = `${pageSubdomain}.${displayDomain}`;
-  const sender = parseSenderEmail(account.resendFromEmail);
-  const senderInvalid = Boolean(account.resendFromEmail.trim() && !sender);
-  const fromDomain = sender?.domain || '';
-  const displayFromDomain = fromDomain || displayDomain;
   const brandLabel = account.logoText.trim() || 'Your logo text';
-  const deliveryDnsRecords = buildEmailDnsRecords(displayFromDomain);
-  const checkedDeliveryDnsRecords = dnsChecks.delivery.recordOrder
-    .map((id) => dnsChecks.delivery.records[id])
-    .filter((record): record is DnsRecordCheck => Boolean(record));
-  const visibleDeliveryDnsRecords = checkedDeliveryDnsRecords.length
-    ? checkedDeliveryDnsRecords
-    : deliveryDnsRecords;
 
   return (
     <>
@@ -820,180 +560,126 @@ export function DashboardClient({
             />
 
             <div className="space-y-5">
-              <div className="grid gap-4">
-                <Field label="From email" hint="Example: Your Brand <hello@example.com>">
-                  <div className="relative">
-                    <AtSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a1a1aa]" />
-                    <AceternityInput
-                      className="pl-9"
-                      value={account.resendFromEmail}
-                      onChange={(event) => patchAccount({ resendFromEmail: event.target.value }, 'delivery')}
-                      placeholder="Sender name and email"
-                    />
-                  </div>
-                  {senderInvalid && (
-                    <span className="mt-2 block text-xs font-bold leading-5 text-red-600">
-                      Enter a full sender email, for example Your Brand &lt;hello@example.com&gt;.
-                    </span>
-                  )}
-                </Field>
-
-                <Field
-                  label={
-                    <LabelHelp
-                      label="Resend API key"
-                      help="Create a free Resend account at resend.com, then go to API Keys and create one with full access. The key is used to send the resource email from your sender domain."
-                    />
-                  }
-                  hint="Used to send the resource email. Bring your own Resend key so sending stays in your account."
-                >
-                  <LockedField
-                    confirmDescription={
-                      <>
-                        <p>
-                          Replacing your sending key means any emails in flight, or that we retry after this
-                          point, will use the new one. If you paste an invalid key here, deliveries will fail
-                          until it&apos;s fixed.
-                        </p>
-                        <p className="mt-2 text-ink-600">Make sure you have the new key ready before continuing.</p>
-                      </>
-                    }
-                    confirmTitle="Replace your sending key?"
-                    displayValue={<span className="font-mono text-ink-700">••••••••</span>}
-                    locked={Boolean(account.resendApiKey) && !unlockResendKey}
-                    onConfirmEdit={() => {
-                      // Clear the stored masked value so the new input starts empty
-                      // and the user must paste a fresh key.
-                      patchAccount({ resendApiKey: '' }, 'delivery');
-                      setUnlockResendKey(true);
-                    }}
-                  >
-                    <AceternityInput
-                      value={account.resendApiKey}
-                      onChange={(event) => patchAccount({ resendApiKey: event.target.value }, 'delivery')}
-                      placeholder="re_xxxxxxxxxxxx"
-                    />
-                  </LockedField>
-                </Field>
-
-                <details className="group rounded-lg border border-[#e4e4e7] bg-[#fafafa] open:bg-white">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
-                    <div className="min-w-0">
-                      <p className="text-sm font-black text-[#09090b]">Add signups to a newsletter</p>
-                      <p className="mt-0.5 text-xs leading-5 text-[#52525b]">
-                        Optional. Connect Beehiiv or Substack to forward each signup. Signups are always saved here either way.
+              <Field
+                label={
+                  <LabelHelp
+                    label="Sending key"
+                    help="Create a free Resend account at resend.com, then go to API Keys and create one with full access. The key is used to send the resource email from your sender domain."
+                  />
+                }
+                hint="The key is encrypted at rest and never shown back to you in plaintext."
+              >
+                <LockedField
+                  confirmDescription={
+                    <>
+                      <p>
+                        Replacing your sending key means any emails in flight, or that we retry after this
+                        point, will use the new one. If you paste an invalid key here, deliveries will fail
+                        until it&apos;s fixed.
                       </p>
-                    </div>
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#e4e4e7] bg-white text-[#18181b] transition group-open:rotate-180">
-                      <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5">
-                        <path
-                          d="M4 6l4 4 4-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    </span>
-                  </summary>
+                      <p className="mt-2 text-ink-600">Make sure you have the new key ready before continuing.</p>
+                    </>
+                  }
+                  confirmTitle="Replace your sending key?"
+                  displayValue={<span className="font-mono text-ink-700">••••••••</span>}
+                  locked={Boolean(account.resendApiKey) && !unlockResendKey}
+                  onConfirmEdit={() => {
+                    patchAccount({ resendApiKey: '' }, 'delivery');
+                    setUnlockResendKey(true);
+                  }}
+                >
+                  <AceternityInput
+                    value={account.resendApiKey}
+                    onChange={(event) => patchAccount({ resendApiKey: event.target.value }, 'delivery')}
+                    placeholder="re_xxxxxxxxxxxx"
+                  />
+                </LockedField>
+              </Field>
 
-                  <div className="space-y-4 border-t border-[#e4e4e7] p-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field
-                        label={
-                          <LabelHelp
-                            label="Beehiiv publication ID"
-                            help="In Beehiiv, open the publication you want to use, then copy the publication ID from the API settings."
-                          />
-                        }
-                      >
-                        <AceternityInput
-                          value={account.beehiivPublicationId}
-                          onChange={(event) => patchAccount({ beehiivPublicationId: event.target.value }, 'delivery')}
-                          placeholder="Publication ID"
-                        />
-                      </Field>
-                      <Field
-                        label={
-                          <LabelHelp
-                            label="Beehiiv API key"
-                            help="In Beehiiv, go to Settings, then Integrations or API. Create an API key and paste it here."
-                          />
-                        }
-                      >
-                        <AceternityInput
-                          value={account.beehiivApiKey}
-                          onChange={(event) => patchAccount({ beehiivApiKey: event.target.value }, 'delivery')}
-                          placeholder="API key"
-                        />
-                      </Field>
-                    </div>
+              <DeliverySection
+                account={{
+                  domain: account.domain,
+                  domainAttachedHost: account.domainAttachedHost,
+                  resendApiKey: account.resendApiKey,
+                  resendFromEmail: account.resendFromEmail,
+                  resendReturnPath: account.resendReturnPath,
+                }}
+                onPatch={(updates) => patchAccount(updates, 'delivery')}
+                onSave={() => saveAccount('delivery')}
+                saveState={sectionState.delivery}
+              />
 
+              <details className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink-950">Add signups to a newsletter</p>
+                    <p className="mt-0.5 text-xs leading-5 text-ink-600">
+                      Optional. Connect Beehiiv or Substack to forward each signup. Signups are always saved here either way.
+                    </p>
+                  </div>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
+                    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5">
+                      <path
+                        d="M4 6l4 4 4-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      />
+                    </svg>
+                  </span>
+                </summary>
+
+                <div className="space-y-4 border-t border-ink-200 p-4">
+                  <div className="grid gap-4 md:grid-cols-2">
                     <Field
                       label={
                         <LabelHelp
-                          label="Substack publication"
-                          help="The subdomain on Substack. for example, type 'myletter' for myletter.substack.com. Substack has no official subscriber API, so this uses their public subscribe endpoint and may break if Substack changes it."
+                          label="Beehiiv publication ID"
+                          help="In Beehiiv, open the publication you want to use, then copy the publication ID from the API settings."
                         />
                       }
-                      hint="Just the subdomain. myletter, not myletter.substack.com"
                     >
                       <AceternityInput
-                        value={account.substackPublication}
-                        onChange={(event) => patchAccount({ substackPublication: event.target.value }, 'delivery')}
-                        placeholder="myletter"
+                        value={account.beehiivPublicationId}
+                        onChange={(event) => patchAccount({ beehiivPublicationId: event.target.value }, 'delivery')}
+                        placeholder="Publication ID"
+                      />
+                    </Field>
+                    <Field
+                      label={
+                        <LabelHelp
+                          label="Beehiiv API key"
+                          help="In Beehiiv, go to Settings, then Integrations or API. Create an API key and paste it here."
+                        />
+                      }
+                    >
+                      <AceternityInput
+                        value={account.beehiivApiKey}
+                        onChange={(event) => patchAccount({ beehiivApiKey: event.target.value }, 'delivery')}
+                        placeholder="API key"
                       />
                     </Field>
                   </div>
-                </details>
-              </div>
 
-              {senderInvalid ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
-                  Add a valid sender email before copying or checking sending DNS records.
-                </div>
-              ) : (
-                <DnsTable
-                  checkState={dnsChecks.delivery}
-                  title="Sending-domain DNS records"
-                  description={
-                    fromDomain
-                      ? `These records help verify sending for ${fromDomain}.`
-                      : 'Add a sender email above. Until then these use the publishing domain as an example.'
-                  }
-                  help={
-                    'These records prove to Gmail and Outlook that you own the domain you send from. without them, your emails land in spam.\n\n' +
-                    'Where to add them: log in to wherever DNS is managed for your sender domain (Cloudflare, GoDaddy, Namecheap, etc.). Open DNS records.\n\n' +
-                    'There are three kinds:\n' +
-                    '• MX. directs return-path mail. Pick "MX" as the type, paste Host into Name, paste Value into the mail-server field. Priority is 10.\n' +
-                    '• TXT (SPF / DKIM / DMARC). pick "TXT", paste Host into Name, paste the whole Value (quotes included) into the Value/Content field.\n\n' +
-                    'Click "Check DNS" here once added. Records often appear within minutes but can take a few hours.\n\n' +
-                    'These records come straight from your Resend account. they are unique to your sender, so do not copy them from anywhere else.'
-                  }
-                  onVerify={() => verifyDns('delivery')}
-                  verifyDisabled={!fromDomain}
-                >
-                  {visibleDeliveryDnsRecords.map((record) => (
-                    <DnsRecord
-                      key={record.id}
-                      check={dnsChecks.delivery.records[record.id]}
-                      record={record}
+                  <Field
+                    label={
+                      <LabelHelp
+                        label="Substack publication"
+                        help="The subdomain on Substack. for example, type 'myletter' for myletter.substack.com. Substack has no official subscriber API, so this uses their public subscribe endpoint and may break if Substack changes it."
+                      />
+                    }
+                    hint="Just the subdomain. myletter, not myletter.substack.com"
+                  >
+                    <AceternityInput
+                      value={account.substackPublication}
+                      onChange={(event) => patchAccount({ substackPublication: event.target.value }, 'delivery')}
+                      placeholder="myletter"
                     />
-                  ))}
-                </DnsTable>
-              )}
-
-              <p className="rounded-lg border border-[#e4e4e7] bg-[#fafafa] p-3 text-xs font-medium leading-5 text-[#52525b]">
-                Click Check DNS to create or find the sender domain in Resend, then show the exact records, including DKIM.
-              </p>
-
-              <SectionSave
-                disabled={senderInvalid}
-                label="Save delivery"
-                onSave={() => saveAccount('delivery')}
-                state={sectionState.delivery}
-              />
+                  </Field>
+                </div>
+              </details>
             </div>
           </div>
         </AceternityCard>
