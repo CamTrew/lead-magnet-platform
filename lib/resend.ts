@@ -10,22 +10,6 @@ export class EmailDeliveryError extends Error {
   }
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function renderParagraphs(value: string) {
-  return value
-    .split('\n\n')
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)
-    .join('');
-}
-
 function scrubResendErrorMessage(message: string) {
   // The Resend SDK occasionally echoes the key back in error messages. Strip
   // anything that looks like one before we hand it to a caller that may end up
@@ -106,14 +90,6 @@ export async function sendLeadMagnetEmail({
       to,
       subject: magnet.emailSubject,
       text,
-      html: `
-        <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(magnet.emailPreview)}</div>
-        <main style="margin:0;background:#fafafa;padding:32px;font-family:Inter,Arial,sans-serif;color:#18181b">
-          <section style="margin:0 auto;max-width:640px;border:1px solid #e4e4e7;background:#ffffff;border-radius:8px;padding:40px">
-            <div style="font-size:16px;line-height:1.7;color:#3f3f46">${renderParagraphs(text)}</div>
-          </section>
-        </main>
-      `,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
