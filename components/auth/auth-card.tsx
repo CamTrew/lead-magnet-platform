@@ -70,7 +70,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
 
     try {
       const body = mode === 'register'
-        ? { email, password, name: name.trim() }
+        ? { email, password, name: name.trim(), acceptedTerms: true }
         : { email, password };
       const response = await fetch(endpoint, {
         method: 'POST',

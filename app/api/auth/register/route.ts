@@ -7,11 +7,15 @@ import {
   RateLimitError,
   requestIp,
 } from '@/lib/rate-limit';
+import { subscribeToPlatformNewsletter } from '@/lib/platform-newsletter';
 
 const schema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(8),
   name: z.string().trim().min(1).max(120),
+  acceptedTerms: z.literal(true, {
+    errorMap: () => ({ message: 'You must accept the Terms of Service to continue.' }),
+  }),
 });
 
 export async function POST(request: NextRequest) {
@@ -43,6 +47,10 @@ export async function POST(request: NextRequest) {
     ]);
 
     const user = await createRegisterSession(email, password, name);
+
+    // Best-effort: add the user to the Magnets product newsletter as
+    // disclosed on the register form. Never blocks the registration.
+    void subscribeToPlatformNewsletter({ email, name });
 
     return NextResponse.json({ user });
   } catch (err) {
