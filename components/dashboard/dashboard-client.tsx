@@ -26,6 +26,7 @@ import {
   Field,
 } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { LockedField } from '@/components/dashboard/locked-field';
 import { PublishingWizard } from '@/components/dashboard/publishing-wizard';
 import {
   buildEmailDnsRecords,
@@ -416,6 +417,11 @@ export function DashboardClient({
     delivery: idleDnsCheck(),
   });
   const [error, setError] = useState('');
+  // Once a value is committed (root domain attached, Resend key saved, etc.),
+  // we hide the input behind a LockedField. Setting one of these to true
+  // re-reveals the input until the next save.
+  const [unlockDomain, setUnlockDomain] = useState(false);
+  const [unlockResendKey, setUnlockResendKey] = useState(false);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   function removeLogo() {
@@ -496,6 +502,10 @@ export function DashboardClient({
 
       const data = (await response.json()) as { account: AccountSettings };
       setAccount(data.account);
+      // After a successful save we re-lock the previously-unlocked fields,
+      // so the user has to click Edit again to make further changes.
+      if (section === 'publishing') setUnlockDomain(false);
+      if (section === 'delivery') setUnlockResendKey(false);
       setSaveState(section, 'saved');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -733,25 +743,60 @@ export function DashboardClient({
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Root domain" hint="No https or page paths.">
-                  <AceternityInput
-                    value={account.domain}
-                    onChange={(event) =>
-                      patchAccount({
-                        domain: event.target.value
-                          .toLowerCase()
-                          .replace(/^https?:\/\//, '')
-                          .replace(/\/.*/, ''),
-                      }, 'publishing')
+                  <LockedField
+                    confirmDescription={
+                      <>
+                        <p>
+                          Changing your root domain disconnects the current one and clears your ownership
+                          verification. Visitors going to{' '}
+                          <span className="font-mono text-ink-900">{account.domainAttachedHost}</span> will
+                          stop seeing your pages until you finish the new setup.
+                        </p>
+                        <p className="mt-2 text-ink-600">You can keep using the dashboard while you switch.</p>
+                      </>
                     }
-                    placeholder="example.com"
-                  />
+                    confirmTitle="Change your root domain?"
+                    displayValue={account.domain}
+                    locked={Boolean(account.domainAttachedHost) && !unlockDomain}
+                    onConfirmEdit={() => setUnlockDomain(true)}
+                  >
+                    <AceternityInput
+                      value={account.domain}
+                      onChange={(event) =>
+                        patchAccount({
+                          domain: event.target.value
+                            .toLowerCase()
+                            .replace(/^https?:\/\//, '')
+                            .replace(/\/.*/, ''),
+                        }, 'publishing')
+                      }
+                      placeholder="example.com"
+                    />
+                  </LockedField>
                 </Field>
                 <Field label="Page subdomain" hint="Recommended: get">
-                  <AceternityInput
-                    value={account.subdomain}
-                    onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() }, 'publishing')}
-                    placeholder="get"
-                  />
+                  <LockedField
+                    confirmDescription={
+                      <>
+                        <p>
+                          Changing the subdomain disconnects{' '}
+                          <span className="font-mono text-ink-900">{account.domainAttachedHost}</span> and
+                          requires you to verify the new one. Existing links to your pages will stop working
+                          until the new subdomain is live.
+                        </p>
+                      </>
+                    }
+                    confirmTitle="Change your subdomain?"
+                    displayValue={account.subdomain}
+                    locked={Boolean(account.domainAttachedHost) && !unlockDomain}
+                    onConfirmEdit={() => setUnlockDomain(true)}
+                  >
+                    <AceternityInput
+                      value={account.subdomain}
+                      onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() }, 'publishing')}
+                      placeholder="get"
+                    />
+                  </LockedField>
                 </Field>
               </div>
 
@@ -802,11 +847,33 @@ export function DashboardClient({
                   }
                   hint="Used to send the resource email. Bring your own Resend key so sending stays in your account."
                 >
-                  <AceternityInput
-                    value={account.resendApiKey}
-                    onChange={(event) => patchAccount({ resendApiKey: event.target.value }, 'delivery')}
-                    placeholder="re_xxxxxxxxxxxx"
-                  />
+                  <LockedField
+                    confirmDescription={
+                      <>
+                        <p>
+                          Replacing your sending key means any emails in flight, or that we retry after this
+                          point, will use the new one. If you paste an invalid key here, deliveries will fail
+                          until it&apos;s fixed.
+                        </p>
+                        <p className="mt-2 text-ink-600">Make sure you have the new key ready before continuing.</p>
+                      </>
+                    }
+                    confirmTitle="Replace your sending key?"
+                    displayValue={<span className="font-mono text-ink-700">••••••••</span>}
+                    locked={Boolean(account.resendApiKey) && !unlockResendKey}
+                    onConfirmEdit={() => {
+                      // Clear the stored masked value so the new input starts empty
+                      // and the user must paste a fresh key.
+                      patchAccount({ resendApiKey: '' }, 'delivery');
+                      setUnlockResendKey(true);
+                    }}
+                  >
+                    <AceternityInput
+                      value={account.resendApiKey}
+                      onChange={(event) => patchAccount({ resendApiKey: event.target.value }, 'delivery')}
+                      placeholder="re_xxxxxxxxxxxx"
+                    />
+                  </LockedField>
                 </Field>
 
                 <details className="group rounded-lg border border-[#e4e4e7] bg-[#fafafa] open:bg-white">
