@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Check,
   CircleHelp,
@@ -8,10 +8,8 @@ import {
   Loader2,
   Mail,
   Palette,
-  Save,
 } from 'lucide-react';
 import {
-  AceternityButton,
   AceternityCard,
   AceternityInput,
   Field,
@@ -123,38 +121,33 @@ function LabelHelp({
   );
 }
 
-function SectionSave({
-  disabled,
-  label,
-  onSave,
-  state,
-}: {
-  disabled?: boolean;
-  label: string;
-  onSave: () => void;
-  state: SaveState;
-}) {
-  const isSaving = state === 'saving';
-  const isSaved = state === 'saved';
-  const isError = state === 'error';
-
+/**
+ * Inline save-state indicator. Replaces the explicit "Save section" button —
+ * saves happen on blur, so the user just needs to know the result, not press
+ * anything. We render nothing while the section is idle to avoid drawing the
+ * eye to a useless status pill.
+ */
+function SaveStatus({ state }: { state: SaveState }) {
+  if (state === 'idle') return null;
+  if (state === 'saving') {
+    return (
+      <div className="flex items-center justify-end gap-1.5 border-t border-[#e4e4e7] pt-3 text-xs text-ink-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Saving…
+      </div>
+    );
+  }
+  if (state === 'saved') {
+    return (
+      <div className="flex items-center justify-end gap-1.5 border-t border-[#e4e4e7] pt-3 text-xs text-emerald-700">
+        <Check className="h-3.5 w-3.5" />
+        Saved
+      </div>
+    );
+  }
   return (
-    <div className="flex items-center justify-end gap-2 border-t border-[#e4e4e7] pt-4">
-      {isError && (
-        <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700">
-          Could not save
-        </span>
-      )}
-      <AceternityButton disabled={disabled || isSaving} onClick={onSave}>
-        {isSaving ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isSaved ? (
-          <Check className="h-4 w-4" />
-        ) : (
-          <Save className="h-4 w-4" />
-        )}
-        {isSaving ? 'Saving' : isSaved ? 'Saved' : label}
-      </AceternityButton>
+    <div className="flex items-center justify-end gap-1.5 border-t border-[#e4e4e7] pt-3 text-xs text-red-700">
+      Could not save — try editing again.
     </div>
   );
 }
@@ -187,12 +180,22 @@ export function DashboardClient({
   const [unlockDomain, setUnlockDomain] = useState(false);
   const [unlockResendKey, setUnlockResendKey] = useState(false);
 
+  // We commit on blur instead of making the user click Save. The dirty refs
+  // tell us whether a section has unsaved edits — without that flag every
+  // focus-change would fire a no-op PUT.
+  const dirty = useRef<Record<SaveSection, boolean>>({ delivery: false, publishing: false });
+  // The latest account snapshot, kept in a ref so the blur handler doesn't
+  // close over a stale `account` from the render that registered it.
+  const accountRef = useRef(account);
+  accountRef.current = account;
+
   function setSaveState(section: SaveSection, state: SaveState) {
     setSectionState((current) => ({ ...current, [section]: state }));
   }
 
   function markChanged(section: SaveSection) {
     setError('');
+    dirty.current[section] = true;
     setSaveState(section, 'idle');
   }
 
@@ -201,26 +204,40 @@ export function DashboardClient({
     setAccount((current) => ({ ...current, ...updates }));
   }
 
+  const commitSection = useCallback(
+    (section: SaveSection) => {
+      if (!dirty.current[section]) return;
+      if (sectionState[section] === 'saving') return;
+      void saveAccount(section);
+    },
+    // saveAccount is stable enough — we only need to re-bind when the
+    // current section save state changes so we don't double-fire while a
+    // save is already in flight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sectionState.publishing, sectionState.delivery]
+  );
+
   async function saveAccount(section: SaveSection) {
     setSaveState(section, 'saving');
     setError('');
 
     try {
+      const snapshot = accountRef.current;
       const response = await fetch('/api/account', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subdomain: account.subdomain,
-          domain: account.domain,
-          logoUrl: account.logoUrl,
-          logoText: account.logoText,
-          brand: account.brand,
-          resendFromEmail: account.resendFromEmail,
-          resendApiKey: account.resendApiKey,
-          resendReturnPath: account.resendReturnPath,
-          beehiivApiKey: account.beehiivApiKey,
-          beehiivPublicationId: account.beehiivPublicationId,
-          substackPublication: account.substackPublication,
+          subdomain: snapshot.subdomain,
+          domain: snapshot.domain,
+          logoUrl: snapshot.logoUrl,
+          logoText: snapshot.logoText,
+          brand: snapshot.brand,
+          resendFromEmail: snapshot.resendFromEmail,
+          resendApiKey: snapshot.resendApiKey,
+          resendReturnPath: snapshot.resendReturnPath,
+          beehiivApiKey: snapshot.beehiivApiKey,
+          beehiivPublicationId: snapshot.beehiivPublicationId,
+          substackPublication: snapshot.substackPublication,
         }),
       });
 
@@ -231,6 +248,7 @@ export function DashboardClient({
 
       const data = (await response.json()) as { account: AccountSettings };
       setAccount(data.account);
+      dirty.current[section] = false;
       // After a successful save we re-lock the previously-unlocked fields,
       // so the user has to click Edit again to make further changes.
       if (section === 'publishing') setUnlockDomain(false);
@@ -339,6 +357,7 @@ export function DashboardClient({
                   >
                     <AceternityInput
                       value={account.domain}
+                      onBlur={() => commitSection('publishing')}
                       onChange={(event) =>
                         patchAccount({
                           domain: event.target.value
@@ -370,6 +389,7 @@ export function DashboardClient({
                   >
                     <AceternityInput
                       value={account.subdomain}
+                      onBlur={() => commitSection('publishing')}
                       onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() }, 'publishing')}
                       placeholder="get"
                     />
@@ -379,11 +399,7 @@ export function DashboardClient({
 
               <PublishingWizard hasDomain={Boolean(configuredDomain)} />
 
-              <SectionSave
-                label="Save publishing"
-                onSave={() => saveAccount('publishing')}
-                state={sectionState.publishing}
-              />
+              <SaveStatus state={sectionState.publishing} />
             </div>
           </div>
         </AceternityCard>
@@ -427,6 +443,7 @@ export function DashboardClient({
                 >
                   <AceternityInput
                     value={account.resendApiKey}
+                    onBlur={() => commitSection('delivery')}
                     onChange={(event) => patchAccount({ resendApiKey: event.target.value }, 'delivery')}
                     placeholder="re_xxxxxxxxxxxx"
                   />
@@ -441,8 +458,8 @@ export function DashboardClient({
                   resendFromEmail: account.resendFromEmail,
                   resendReturnPath: account.resendReturnPath,
                 }}
+                onCommit={() => commitSection('delivery')}
                 onPatch={(updates) => patchAccount(updates, 'delivery')}
-                onSave={() => saveAccount('delivery')}
                 saveState={sectionState.delivery}
               />
 
@@ -480,6 +497,7 @@ export function DashboardClient({
                     >
                       <AceternityInput
                         value={account.beehiivPublicationId}
+                        onBlur={() => commitSection('delivery')}
                         onChange={(event) => patchAccount({ beehiivPublicationId: event.target.value }, 'delivery')}
                         placeholder="Publication ID"
                       />
@@ -494,6 +512,7 @@ export function DashboardClient({
                     >
                       <AceternityInput
                         value={account.beehiivApiKey}
+                        onBlur={() => commitSection('delivery')}
                         onChange={(event) => patchAccount({ beehiivApiKey: event.target.value }, 'delivery')}
                         placeholder="API key"
                       />
@@ -511,6 +530,7 @@ export function DashboardClient({
                   >
                     <AceternityInput
                       value={account.substackPublication}
+                      onBlur={() => commitSection('delivery')}
                       onChange={(event) => patchAccount({ substackPublication: event.target.value }, 'delivery')}
                       placeholder="myletter"
                     />

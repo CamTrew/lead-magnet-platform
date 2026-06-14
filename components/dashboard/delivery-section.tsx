@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AtSign, Check, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AtSign, Check, Loader2, RefreshCw } from 'lucide-react';
 import {
   AceternityButton,
   AceternityInput,
@@ -67,13 +67,15 @@ export type DeliveryPatch = (updates: Partial<DeliveryAccount>) => void;
  */
 export function DeliverySection({
   account,
+  onCommit,
   onPatch,
-  onSave,
   saveState,
 }: {
   account: DeliveryAccount;
+  /** Persist whatever's been patched. Wired into the natural commit points
+   *  (subdomain picked, sender blur) so the user never has to click Save. */
+  onCommit: () => void;
   onPatch: DeliveryPatch;
-  onSave: () => void;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
 }) {
   const [unlockSubdomain, setUnlockSubdomain] = useState(false);
@@ -111,6 +113,7 @@ export function DeliverySection({
           account={account}
           dmarcWarning={apexHasDmarc}
           locked={subdomainLocked}
+          onCommit={onCommit}
           onConfirmEdit={() => setUnlockSubdomain(true)}
           onDmarcDetected={setApexHasDmarc}
           onLock={() => setUnlockSubdomain(false)}
@@ -133,6 +136,7 @@ export function DeliverySection({
         <SenderPicker
           account={account}
           locked={senderLocked}
+          onCommit={onCommit}
           onConfirmEdit={() => setUnlockSender(true)}
           onPatch={onPatch}
         />
@@ -157,23 +161,22 @@ export function DeliverySection({
         )}
       </Step>
 
-      <div className="flex items-center justify-end gap-2 border-t border-ink-200 pt-4">
-        {saveState === 'error' && (
-          <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700">
-            Could not save
-          </span>
-        )}
-        <AceternityButton disabled={saveState === 'saving'} onClick={onSave}>
-          {saveState === 'saving' ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : saveState === 'saved' ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <ShieldCheck className="h-4 w-4" />
+      {saveState !== 'idle' && (
+        <div
+          className={cn(
+            'flex items-center justify-end gap-1.5 border-t border-ink-200 pt-3 text-xs',
+            saveState === 'error' ? 'text-red-700' : saveState === 'saved' ? 'text-emerald-700' : 'text-ink-500'
           )}
-          {saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save delivery'}
-        </AceternityButton>
-      </div>
+        >
+          {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {saveState === 'saved' && <Check className="h-3.5 w-3.5" />}
+          {saveState === 'saving'
+            ? 'Saving…'
+            : saveState === 'saved'
+              ? 'Saved'
+              : 'Could not save — try editing again.'}
+        </div>
+      )}
     </div>
   );
 }
@@ -229,6 +232,7 @@ function SubdomainPicker({
   account,
   dmarcWarning,
   locked,
+  onCommit,
   onConfirmEdit,
   onDmarcDetected,
   onLock,
@@ -237,6 +241,7 @@ function SubdomainPicker({
   account: DeliveryAccount;
   dmarcWarning: boolean;
   locked: boolean;
+  onCommit: () => void;
   onConfirmEdit: () => void;
   onDmarcDetected: (has: boolean) => void;
   onLock: () => void;
@@ -259,11 +264,13 @@ function SubdomainPicker({
       }
     }
     onPatch(updates);
-    // After picking, re-lock so the picker UI collapses back into its
-    // 'value chosen' summary. The user still needs to hit Save delivery
-    // at the bottom of the section to persist the choice; if they want
-    // to change again they click Edit on the lock.
+    // Picking is the commit — push to the server immediately and collapse
+    // the picker UI back to its 'value chosen' summary. The patch above
+    // queues the new state for the next React render; we defer the commit
+    // by a tick so the parent's accountRef has the new value before the
+    // PUT payload is built.
     onLock();
+    setTimeout(onCommit, 0);
   };
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null);
@@ -429,11 +436,13 @@ function CandidateRow({
 function SenderPicker({
   account,
   locked,
+  onCommit,
   onConfirmEdit,
   onPatch,
 }: {
   account: DeliveryAccount;
   locked: boolean;
+  onCommit: () => void;
   onConfirmEdit: () => void;
   onPatch: DeliveryPatch;
 }) {
@@ -481,6 +490,7 @@ function SenderPicker({
         <Field label="Display name (optional)" hint="Shown in the inbox as the sender's name.">
           <AceternityInput
             maxLength={80}
+            onBlur={onCommit}
             onChange={(event) => update({ displayName: event.target.value })}
             placeholder="Your Brand"
             value={displayName}
@@ -495,6 +505,7 @@ function SenderPicker({
             <input
               className="min-w-0 flex-1 bg-transparent px-2 text-sm text-ink-900 outline-none placeholder:text-ink-400"
               maxLength={64}
+              onBlur={onCommit}
               onChange={(event) => update({ localPart: event.target.value.toLowerCase() })}
               placeholder="hello"
               value={localPart}
