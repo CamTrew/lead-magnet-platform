@@ -140,7 +140,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
   return (
     <>
-      <PageHeader title="Brand" subtitle="Logo, business name, and colors for every magnet" />
+      <PageHeader title="Brand" subtitle="Logo, business name, and primary color for every magnet" />
 
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
         <AceternityCard className="p-5">
@@ -208,21 +208,11 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
               <p className="mt-2 text-xs leading-5 text-ink-500">Required. PNG, JPG, WebP, or GIF. 1 MB max.</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="max-w-[280px]">
               <ColorField
                 label="Primary"
                 onChange={(value) => patchBrand({ primary: value })}
                 value={draft.brand.primary}
-              />
-              <ColorField
-                label="Accent"
-                onChange={(value) => patchBrand({ accent: value })}
-                value={draft.brand.accent}
-              />
-              <ColorField
-                label="Success"
-                onChange={(value) => patchBrand({ success: value })}
-                value={draft.brand.success}
               />
             </div>
 
@@ -304,14 +294,14 @@ function BrandPagePreview({
         backgroundSize: 'auto, 40px 40px, 40px 40px',
       }}
     >
-      <div className="flex items-center justify-center gap-2 px-4 py-6">
+      <div className="flex items-center justify-center gap-1.5 px-4 py-5">
         {account.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img alt="" src={account.logoUrl} className="h-10 w-auto max-w-[68px] object-contain" />
+          <img alt="" src={account.logoUrl} className="h-9 w-auto max-w-[56px] object-contain" />
         ) : (
           <span className="h-10 w-10 rounded-lg border border-dashed border-ink-300 bg-white" />
         )}
-        <span className="min-w-0 truncate text-[30px] font-extrabold leading-none text-ink-950">{businessName}</span>
+        <span className="min-w-0 truncate text-[34px] font-extrabold leading-none text-ink-950">{businessName}</span>
       </div>
 
       <div className="px-5 pb-6">
@@ -413,7 +403,7 @@ function BrandPagePreview({
       </div>
 
       <div className="border-t border-ink-200/70 bg-white/60 px-4 py-5 text-center text-xs text-ink-500">
-        All rights reserved {new Date().getFullYear()} <span className="mx-1 text-ink-400">·</span> Privacy policy
+        All rights reserved {new Date().getFullYear()}
       </div>
     </div>
   );

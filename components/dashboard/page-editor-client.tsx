@@ -2,7 +2,6 @@
 
 import type { CSSProperties, ChangeEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -415,7 +414,7 @@ function PageCanvas({
   return (
     <div className="relative bg-white text-zinc-900" style={previewStyle}>
       <header className="relative z-10">
-        <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 pb-7 pt-8 sm:px-6 sm:pb-8 lg:px-8">
+        <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6 lg:px-8">
           <BrandPreviewLockup
             account={account}
             accountHasLogo={accountHasLogo}
@@ -576,14 +575,6 @@ function PageCanvas({
       <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
         <div className="mx-auto flex max-w-[1420px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
-          <span className="mx-2 text-gray-400">·</span>
-          <Link
-            className="transition hover:text-gray-900"
-            href="/privacy"
-            onClick={(event) => event.preventDefault()}
-          >
-            Privacy policy
-          </Link>
         </div>
       </footer>
     </div>
@@ -603,11 +594,11 @@ function BrandPreviewLockup({
 
   if (accountHasLogo) {
     return (
-      <div className="inline-flex min-h-14 max-w-full items-center gap-2.5">
+      <div className="inline-flex min-h-12 max-w-full items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img alt="" className="h-11 w-auto max-w-[76px] object-contain sm:h-14" src={account.logoUrl} />
+        <img alt="" className="h-10 w-auto max-w-[64px] object-contain sm:h-12" src={account.logoUrl} />
         {logoText && (
-          <span className="min-w-0 max-w-[72vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[46px] lg:text-[48px]">
+          <span className="min-w-0 max-w-[72vw] truncate text-[36px] font-extrabold leading-none text-gray-950 sm:text-[52px] lg:text-[56px]">
             {logoText}
           </span>
         )}
@@ -616,7 +607,7 @@ function BrandPreviewLockup({
   }
 
   return (
-    <span className="max-w-[82vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[46px] lg:text-[48px]">
+    <span className="max-w-[82vw] truncate text-[36px] font-extrabold leading-none text-gray-950 sm:text-[52px] lg:text-[56px]">
       {fallback}
     </span>
   );
