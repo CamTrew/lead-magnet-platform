@@ -113,6 +113,7 @@ export function DeliverySection({
           locked={subdomainLocked}
           onConfirmEdit={() => setUnlockSubdomain(true)}
           onDmarcDetected={setApexHasDmarc}
+          onLock={() => setUnlockSubdomain(false)}
           onPatch={onPatch}
         />
       </Step>
@@ -230,6 +231,7 @@ function SubdomainPicker({
   locked,
   onConfirmEdit,
   onDmarcDetected,
+  onLock,
   onPatch,
 }: {
   account: DeliveryAccount;
@@ -237,6 +239,7 @@ function SubdomainPicker({
   locked: boolean;
   onConfirmEdit: () => void;
   onDmarcDetected: (has: boolean) => void;
+  onLock: () => void;
   onPatch: DeliveryPatch;
 }) {
   // When the user picks a subdomain we must also re-stitch the stored
@@ -256,6 +259,11 @@ function SubdomainPicker({
       }
     }
     onPatch(updates);
+    // After picking, re-lock so the picker UI collapses back into its
+    // 'value chosen' summary. The user still needs to hit Save delivery
+    // at the bottom of the section to persist the choice; if they want
+    // to change again they click Edit on the lock.
+    onLock();
   };
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null);
