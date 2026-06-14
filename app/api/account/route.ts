@@ -13,6 +13,7 @@ import { SecretConfigurationError } from '@/lib/secrets';
 import { clearDomainAttached } from '@/lib/platform-store';
 import { removeDomain } from '@/lib/vercel';
 import {
+  clearRateLimits,
   enforceRateLimits,
   rateLimitResponse,
   RateLimitError,
@@ -137,6 +138,42 @@ export async function PUT(request: NextRequest) {
     }
 
     const currentHost = buildHost(account.subdomain, account.domain);
+
+    // If anything that affects DNS / Vercel attach changed, blow away the
+    // per-user cooldowns on the check endpoints. Forcing the user to wait
+    // out a stale 1-minute cooldown after they fixed the underlying record
+    // is just punishment for our cache.
+    const dnsInputsChanged =
+      payload.account.domain !== account.domain ||
+      payload.account.subdomain !== account.subdomain ||
+      payload.account.resendFromEmail !== account.resendFromEmail ||
+      payload.account.resendReturnPath !== account.resendReturnPath ||
+      // Resend key change means we'll be calling a different account on the
+      // delivery check, so any prior failures are no longer relevant.
+      (typeof parsed.data.resendApiKey === 'string' &&
+        parsed.data.resendApiKey.length > 0 &&
+        !parsed.data.resendApiKey.startsWith('*'));
+    if (dnsInputsChanged) {
+      try {
+        await clearRateLimits(
+          [
+            'dns:verify:user',
+            'domain:verify-ownership:user',
+            'domain:attach:user',
+          ],
+          payload.user.id
+        );
+      } catch (clearErr) {
+        // Best-effort: a stale cooldown isn't worth failing the save.
+        log.warn('Failed to clear DNS cooldowns after settings change', {
+          route: ROUTE,
+          method: 'PUT',
+          userId: payload.user.id,
+          accountId: payload.account.id,
+          extra: { error: clearErr },
+        });
+      }
+    }
 
     // If the publishing host changed AND we previously attached one, detach the
     // old host. We do not auto-attach the new one — that requires explicit

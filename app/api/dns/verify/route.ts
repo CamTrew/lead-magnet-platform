@@ -1,4 +1,9 @@
-import { resolveCname, resolveMx, resolveTxt } from 'node:dns/promises';
+import {
+  promises as dns,
+  Resolver as CallbackResolver,
+  type MxRecord,
+} from 'node:dns';
+import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
@@ -175,14 +180,50 @@ async function getResendEmailDnsRecords(
   );
 }
 
+/**
+ * Resolve a DNS record bypassing the system resolver. The default Node DNS
+ * path on serverless platforms aggressively caches negative answers (NXDOMAIN
+ * / NODATA) — so a record the user just added can stay reported as "missing"
+ * for several minutes after it's actually live. Talking directly to a public
+ * resolver (Cloudflare + Google) sidesteps that.
+ *
+ * Falls back to the system resolver if both public servers fail, so an
+ * outbound block to 53/UDP doesn't mean every check returns ENOTFOUND.
+ */
+async function resolveFresh(
+  host: string,
+  type: 'CNAME' | 'MX' | 'TXT'
+): Promise<string[]> {
+  const tryWith = async (servers: string[] | null): Promise<string[]> => {
+    const resolver = new CallbackResolver();
+    if (servers) resolver.setServers(servers);
+    if (type === 'CNAME') {
+      const resolve = promisify(resolver.resolveCname.bind(resolver));
+      return (await resolve(host)) as unknown as string[];
+    }
+    if (type === 'MX') {
+      const resolve = promisify(resolver.resolveMx.bind(resolver));
+      const rows = (await resolve(host)) as unknown as MxRecord[];
+      return rows.map((entry) => entry.exchange);
+    }
+    const resolve = promisify(resolver.resolveTxt.bind(resolver));
+    const rows = (await resolve(host)) as unknown as string[][];
+    return rows.map((parts) => parts.join(''));
+  };
+
+  try {
+    return await tryWith(['1.1.1.1', '8.8.8.8']);
+  } catch {
+    if (type === 'CNAME') return dns.resolveCname(host);
+    if (type === 'MX')
+      return (await dns.resolveMx(host)).map((entry) => entry.exchange);
+    return (await dns.resolveTxt(host)).map((parts) => parts.join(''));
+  }
+}
+
 async function lookupRecord(record: DnsRecordDefinition): Promise<VerifiedDnsRecord> {
   try {
-    const found =
-      record.type === 'CNAME'
-        ? await resolveCname(record.lookupName)
-        : record.type === 'MX'
-          ? (await resolveMx(record.lookupName)).map((entry) => entry.exchange)
-          : (await resolveTxt(record.lookupName)).map((parts) => parts.join(''));
+    const found = await resolveFresh(record.lookupName, record.type);
 
     const verified = recordVerified(record, found);
 

@@ -83,7 +83,7 @@ export function LeadMagnetPageView({
       />
 
       <header className="relative z-10 border-b border-zinc-100 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-5xl items-center justify-center px-5 py-4 sm:px-8">
           <Link href={homeHref} className="inline-flex min-h-10 items-center gap-2">
             {account.logoUrl ? (
               <img src={account.logoUrl} alt={displayName} className="max-h-9 max-w-[200px] object-contain" />
@@ -93,14 +93,6 @@ export function LeadMagnetPageView({
               </span>
             )}
           </Link>
-          <span className="hidden items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 sm:inline-flex">
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: account.brand.primary }}
-            />
-            Free download
-          </span>
         </div>
       </header>
 
@@ -113,18 +105,7 @@ export function LeadMagnetPageView({
           {/* Hero (shared across both layouts) */}
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-12">
             <section className="min-w-0">
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-700"
-              >
-                <span
-                  aria-hidden
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: account.brand.primary }}
-                />
-                Free resource by {displayName}
-              </span>
-
-              <h1 className="mt-5 text-balance text-3xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:mt-6 sm:text-5xl lg:text-[56px]">
+              <h1 className="text-balance text-3xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]">
                 {magnet.title}
               </h1>
 

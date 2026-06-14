@@ -1,6 +1,5 @@
 'use client';
 
-import type { ChangeEvent } from 'react';
 import { useRef, useState } from 'react';
 import {
   Check,
@@ -10,8 +9,6 @@ import {
   Mail,
   Palette,
   Save,
-  Trash2,
-  X,
 } from 'lucide-react';
 import {
   AceternityButton,
@@ -27,17 +24,8 @@ import type { AccountSettings, DashboardPayload } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type SaveSection = 'brand' | 'publishing' | 'delivery';
+type SaveSection = 'publishing' | 'delivery';
 type SectionIcon = typeof Palette;
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
 
 function SectionHeader({
   description,
@@ -58,38 +46,6 @@ function SectionHeader({
         <p className="mt-1 max-w-2xl text-sm leading-6 text-[#52525b]">{description}</p>
       </div>
     </div>
-  );
-}
-
-function ColorField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const pickerValue = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#27272a';
-
-  return (
-    <Field label={label}>
-      <div className="flex h-11 overflow-hidden rounded-lg border border-[#e4e4e7] bg-white focus-within:border-[#09090b] focus-within:ring-2 focus-within:ring-[#09090b]/15">
-        <input
-          aria-label={`${label} picker`}
-          className="h-full w-12 cursor-pointer border-0 bg-transparent p-1"
-          type="color"
-          value={pickerValue}
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <input
-          aria-label={`${label} hex value`}
-          className="min-w-0 flex-1 bg-transparent px-3 text-sm text-[#09090b] outline-none"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </div>
-    </Field>
   );
 }
 
@@ -221,7 +177,6 @@ export function DashboardClient({
 }) {
   const [account, setAccount] = useState<AccountSettings>(initialData.account);
   const [sectionState, setSectionState] = useState<Record<SaveSection, SaveState>>({
-    brand: 'idle',
     delivery: 'idle',
     publishing: 'idle',
   });
@@ -231,14 +186,6 @@ export function DashboardClient({
   // re-reveals the input until the next save.
   const [unlockDomain, setUnlockDomain] = useState(false);
   const [unlockResendKey, setUnlockResendKey] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement | null>(null);
-
-  function removeLogo() {
-    if (!account.logoUrl) return;
-    patchAccount({ logoUrl: '' }, 'brand');
-    if (logoInputRef.current) logoInputRef.current.value = '';
-    setError('');
-  }
 
   function setSaveState(section: SaveSection, state: SaveState) {
     setSectionState((current) => ({ ...current, [section]: state }));
@@ -252,30 +199,6 @@ export function DashboardClient({
   function patchAccount(updates: Partial<AccountSettings>, section: SaveSection) {
     markChanged(section);
     setAccount((current) => ({ ...current, ...updates }));
-  }
-
-  function patchBrand(updates: Partial<AccountSettings['brand']>) {
-    markChanged('brand');
-    setAccount((current) => ({ ...current, brand: { ...current.brand, ...updates } }));
-  }
-
-  async function handleLogoUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-    if (!allowed.includes(file.type)) {
-      setError('Logo must be a PNG, JPG, WebP, or GIF (no SVG).');
-      event.target.value = '';
-      return;
-    }
-    if (file.size > 1_000_000) {
-      setError('Logo must be 1 MB or smaller.');
-      event.target.value = '';
-      return;
-    }
-
-    patchAccount({ logoUrl: await readFileAsDataUrl(file) }, 'brand');
   }
 
   async function saveAccount(section: SaveSection) {
@@ -323,7 +246,6 @@ export function DashboardClient({
   const configuredDomain = account.domain.trim();
   const displayDomain = configuredDomain || 'example.com';
   const pageHost = `${pageSubdomain}.${displayDomain}`;
-  const brandLabel = account.logoText.trim() || 'Your logo text';
 
   return (
     <>
@@ -379,91 +301,6 @@ export function DashboardClient({
           </div>
         )}
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
-
-        <AceternityCard className="p-6">
-          <div className="space-y-6">
-            <SectionHeader
-              description="Set the logo, text, and colours used on published pages."
-              icon={Palette}
-              title="Brand"
-            />
-
-            <div className="space-y-5">
-              <div className="flex items-center gap-4 rounded-lg border border-ink-200 bg-white p-4">
-                <div className="group/logo relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ink-200 bg-ink-50">
-                  {account.logoUrl ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={account.logoUrl} alt={brandLabel} className="h-full w-full object-contain p-2" />
-                      <button
-                        aria-label="Remove logo"
-                        className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-ink-950 text-white shadow-sm transition hover:bg-red-600 group-hover/logo:flex focus:flex"
-                        onClick={removeLogo}
-                        title="Remove logo"
-                        type="button"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-lg font-semibold" style={{ color: account.brand.primary }}>
-                      {brandLabel.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink-950">{brandLabel}</p>
-                  <p className="mt-1 text-xs text-ink-500">
-                    {account.logoUrl
-                      ? 'Image uploaded. Save brand to apply.'
-                      : 'No image. The first letter shows on pages and emails.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Logo image" hint="PNG, JPG, WebP, or GIF. up to 1 MB. Logo text is used when this is empty.">
-                  <AceternityInput
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    className="py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-ink-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-900"
-                    onChange={handleLogoUpload}
-                    ref={logoInputRef}
-                    type="file"
-                  />
-                  {account.logoUrl && (
-                    <button
-                      className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2 text-xs font-medium text-ink-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-                      onClick={removeLogo}
-                      type="button"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove logo
-                    </button>
-                  )}
-                </Field>
-                <Field label="Logo text" hint="Used when no logo image is uploaded.">
-                  <AceternityInput
-                    value={account.logoText}
-                    onChange={(event) => patchAccount({ logoText: event.target.value }, 'brand')}
-                    placeholder="Company name"
-                  />
-                </Field>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <ColorField label="Primary" value={account.brand.primary} onChange={(value) => patchBrand({ primary: value })} />
-                <ColorField label="Accent" value={account.brand.accent} onChange={(value) => patchBrand({ accent: value })} />
-                <ColorField label="Success" value={account.brand.success} onChange={(value) => patchBrand({ success: value })} />
-              </div>
-
-              <SectionSave
-                label="Save brand"
-                onSave={() => saveAccount('brand')}
-                state={sectionState.brand}
-              />
-            </div>
-          </div>
-        </AceternityCard>
 
         <AceternityCard className="p-6">
           <div className="space-y-6">

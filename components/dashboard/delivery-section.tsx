@@ -618,11 +618,19 @@ function SendingDnsChecker({
       </div>
 
       {records.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-ink-200">
-          {records.map((record) => (
-            <RecordRow key={record.id} record={record} />
-          ))}
-        </div>
+        <>
+          <p className="text-xs leading-5 text-ink-500">
+            <span className="font-medium text-ink-700">Required</span> records prove the email is from you. Skipping them
+            quietly tanks deliverability. <span className="font-medium text-ink-700">Recommended</span> records handle
+            bounces and protect long-term sender reputation. <span className="font-medium text-ink-700">Optional</span>{' '}
+            records you can skip if you already have your own at the apex.
+          </p>
+          <div className="overflow-hidden rounded-md border border-ink-200">
+            {records.map((record) => (
+              <RecordRow key={record.id} record={record} />
+            ))}
+          </div>
+        </>
       )}
 
       {apexHasDmarc && (
@@ -636,26 +644,93 @@ function SendingDnsChecker({
   );
 }
 
+type RecordImportance = 'required' | 'recommended' | 'optional';
+
+/**
+ * Classify each Resend-supplied record so the UI can tell the user which ones
+ * actually matter for deliverability:
+ *  - SPF (TXT) + DKIM (CNAME at resend._domainkey...) are required. Without
+ *    these, big mailbox providers treat your mail as unauthenticated and your
+ *    open rates degrade over weeks.
+ *  - MX (return-path for bounces) is recommended. Skipping it means Resend
+ *    can't manage your suppression list and reputation slowly accumulates
+ *    bad-address dings.
+ *  - DMARC is optional from our side. We already skip showing it when the
+ *    apex has one, but if it slips through, treat as optional so users feel
+ *    safe leaving theirs untouched.
+ *
+ * Classification is by ID first (Resend always names them email-spf-*,
+ * email-dkim-*, etc.) with a name-substring fallback for safety.
+ */
+function recordImportance(record: DnsRecordCheck): RecordImportance {
+  const id = record.id.toLowerCase();
+  const name = record.name.toLowerCase();
+
+  if (id.includes('dmarc') || name.includes('_dmarc')) return 'optional';
+  if (id.includes('mx') || record.type === 'MX') return 'recommended';
+  if (
+    id.includes('spf') ||
+    id.includes('dkim') ||
+    name.includes('_domainkey') ||
+    (record.type === 'TXT' && record.value.toLowerCase().startsWith('v=spf1'))
+  ) {
+    return 'required';
+  }
+
+  // Unknown? Be conservative and tell the user it's recommended.
+  return 'recommended';
+}
+
+const IMPORTANCE_LABEL: Record<RecordImportance, string> = {
+  required: 'Required',
+  recommended: 'Recommended',
+  optional: 'Optional',
+};
+
+const IMPORTANCE_HINT: Record<RecordImportance, string> = {
+  required: 'Skipping this means mailbox providers can\'t verify it\'s really you sending.',
+  recommended: 'Skipping is OK to start, but bounce handling and long-term deliverability suffer.',
+  optional: 'Safe to skip if you already have a record for this at your apex.',
+};
+
+const IMPORTANCE_TONE: Record<RecordImportance, string> = {
+  required: 'border-rose-200 bg-rose-50 text-rose-700',
+  recommended: 'border-amber-200 bg-amber-50 text-amber-800',
+  optional: 'border-zinc-200 bg-zinc-50 text-zinc-600',
+};
+
 function RecordRow({ record }: { record: DnsRecordCheck }) {
   const verified = record.status === 'verified';
+  const importance = recordImportance(record);
   return (
-    <div className="grid gap-2 border-t border-ink-200 px-3 py-2 first:border-t-0 sm:grid-cols-[60px_minmax(0,1fr)_minmax(0,1.6fr)_90px]">
+    <div className="grid gap-2 border-t border-ink-200 px-3 py-2 first:border-t-0 sm:grid-cols-[60px_minmax(0,1fr)_minmax(0,1.6fr)_180px]">
       <span className="font-mono text-xs text-ink-700">{record.type}</span>
       <code className="break-all rounded bg-ink-50 px-2 py-1 text-xs text-ink-900">{record.name}</code>
       <code className="break-all rounded bg-ink-50 px-2 py-1 text-xs text-ink-900">{record.value}</code>
-      <span
-        className={cn(
-          'inline-flex h-7 w-fit items-center rounded-md border px-2 text-[11px] font-medium',
-          verified
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-            : record.status === 'missing'
-              ? 'border-amber-200 bg-amber-50 text-amber-800'
-              : 'border-red-200 bg-red-50 text-red-700'
-        )}
-        title={record.message}
-      >
-        {verified ? 'Verified' : record.status === 'missing' ? 'Missing' : 'Error'}
-      </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={cn(
+            'inline-flex h-7 w-fit items-center rounded-md border px-2 text-[11px] font-medium',
+            verified
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : record.status === 'missing'
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-red-200 bg-red-50 text-red-700'
+          )}
+          title={record.message}
+        >
+          {verified ? 'Verified' : record.status === 'missing' ? 'Missing' : 'Error'}
+        </span>
+        <span
+          className={cn(
+            'inline-flex h-7 w-fit items-center rounded-md border px-2 text-[11px] font-medium',
+            IMPORTANCE_TONE[importance]
+          )}
+          title={IMPORTANCE_HINT[importance]}
+        >
+          {IMPORTANCE_LABEL[importance]}
+        </span>
+      </div>
     </div>
   );
 }

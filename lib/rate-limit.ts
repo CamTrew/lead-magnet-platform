@@ -131,6 +131,24 @@ export async function enforceRateLimits(inputs: RateLimitInput[]) {
   }
 }
 
+/**
+ * Wipe one or more rate-limit counters for a given identifier. Used when an
+ * upstream change makes a prior cooldown irrelevant — e.g. the user just
+ * edited their domain, so making them wait out the previous DNS check
+ * cooldown would be punishing them for our mistake.
+ */
+export async function clearRateLimits(scopes: string[], identifier: string) {
+  if (scopes.length === 0) return;
+  await query(
+    `
+      delete from public.magnets_rate_limits
+      where scope = any($1::text[])
+        and identifier_hash = $2
+    `,
+    [scopes, hashIdentifier(identifier || 'unknown')]
+  );
+}
+
 export function rateLimitResponse(error: RateLimitError) {
   return NextResponse.json(
     { error: 'Too many requests. Try again shortly.' },
