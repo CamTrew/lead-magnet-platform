@@ -99,6 +99,18 @@ function mapResendRecord(record: ResendDnsRecord, domain: string, index: number)
   };
 }
 
+function normaliseDomainForResend(value: string) {
+  // Strip what users commonly add by accident: schemes, www., paths, ports,
+  // wrapping whitespace, trailing dots. Compare on the apex only.
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[/?#:].*$/, '')
+    .replace(/\.+$/, '');
+}
+
 async function getResendEmailDnsRecords(
   domain: string,
   resendApiKey: string,
@@ -115,22 +127,47 @@ async function getResendEmailDnsRecords(
     throw new Error(existingDomains.error.message || 'Resend domains could not be loaded.');
   }
 
-  const existingDomain = existingDomains.data.data.find((item) => cleanDnsValue(item.name) === cleanDnsValue(domain));
+  const want = normaliseDomainForResend(domain);
+  const known = existingDomains.data.data.map((item) => ({
+    id: item.id,
+    name: item.name,
+    normalised: normaliseDomainForResend(item.name),
+  }));
+  const existingDomain = known.find((item) => item.normalised === want);
 
   // We only pass custom_return_path on CREATE — once a domain exists on
   // Resend, the return path is baked in and can't be changed without
   // deleting and recreating. If the caller picked a different return path
   // later, we have to surface that mismatch and let them decide; we never
   // delete the user's Resend domain silently.
-  const domainResult = existingDomain
-    ? await resend.domains.get(existingDomain.id)
-    : await resend.domains.create({
-        name: domain,
+  let domainResult;
+  if (existingDomain) {
+    domainResult = await resend.domains.get(existingDomain.id);
+  } else {
+    try {
+      domainResult = await resend.domains.create({
+        name: want,
         ...(returnPath ? { custom_return_path: returnPath } : {}),
       } as Parameters<typeof resend.domains.create>[0]);
+    } catch (createErr) {
+      // Wrap so the caller's catch can format the message correctly.
+      throw createErr;
+    }
+  }
 
   if (domainResult.error) {
-    throw new Error(domainResult.error.message || 'Resend domain records could not be loaded.');
+    const message = domainResult.error.message || '';
+    const limitHit = /plan includes|upgrade to add more|exceeded the domain limit/i.test(message);
+    if (limitHit) {
+      const otherDomains = known
+        .map((item) => item.name)
+        .filter((name) => name && normaliseDomainForResend(name) !== want);
+      const friendly = otherDomains.length
+        ? `Your sending account already has ${otherDomains.length === 1 ? 'a domain set up' : 'domains set up'} (${otherDomains.join(', ')}) and the free plan only allows one. Either delete the existing one in Resend, switch to its API key for an account that already has ${want} verified, or upgrade your Resend plan.`
+        : `Your sending account does not allow more domains on its current plan. Upgrade in Resend, or switch to an API key for an account that already has ${want} verified.`;
+      throw new Error(friendly);
+    }
+    throw new Error(message || 'Resend domain records could not be loaded.');
   }
 
   return domainResult.data.records.map((record, index) =>
