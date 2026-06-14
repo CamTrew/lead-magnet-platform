@@ -37,6 +37,21 @@ function slugifyTitle(input: string) {
     .slice(0, 80);
 }
 
+/**
+ * Sanitize while the user is still typing in the slug input. Unlike
+ * slugifyTitle this keeps trailing hyphens (so they can keep typing words
+ * separated by them) and converts spaces to hyphens live so a space-pressed
+ * "hello world" turns into "hello-world" as they type.
+ */
+function liveSlug(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .slice(0, 80);
+}
+
 function CreatePageModal({
   downloadLink,
   error,
@@ -127,10 +142,9 @@ function CreatePageModal({
                 disabled={isCreating}
                 maxLength={80}
                 onChange={(event) => {
-                  setSlug(slugifyTitle(event.target.value));
+                  setSlug(liveSlug(event.target.value));
                   setSlugTouched(true);
                 }}
-                pattern="[a-z0-9-]+"
                 placeholder="ai-pipeline-playbook"
                 required
                 value={slug}
@@ -213,7 +227,6 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   const isCreating = createState === 'saving';
   const isOpening = Boolean(openingPageId) || isPending;
   const actionLabel = isOpening ? 'Opening editor' : isCreating ? 'Creating page' : 'New page';
-  const showBusyRow = isCreating || isOpening;
 
   function openCreateDialog() {
     if (isCreating || isOpening) return;
@@ -226,6 +239,12 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
     if (isCreating) return;
     setCreateOpen(false);
     setCreateError('');
+    // Drop in-flight state so reopening the modal starts from scratch.
+    setCreateTitle('');
+    setCreateSlug('');
+    setCreateSlugTouched(false);
+    setCreateDownloadLink('');
+    setCreateState('idle');
   }
 
   async function createLeadMagnet(event: FormEvent<HTMLFormElement>) {
@@ -366,39 +385,6 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e4e4e7]">
-                {showBusyRow && (
-                  <tr className="bg-[#fafafa]" aria-live="polite">
-                    <td className="max-w-[320px] px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#e4e4e7] bg-white text-[#18181b]">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-black text-[#09090b]">
-                            {isCreating ? 'Creating your page' : 'Opening editor'}
-                          </p>
-                          <p className="truncate text-xs text-[#71717a]">
-                            {isCreating
-                              ? 'Opening the editor as soon as it is ready.'
-                              : 'Keeping this screen ready while the editor loads.'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 font-mono text-xs text-[#52525b]">
-                      {isCreating ? 'Preparing' : 'Editor'}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="rounded-lg border border-[#e4e4e7] bg-[#f4f4f5] px-2 py-1 text-xs font-bold text-[#18181b]">
-                        Draft
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-[#52525b]">Now</td>
-                    <td className="px-5 py-4 text-right text-xs font-semibold text-[#71717a]">
-                      Please wait
-                    </td>
-                  </tr>
-                )}
                 {leadMagnets.length === 0 && !isCreating && (
                   <tr className="bg-white">
                     <td colSpan={5} className="px-5 py-10 text-center">

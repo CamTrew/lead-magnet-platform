@@ -145,11 +145,20 @@ export function InlineParagraphs({
 }: InlineParagraphsProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [isFocused, setIsFocused] = useState(false);
+  // Track the last text we sent up so the post-blur resync doesn't overwrite
+  // the user's edit with a stale `value` prop coming from React before the
+  // parent has had a chance to commit our onChange.
+  const lastEmittedRef = useRef<string>('');
 
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
     if (isFocused) return;
+    // If the prop matches what we just sent up, do nothing. This is the
+    // common case after blur: parent's onChange has already been called, the
+    // DOM is correct, and forcing innerHTML again would just reset the
+    // cursor and possibly clobber an in-flight value.
+    if (value === lastEmittedRef.current) return;
     const rendered = renderParagraphsHtml(value);
     if (element.innerHTML !== rendered) {
       element.innerHTML = rendered;
@@ -159,7 +168,25 @@ export function InlineParagraphs({
   const handleInput = useCallback(() => {
     const element = ref.current;
     if (!element) return;
-    onChange(extractParagraphsText(element));
+    const text = extractParagraphsText(element);
+    lastEmittedRef.current = text;
+    onChange(text);
+  }, [onChange]);
+
+  const handleBlur = useCallback(() => {
+    // Force one final emit on blur so the parent definitely has the latest
+    // text before any auto-save runs. Without this, a fast user can type
+    // then immediately click Save and lose the last typed paragraph if the
+    // input event hasn't fired yet.
+    const element = ref.current;
+    if (element) {
+      const text = extractParagraphsText(element);
+      if (text !== lastEmittedRef.current) {
+        lastEmittedRef.current = text;
+        onChange(text);
+      }
+    }
+    setIsFocused(false);
   }, [onChange]);
 
   return (
@@ -175,7 +202,7 @@ export function InlineParagraphs({
       contentEditable
       data-empty={!value || undefined}
       data-placeholder={emptyPlaceholder}
-      onBlur={() => setIsFocused(false)}
+      onBlur={handleBlur}
       onFocus={() => setIsFocused(true)}
       onInput={handleInput}
       suppressContentEditableWarning

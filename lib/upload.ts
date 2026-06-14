@@ -25,6 +25,11 @@ const MAGIC_BYTES: Array<{ type: string; bytes: number[] }> = [
 export const MAX_LOGO_BYTES = 1_000_000; // 1 MB
 export const MAX_LOGO_DATA_URL_LENGTH = Math.ceil(MAX_LOGO_BYTES * 4 / 3) + 256; // base64 overhead + header
 
+// Lead-magnet hero images are larger by nature (photography, screenshots).
+// 4 MB matches what people typically upload from a phone.
+export const MAX_MAGNET_IMAGE_BYTES = 4_000_000;
+export const MAX_MAGNET_IMAGE_DATA_URL_LENGTH = Math.ceil(MAX_MAGNET_IMAGE_BYTES * 4 / 3) + 256;
+
 export type LogoValidationError =
   | 'empty'
   | 'too_large'
@@ -65,10 +70,16 @@ function detectMime(buffer: Buffer): string | null {
  * { ok: false, reason } on failure. The empty string is accepted and treated as
  * "no logo" (callers can pass through unchanged).
  */
-export function validateLogoDataUrl(value: string): LogoValidationResult {
+export function validateLogoDataUrl(
+  value: string,
+  options: { maxBytes?: number; maxLength?: number } = {}
+): LogoValidationResult {
+  const maxBytes = options.maxBytes ?? MAX_LOGO_BYTES;
+  const maxLength = options.maxLength ?? MAX_LOGO_DATA_URL_LENGTH;
+
   if (!value) return { ok: true, mime: '', bytes: 0 };
 
-  if (value.length > MAX_LOGO_DATA_URL_LENGTH) {
+  if (value.length > maxLength) {
     return { ok: false, reason: 'too_large' };
   }
 
@@ -94,7 +105,7 @@ export function validateLogoDataUrl(value: string): LogoValidationResult {
   if (buffer.length === 0) {
     return { ok: false, reason: 'empty' };
   }
-  if (buffer.length > MAX_LOGO_BYTES) {
+  if (buffer.length > maxBytes) {
     return { ok: false, reason: 'too_large' };
   }
 

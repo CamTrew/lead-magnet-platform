@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowRight,
@@ -10,6 +12,9 @@ import {
   Users,
 } from 'lucide-react';
 import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { findAccountByAttachedHost } from '@/lib/platform-store';
+
+export const dynamic = 'force-dynamic';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
 
@@ -92,7 +97,28 @@ const steps = [
   { title: 'Ship the magnet', copy: 'Write the page, preview the email, hit publish.' },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  // When a visitor hits / on a customer's attached host (e.g. get.headcount.so)
+  // we don't want to serve the Magnets marketing page — that's confusing.
+  // Bounce them to the customer's apex.
+  const requestHeaders = await headers();
+  const host = requestHeaders.get('host') || '';
+  const cleanHost = host.split(':')[0].toLowerCase();
+  // Only do the lookup if the host isn't our own platform domain or a local dev host.
+  const isPlatformHost =
+    cleanHost === 'magnets.so' ||
+    cleanHost === 'www.magnets.so' ||
+    cleanHost === 'localhost' ||
+    cleanHost.startsWith('127.') ||
+    cleanHost.endsWith('.vercel.app');
+  if (cleanHost && !isPlatformHost) {
+    const owner = await findAccountByAttachedHost(cleanHost);
+    if (owner?.domain) {
+      const protocol = cleanHost.startsWith('localhost') ? 'http' : 'https';
+      redirect(`${protocol}://${owner.domain}`);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <header className="sticky top-0 z-40 border-b border-ink-200 bg-white/85 backdrop-blur">

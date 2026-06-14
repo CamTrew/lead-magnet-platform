@@ -85,7 +85,6 @@ export async function sendLeadMagnetEmail({
   const text = magnet.downloadLink && !body.includes(magnet.downloadLink)
     ? `${body}\n\n${magnet.downloadLink}`
     : body;
-  const buttonLabel = magnet.ctaText.trim() || 'Download';
   const safePrimary = /^#[0-9a-fA-F]{6}$/.test(account.brand.primary)
     ? account.brand.primary
     : '#111111';
@@ -103,17 +102,7 @@ export async function sendLeadMagnetEmail({
           <section style="margin:0 auto;max-width:640px;border:1px solid #e4e4e7;background:#ffffff;border-radius:8px;padding:40px">
             <p style="margin:0 0 28px;color:${escapeHtml(safePrimary)};font-size:22px;font-weight:700">${escapeHtml(account.logoText)}</p>
             <div style="font-size:16px;line-height:1.7;color:#3f3f46">${renderParagraphs(text)}</div>
-            ${magnet.downloadLink
-              ? `<p style="margin:32px 0 0">
-                  <a href="${escapeHtml(magnet.downloadLink)}" style="display:inline-block;background:${escapeHtml(safePrimary)};color:white;border-radius:8px;padding:14px 22px;text-decoration:none;font-weight:600">
-                    ${escapeHtml(buttonLabel)}
-                  </a>
-                </p>`
-              : ''}
           </section>
-          <p style="margin:24px auto 0;max-width:640px;text-align:center;font-size:12px;color:#71717a">
-            Sent with <a href="https://magnets.so" style="color:#52525b;text-decoration:underline">magnets.so</a>
-          </p>
         </main>
       `,
     });

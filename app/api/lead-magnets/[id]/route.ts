@@ -11,7 +11,8 @@ import {
 import { log } from '@/lib/logger';
 import {
   logoValidationMessage,
-  MAX_LOGO_DATA_URL_LENGTH,
+  MAX_MAGNET_IMAGE_BYTES,
+  MAX_MAGNET_IMAGE_DATA_URL_LENGTH,
   validateLogoDataUrl,
 } from '@/lib/upload';
 
@@ -21,9 +22,12 @@ const idSchema = z.string().uuid();
 
 const imageSchema = z
   .string()
-  .max(MAX_LOGO_DATA_URL_LENGTH, 'Image is too large')
+  .max(MAX_MAGNET_IMAGE_DATA_URL_LENGTH, 'Image is too large')
   .superRefine((value, ctx) => {
-    const result = validateLogoDataUrl(value);
+    const result = validateLogoDataUrl(value, {
+      maxBytes: MAX_MAGNET_IMAGE_BYTES,
+      maxLength: MAX_MAGNET_IMAGE_DATA_URL_LENGTH,
+    });
     if (!result.ok) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: logoValidationMessage(result.reason) });
     }
