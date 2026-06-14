@@ -765,7 +765,11 @@ function ImageHotspot({
     >
       <div className="aspect-[16/10] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img alt={title || 'Magnet'} className="h-full w-full object-cover" src={imageUrl} />
+        <img
+          alt={title || 'Magnet'}
+          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover/image:scale-[1.04]"
+          src={imageUrl}
+        />
       </div>
       <div className="absolute inset-0 flex items-end justify-end gap-2 bg-gradient-to-t from-black/45 via-black/0 to-black/0 p-3 opacity-0 transition group-hover/image:opacity-100">
         <button

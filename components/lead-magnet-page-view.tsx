@@ -237,11 +237,11 @@ function MediaAndCapture({
 
 function MagnetImage({ magnet }: { magnet: LeadMagnet }) {
   return (
-    <div className="overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50">
+    <div className="group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50">
       <div className="aspect-[16/10] w-full">
         <img
           alt={magnet.title}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
           src={magnet.imageUrl}
         />
       </div>

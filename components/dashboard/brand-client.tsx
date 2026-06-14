@@ -369,9 +369,13 @@ function BrandPagePreview({
 
             <aside className="space-y-3">
               {magnet.imageUrl ? (
-                <div className="overflow-hidden rounded-xl border border-ink-200 bg-ink-50">
+                <div className="group overflow-hidden rounded-xl border border-ink-200 bg-ink-50">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img alt="" src={magnet.imageUrl} className="aspect-[16/10] w-full object-cover" />
+                  <img
+                    alt=""
+                    src={magnet.imageUrl}
+                    className="aspect-[16/10] w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+                  />
                 </div>
               ) : (
                 <div className="aspect-[16/10] rounded-xl border border-dashed border-ink-300 bg-ink-50" />
