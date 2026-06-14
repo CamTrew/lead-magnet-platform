@@ -71,6 +71,13 @@
       "when": 1781452800000,
       "tag": "0009_unique_attached_host",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781406063014,
+      "tag": "0010_thick_human_robot",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,11 @@ export const accounts = pgTable(
     beehiivApiKey: text('beehiiv_api_key').notNull().default(''),
     beehiivPublicationId: text('beehiiv_publication_id').notNull().default(''),
     substackPublication: text('substack_publication').notNull().default(''),
+    // Subdomain we tell Resend to put the sending DNS under (MX / SPF / DKIM).
+    // Empty until the user enters a sending domain in Configure; we probe their
+    // DNS for a clear label and store it so the records stay consistent across
+    // reloads. Default chosen at runtime, not in SQL.
+    resendReturnPath: text('resend_return_path').notNull().default(''),
     // The TXT-record proof token that customers paste into DNS to prove ownership
     // before we attach the domain to the Vercel project. Rotated when the domain
     // or subdomain changes — invalidates the existing verification.

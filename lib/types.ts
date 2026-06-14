@@ -39,6 +39,7 @@ export interface AccountSettings {
   beehiivApiKey: string;
   beehiivPublicationId: string;
   substackPublication: string;
+  resendReturnPath: string;
   domainVerificationToken: string;
   domainVerifiedAt: string | null;
   domainAttachedHost: string;

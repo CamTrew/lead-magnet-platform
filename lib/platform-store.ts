@@ -43,6 +43,7 @@ type AccountRow = {
   beehiiv_api_key: string;
   beehiiv_publication_id: string;
   substack_publication: string;
+  resend_return_path: string;
   domain_verification_token: string;
   domain_verified_at: Date | null;
   domain_attached_host: string;
@@ -119,6 +120,7 @@ type DashboardBaseRow = {
   account_beehiiv_api_key: string;
   account_beehiiv_publication_id: string;
   account_substack_publication: string;
+  account_resend_return_path: string;
   account_domain_verification_token: string;
   account_domain_verified_at: Date | null;
   account_domain_attached_host: string;
@@ -196,6 +198,7 @@ function mapAccount(row: AccountRow, options: { revealSecrets?: boolean } = {}):
       : redactSecret(row.beehiiv_api_key),
     beehiivPublicationId: row.beehiiv_publication_id,
     substackPublication: row.substack_publication,
+    resendReturnPath: row.resend_return_path,
     domainVerificationToken: row.domain_verification_token,
     domainVerifiedAt: row.domain_verified_at ? iso(row.domain_verified_at) : null,
     domainAttachedHost: row.domain_attached_host,
@@ -269,6 +272,7 @@ function mapDashboardBase(row: DashboardBaseRow) {
       beehiiv_api_key: row.account_beehiiv_api_key,
       beehiiv_publication_id: row.account_beehiiv_publication_id,
       substack_publication: row.account_substack_publication,
+      resend_return_path: row.account_resend_return_path,
       domain_verification_token: row.account_domain_verification_token,
       domain_verified_at: row.account_domain_verified_at,
       domain_attached_host: row.account_domain_attached_host,
@@ -350,6 +354,7 @@ async function getDashboardBaseByUserId(userId: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        a.resend_return_path as account_resend_return_path,
         a.domain_verification_token as account_domain_verification_token,
         a.domain_verified_at as account_domain_verified_at,
         a.domain_attached_host as account_domain_attached_host,
@@ -428,6 +433,7 @@ async function getDashboardBaseBySessionToken(token: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        a.resend_return_path as account_resend_return_path,
         a.domain_verification_token as account_domain_verification_token,
         a.domain_verified_at as account_domain_verified_at,
         a.domain_attached_host as account_domain_attached_host,
