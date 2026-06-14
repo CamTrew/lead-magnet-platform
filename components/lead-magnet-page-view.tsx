@@ -38,11 +38,15 @@ function senderEmail(value: string) {
 }
 
 /**
- * Kleo-inspired layout: clean white surface, one strong column, sticky brand
- * header, hero with oversized headline + subtitle, big image card, prominent
- * capture form pinned to the right on desktop and stacked under the hero on
- * mobile. Accents lean on the account brand color but the base tone stays
- * black/white so it reads premium and modern.
+ * Kleo-style layout: soft animated gradient background, a single oversized
+ * rounded-3xl white card wrapping the hero and the form, gradient-clipped
+ * headline, big bullets with brand-coloured check marks, oversized capture
+ * card with h-14 inputs and a gradient-to-dark CTA. Visitors land on a page
+ * that reads premium and pre-sold.
+ *
+ * Brand colour drives every accent (halo blobs, bullet checks, form-card
+ * tint, CTA gradient stops). Default-brand purple still looks polished
+ * because every component is built off the same `--brand-primary` CSS var.
  */
 export function LeadMagnetPageView({
   account,
@@ -66,29 +70,52 @@ export function LeadMagnetPageView({
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-white text-zinc-900" style={brandStyle}>
-      {/* Subtle painterly halo behind the hero. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[720px]"
-        style={{
-          background: `radial-gradient(50% 60% at 50% 0%, ${alpha(
-            account.brand.primary,
-            0.1
-          )} 0%, transparent 70%), radial-gradient(40% 50% at 10% 15%, ${alpha(
-            account.brand.accent,
-            0.1
-          )} 0%, transparent 70%)`,
-        }}
-      />
+    <div
+      className="relative flex min-h-screen flex-col bg-gradient-to-br from-slate-50 via-white to-white text-zinc-900"
+      style={brandStyle}
+    >
+      {/* Soft animated background blobs in the four corners — Kleo-style
+          atmosphere. Brand-tinted so the page picks up the account's primary
+          and accent colours without needing additional palette choices. */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute left-10 top-20 size-64 animate-pulse rounded-full blur-3xl"
+          style={{ background: `radial-gradient(circle, ${alpha(account.brand.primary, 0.18)}, transparent 70%)` }}
+        />
+        <div
+          aria-hidden
+          className="absolute right-20 top-40 size-48 animate-pulse rounded-full blur-3xl"
+          style={{
+            animationDelay: '1s',
+            background: `radial-gradient(circle, ${alpha(account.brand.accent, 0.16)}, transparent 70%)`,
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute bottom-40 left-20 size-56 animate-pulse rounded-full blur-3xl"
+          style={{
+            animationDelay: '2s',
+            background: `radial-gradient(circle, ${alpha(account.brand.primary, 0.12)}, transparent 70%)`,
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute bottom-20 right-10 size-40 animate-pulse rounded-full blur-3xl"
+          style={{
+            animationDelay: '3s',
+            background: `radial-gradient(circle, ${alpha(account.brand.accent, 0.14)}, transparent 70%)`,
+          }}
+        />
+      </div>
 
-      <header className="relative z-10 border-b border-zinc-100 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-center px-5 py-4 sm:px-8">
-          <Link href={homeHref} className="inline-flex min-h-10 items-center gap-2">
+      <header className="relative z-10 border-b border-gray-200/50 bg-white/60 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-center px-4 py-5 sm:px-6 lg:px-8">
+          <Link href={homeHref} className="inline-flex min-h-10 items-center gap-2 transition-transform hover:scale-105">
             {account.logoUrl ? (
-              <img src={account.logoUrl} alt={displayName} className="max-h-9 max-w-[200px] object-contain" />
+              <img src={account.logoUrl} alt={displayName} className="h-12 w-auto max-w-[220px] object-contain" />
             ) : (
-              <span className="text-base font-semibold tracking-tight text-zinc-900">
+              <span className="text-lg font-bold tracking-tight text-zinc-900">
                 {displayName}
               </span>
             )}
@@ -97,138 +124,122 @@ export function LeadMagnetPageView({
       </header>
 
       <main className="relative z-10 flex-1">
-        <div className="mx-auto max-w-5xl px-4 pb-16 pt-8 sm:px-8 sm:pt-16 lg:pt-24">
-          {/* Mobile-first: hero copy on top, then image, then form, then long-form
-              content (description + bullets). Desktop uses a two-column grid
-              that keeps the form sticky on the right. */}
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8 lg:py-20">
+          {/* The whole hero (copy + form) sits inside one oversized rounded
+              white card with a soft brand-tinted shadow, the way Kleo does
+              it. Inside the card the layout splits into two columns on
+              desktop. */}
+          <div
+            className="group relative overflow-hidden rounded-3xl border border-gray-200/60 bg-white p-8 backdrop-blur-sm sm:p-12 lg:p-16"
+            style={{ boxShadow: `0 30px 80px -30px ${alpha(account.brand.primary, 0.25)}` }}
+          >
+            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:gap-12">
+              <section className="flex min-w-0 flex-col justify-center">
+                <h1 className="mb-6 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-4xl font-extrabold leading-[1.1] tracking-tight text-transparent sm:text-5xl lg:text-6xl">
+                  {magnet.title}
+                </h1>
 
-          {/* Hero (shared across both layouts) */}
-          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-12">
-            <section className="min-w-0">
-              <h1 className="text-balance text-3xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]">
-                {magnet.title}
-              </h1>
+                {magnet.subtitle && (
+                  <p className="mb-8 text-xl font-medium leading-relaxed text-gray-600">
+                    {magnet.subtitle}
+                  </p>
+                )}
 
-              {magnet.subtitle && (
-                <p className="mt-4 max-w-2xl text-balance text-base leading-7 text-zinc-600 sm:mt-5 sm:text-xl">
-                  {magnet.subtitle}
-                </p>
-              )}
-
-              {magnet.imageUrl && (
-                <div className="mt-7 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 sm:mt-8 sm:rounded-2xl">
-                  <div className="aspect-[16/10] w-full sm:aspect-[16/9]">
-                    <img
-                      alt={magnet.title}
-                      className="h-full w-full object-cover"
-                      src={magnet.imageUrl}
-                    />
+                {magnet.imageUrl && (
+                  <div
+                    className="group/image mb-8 overflow-hidden rounded-2xl border border-gray-200/60 transition-all duration-300 hover:shadow-xl"
+                    style={{ boxShadow: `0 18px 50px -20px ${alpha(account.brand.primary, 0.2)}` }}
+                  >
+                    <div className="aspect-[16/9] w-full">
+                      <img
+                        alt={magnet.title}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover/image:scale-[1.02]"
+                        src={magnet.imageUrl}
+                      />
+                    </div>
                   </div>
+                )}
+
+                {/* Mobile: capture card under the hero so visitors don't have
+                    to scroll past the whole pitch to convert. */}
+                <div className="mb-8 lg:hidden">
+                  <CaptureCard account={account} magnet={magnet} />
                 </div>
-              )}
 
-              {/* Mobile: the form sits right under the hero so visitors don't
-                  have to scroll through the whole pitch to convert. Desktop:
-                  hidden because the aside already renders it on the right. */}
-              <div className="mt-8 lg:hidden">
-                <CaptureCard
-                  account={account}
-                  displayName={displayName}
-                  magnet={magnet}
-                />
-              </div>
+                {magnet.description && (
+                  <div className="mb-8 space-y-4 text-base leading-relaxed text-gray-600">
+                    {magnet.description
+                      .split('\n\n')
+                      .filter(Boolean)
+                      .map((paragraph) => (
+                        <p key={paragraph} className="leading-7">{paragraph}</p>
+                      ))}
+                  </div>
+                )}
 
-              {magnet.description && (
-                <div className="mt-10 max-w-2xl space-y-4 text-[15px] leading-7 text-zinc-700">
-                  {magnet.description
-                    .split('\n\n')
-                    .filter(Boolean)
-                    .map((paragraph) => (
-                      <p key={paragraph}>{paragraph}</p>
-                    ))}
-                </div>
-              )}
+                {magnet.bullets.length > 0 && (
+                  <div className="mb-6">
+                    {magnet.bulletsHeading && (
+                      <p className="mb-5 text-base font-semibold text-gray-700">
+                        {magnet.bulletsHeading}
+                      </p>
+                    )}
+                    <ul className="space-y-3">
+                      {magnet.bullets.map((bullet) => (
+                        <li key={bullet} className="flex items-start gap-3">
+                          <span
+                            aria-hidden
+                            className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-white"
+                            style={{
+                              background: `linear-gradient(135deg, ${account.brand.primary}, ${alpha(account.brand.primary, 0.85)})`,
+                              boxShadow: `0 6px 16px -6px ${alpha(account.brand.primary, 0.5)}`,
+                            }}
+                          >
+                            <svg viewBox="0 0 12 12" className="h-3 w-3">
+                              <path
+                                d="M2.5 6.2l2.4 2.4 4.6-5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </span>
+                          <span className="text-base leading-7 text-gray-700">{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
 
-              {magnet.bullets.length > 0 && (
-                <div className="mt-8 max-w-2xl rounded-xl border border-zinc-200 bg-white p-5 sm:mt-10 sm:rounded-2xl sm:p-6">
-                  {magnet.bulletsHeading && (
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      {magnet.bulletsHeading}
-                    </p>
-                  )}
-                  <ul className="mt-3 space-y-3 sm:mt-4">
-                    {magnet.bullets.map((bullet) => (
-                      <li key={bullet} className="flex items-start gap-3 text-[15px] leading-7 text-zinc-800">
-                        <span
-                          aria-hidden
-                          className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-                          style={{
-                            background: account.brand.primary,
-                            color: 'white',
-                          }}
-                        >
-                          <svg viewBox="0 0 12 12" className="h-3 w-3">
-                            <path
-                              d="M2.5 6.2l2.4 2.4 4.6-5"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </span>
-                        <span>{bullet}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Mobile secondary CTA so people scrolling the long form copy
-                  don't have to scroll back up. Hidden on desktop because the
-                  sticky aside is always visible. */}
-              {(magnet.description || magnet.bullets.length > 0) && (
-                <div className="mt-8 lg:hidden">
-                  <CaptureCard
-                    account={account}
-                    displayName={displayName}
-                    magnet={magnet}
-                    variant="secondary"
-                  />
-                </div>
-              )}
-            </section>
-
-            {/* Desktop sticky form */}
-            <aside className="hidden lg:sticky lg:top-12 lg:block">
-              <CaptureCard
-                account={account}
-                displayName={displayName}
-                magnet={magnet}
-              />
-            </aside>
+              {/* Desktop sticky form. */}
+              <aside className="hidden lg:sticky lg:top-12 lg:block">
+                <CaptureCard account={account} magnet={magnet} />
+              </aside>
+            </div>
           </div>
         </div>
       </main>
 
-      <footer className="relative z-10 border-t border-zinc-200 bg-white py-8">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-5 text-sm text-zinc-600 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <Link className="font-semibold text-zinc-900" href={homeHref}>
+      <footer className="relative z-10 border-t border-gray-200/50 bg-white/50 py-8 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <Link className="font-semibold text-gray-900" href={homeHref}>
             {displayName}
           </Link>
           <div className="flex flex-wrap items-center gap-4">
             {account.domain && (
-              <Link className="transition hover:text-zinc-900" href={homeHref}>
+              <Link className="transition hover:text-gray-900" href={homeHref}>
                 Home
               </Link>
             )}
             {contactEmail && (
-              <a className="transition hover:text-zinc-900" href={`mailto:${contactEmail}`}>
+              <a className="transition hover:text-gray-900" href={`mailto:${contactEmail}`}>
                 Contact
               </a>
             )}
-            <span className="text-zinc-500">© {new Date().getFullYear()} {displayName}</span>
+            <span className="text-gray-500">© {new Date().getFullYear()} {displayName}</span>
           </div>
         </div>
       </footer>
@@ -259,36 +270,27 @@ export function LeadMagnetPageView({
 
 function CaptureCard({
   account,
-  displayName,
   magnet,
-  variant = 'primary',
 }: {
   account: AccountSettings;
-  displayName: string;
   magnet: LeadMagnet;
-  variant?: 'primary' | 'secondary';
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_20px_50px_-30px_rgba(0,0,0,0.18)] sm:rounded-2xl sm:shadow-[0_30px_80px_-40px_rgba(0,0,0,0.18)]">
-      <div
-        className="border-b border-zinc-200 px-5 py-4 sm:px-6 sm:py-5"
-        style={{ background: alpha(account.brand.primary, 0.04) }}
-      >
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">
-          {variant === 'secondary' ? 'Send it to my inbox' : 'Get the resource'}
+    <div
+      className="rounded-2xl border border-gray-200/60 bg-white p-6 backdrop-blur-sm sm:p-8"
+      style={{ boxShadow: `0 26px 72px -20px ${alpha(account.brand.primary, 0.28)}` }}
+    >
+      {magnet.formHeading && (
+        <h2 className="mb-2 text-center text-2xl font-bold text-gray-900 sm:text-3xl">
+          {magnet.formHeading}
+        </h2>
+      )}
+      {magnet.formSubtext && (
+        <p className="mb-6 text-center text-sm leading-6 text-gray-600 sm:mb-8">
+          {magnet.formSubtext}
         </p>
-        <p className="mt-1 text-sm text-zinc-700">
-          {variant === 'secondary'
-            ? 'Pop your email in and we will send it straight over.'
-            : "Drop your email below and we'll send it over right away."}
-        </p>
-      </div>
-      <div className="p-5 sm:p-6">
-        <LeadMagnetForm accountId={account.id} magnet={magnet} />
-      </div>
-      <div className="border-t border-zinc-200 px-5 py-3 text-[11px] leading-5 text-zinc-500 sm:px-6 sm:py-4">
-        By submitting you agree to receive this resource by email from {displayName}. Unsubscribe any time.
-      </div>
+      )}
+      <LeadMagnetForm accountId={account.id} magnet={magnet} />
     </div>
   );
 }

@@ -6,9 +6,9 @@ import type { LeadMagnet } from '@/lib/types';
 
 /**
  * Inputs + submit only — heading / subtext / surface chrome are owned by the
- * CaptureCard wrapper in LeadMagnetPageView so we don't render them twice.
- * Keep this file lean: anything visual that's reusable across the public
- * page belongs in the wrapper, not here.
+ * CaptureCard wrapper in LeadMagnetPageView. Visually styled to match the
+ * Kleo reference page: oversized rounded-2xl inputs and a gradient-to-dark
+ * CTA with brand-coloured shadow.
  */
 export function LeadMagnetForm({
   accountId,
@@ -50,28 +50,31 @@ export function LeadMagnetForm({
 
   if (isSuccess) {
     return (
-      <div className="flex flex-col items-center gap-3 text-center">
+      <div className="flex flex-col items-center gap-4 text-center">
         <div
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white"
-          style={{ background: 'var(--brand-primary)' }}
+          className="inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white"
+          style={{
+            background: 'var(--brand-primary)',
+            boxShadow: '0 18px 42px rgb(var(--brand-primary-rgb) / 0.28)',
+          }}
         >
-          <Check className="h-5 w-5" strokeWidth={3} />
+          <Check className="h-7 w-7" strokeWidth={3} />
         </div>
-        <p className="text-base font-semibold text-zinc-950">Check your email</p>
-        <p className="text-sm leading-6 text-zinc-600">
-          We just sent you the download link. Check your inbox (and spam folder if you don&apos;t see it).
+        <h3 className="text-2xl font-bold text-gray-900">Check your email</h3>
+        <p className="text-base leading-7 text-gray-600">
+          We just sent the download link to your inbox. Check your spam folder if it&apos;s not there.
         </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <input
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-1 focus:ring-zinc-950"
+        className="h-14 w-full rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
         placeholder="Name"
         required
       />
@@ -79,13 +82,13 @@ export function LeadMagnetForm({
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-1 focus:ring-zinc-950"
+        className="h-14 w-full rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
         placeholder="you@example.com"
         required
       />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+        <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
         </div>
       )}
@@ -93,10 +96,9 @@ export function LeadMagnetForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
-        style={{ background: 'var(--brand-primary)' }}
+        className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-gray-900 to-gray-800 text-base font-bold uppercase tracking-wide text-white shadow-xl shadow-gray-900/30 transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl hover:shadow-gray-900/40 disabled:opacity-50 disabled:hover:scale-100"
       >
-        {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+        {isSubmitting && <Loader2 className="h-5 w-5 animate-spin" />}
         {isSubmitting ? 'Sending' : magnet.ctaText}
       </button>
     </form>
