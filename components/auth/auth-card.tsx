@@ -32,7 +32,21 @@ const copy = {
   },
 };
 
-export function AuthCard({ mode }: { mode: AuthMode }) {
+function withLoginEntry(path: string) {
+  const url = new URL(path, 'https://magnets.local');
+  if (url.pathname === '/dashboard' && !url.searchParams.has('entry')) {
+    url.searchParams.set('entry', 'login');
+  }
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export function AuthCard({
+  mode,
+  nextPath,
+}: {
+  mode: AuthMode;
+  nextPath?: string;
+}) {
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -85,7 +99,10 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
 
       setIsNavigating(true);
       window.dispatchEvent(new Event('magnets:navigation-start'));
-      router.push('/dashboard');
+      const destination = mode === 'login'
+        ? withLoginEntry(nextPath || '/dashboard')
+        : '/dashboard';
+      router.push(destination);
       return;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
