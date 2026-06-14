@@ -74,6 +74,17 @@ const schema = z.object({
       'Enter a sender like Your Brand <hello@example.com>'
     ),
   resendApiKey: z.string().max(2000),
+  // Subdomain label we tell Resend to namespace records under. Must be a
+  // single DNS label (lowercase alphanumeric + hyphen, max 63 chars).
+  resendReturnPath: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(63)
+    .refine(
+      (value) => value === '' || /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value),
+      'Pick a single subdomain label (letters, digits, hyphens).'
+    ),
   beehiivApiKey: z.string().max(2000),
   beehiivPublicationId: z.string().trim().max(200),
   substackPublication: z.string().trim().max(200),

@@ -71,18 +71,22 @@ export async function POST(request: NextRequest) {
     userId = payload.user.id;
     accountId = payload.account.id;
 
+    // Hard-enforced 2-minute cooldown per user on the verification check.
+    // Anything faster spams Resend / our DNS resolver for no benefit since
+    // DNS propagation takes minutes. Per-IP fan-out kept separate to absorb
+    // shared-network noise without locking out legitimate users.
     await enforceRateLimits([
       {
         identifier: payload.user.id,
-        limit: 30,
+        limit: 1,
         scope: 'domain:verify-ownership:user',
-        windowSeconds: 60,
+        windowSeconds: 120,
       },
       {
         identifier: requestIp(request),
-        limit: 60,
+        limit: 30,
         scope: 'domain:verify-ownership:ip',
-        windowSeconds: 60,
+        windowSeconds: 120,
       },
     ]);
 

@@ -871,6 +871,7 @@ export async function updateAccount(
         beehiiv_api_key = $9,
         beehiiv_publication_id = $10,
         substack_publication = $11,
+        resend_return_path = $13,
         domain_verification_token = case when $12::boolean then '' else domain_verification_token end,
         domain_verified_at = case when $12::boolean then null else domain_verified_at end,
         domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end,
@@ -891,6 +892,7 @@ export async function updateAccount(
       updates.beehiivPublicationId,
       updates.substackPublication,
       apexChanged,
+      updates.resendReturnPath ?? '',
     ]
   );
 

@@ -89,7 +89,9 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
       const data = (await response.json().catch(() => null)) as
         | { verified?: boolean; message?: string; error?: string; found?: string[] }
         | null;
-      if (!response.ok) {
+      if (response.status === 429) {
+        setVerifyError(formatCooldown(response));
+      } else if (!response.ok) {
         setVerifyError(data?.error || 'Verification check failed.');
       } else if (data?.verified) {
         setVerifyMessage('Ownership confirmed.');
@@ -112,7 +114,9 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
     try {
       const response = await fetch('/api/domain/attach', { method: 'POST' });
       const data = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) {
+      if (response.status === 429) {
+        setAttachError(formatCooldown(response));
+      } else if (!response.ok) {
         setAttachError(data?.error || 'Could not connect that subdomain.');
       } else {
         await refresh();
@@ -353,4 +357,16 @@ function Copyable({ value, mono }: { value: string; mono?: boolean }) {
       </button>
     </div>
   );
+}
+
+function formatCooldown(response: Response) {
+  const retryAfter = Number(response.headers.get('Retry-After') || 120);
+  if (!Number.isFinite(retryAfter) || retryAfter <= 0) {
+    return 'Wait a couple of minutes before checking again.';
+  }
+  if (retryAfter >= 60) {
+    const minutes = Math.ceil(retryAfter / 60);
+    return `Wait ${minutes} minute${minutes === 1 ? '' : 's'} before checking again.`;
+  }
+  return `Wait ${retryAfter} seconds before checking again.`;
 }

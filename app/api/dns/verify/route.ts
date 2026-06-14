@@ -99,7 +99,11 @@ function mapResendRecord(record: ResendDnsRecord, domain: string, index: number)
   };
 }
 
-async function getResendEmailDnsRecords(domain: string, resendApiKey: string) {
+async function getResendEmailDnsRecords(
+  domain: string,
+  resendApiKey: string,
+  returnPath: string | null
+) {
   if (!resendApiKey) {
     throw new Error('Add your Resend API key in Delivery before checking sending DNS.');
   }
@@ -112,9 +116,18 @@ async function getResendEmailDnsRecords(domain: string, resendApiKey: string) {
   }
 
   const existingDomain = existingDomains.data.data.find((item) => cleanDnsValue(item.name) === cleanDnsValue(domain));
+
+  // We only pass custom_return_path on CREATE — once a domain exists on
+  // Resend, the return path is baked in and can't be changed without
+  // deleting and recreating. If the caller picked a different return path
+  // later, we have to surface that mismatch and let them decide; we never
+  // delete the user's Resend domain silently.
   const domainResult = existingDomain
     ? await resend.domains.get(existingDomain.id)
-    : await resend.domains.create({ name: domain });
+    : await resend.domains.create({
+        name: domain,
+        ...(returnPath ? { custom_return_path: returnPath } : {}),
+      } as Parameters<typeof resend.domains.create>[0]);
 
   if (domainResult.error) {
     throw new Error(domainResult.error.message || 'Resend domain records could not be loaded.');
@@ -182,18 +195,21 @@ export async function POST(request: NextRequest) {
     userId = payload.user.id;
     accountId = payload.account.id;
 
+    // 2-minute cooldown per user. The delivery branch calls Resend's
+    // /domains API which is rate-limited by them too, so this caps us well
+    // before we hit Resend's ceiling.
     await enforceRateLimits([
       {
         identifier: payload.user.id,
-        limit: 30,
+        limit: 1,
         scope: 'dns:verify:user',
-        windowSeconds: 60,
+        windowSeconds: 120,
       },
       {
         identifier: requestIp(request),
-        limit: 60,
+        limit: 30,
         scope: 'dns:verify:ip',
-        windowSeconds: 60,
+        windowSeconds: 120,
       },
     ]);
 
@@ -230,7 +246,11 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        records = await getResendEmailDnsRecords(sender.domain, accountWithSecrets.resendApiKey);
+        records = await getResendEmailDnsRecords(
+          sender.domain,
+          accountWithSecrets.resendApiKey,
+          accountWithSecrets.resendReturnPath || null
+        );
       } catch (error) {
         const rawMessage = error instanceof Error
           ? error.message

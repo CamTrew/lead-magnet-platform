@@ -28,18 +28,21 @@ export async function POST(request: NextRequest) {
     userId = payload.user.id;
     accountId = payload.account.id;
 
+    // 2-minute cooldown per user. Attach calls the Vercel domains API and
+    // immediately follows with /v6/domains/.../config — both billable / quota'd.
+    // One per 120s is fine because retrying instantly never helps.
     await enforceRateLimits([
       {
         identifier: payload.user.id,
-        limit: 10,
+        limit: 1,
         scope: 'domain:attach:user',
-        windowSeconds: 60,
+        windowSeconds: 120,
       },
       {
         identifier: requestIp(request),
-        limit: 30,
+        limit: 15,
         scope: 'domain:attach:ip',
-        windowSeconds: 60,
+        windowSeconds: 120,
       },
     ]);
 
