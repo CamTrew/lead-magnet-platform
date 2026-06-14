@@ -29,6 +29,14 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function slugifyTitle(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
 function CreatePageModal({
   downloadLink,
   error,
@@ -36,7 +44,11 @@ function CreatePageModal({
   onClose,
   onSubmit,
   setDownloadLink,
+  setSlug,
+  setSlugTouched,
   setTitle,
+  slug,
+  slugTouched,
   title,
 }: {
   downloadLink: string;
@@ -45,7 +57,11 @@ function CreatePageModal({
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   setDownloadLink: (value: string) => void;
+  setSlug: (value: string) => void;
+  setSlugTouched: (value: boolean) => void;
   setTitle: (value: string) => void;
+  slug: string;
+  slugTouched: boolean;
   title: string;
 }) {
   return (
@@ -88,11 +104,41 @@ function CreatePageModal({
               autoFocus
               disabled={isCreating}
               maxLength={120}
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setTitle(value);
+                // Auto-derive the slug from the title until the user manually edits it.
+                if (!slugTouched) setSlug(slugifyTitle(value));
+              }}
               placeholder="AI Pipeline Playbook"
               required
               value={title}
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">URL slug</span>
+            <div className="flex h-9 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
+              <span className="flex shrink-0 items-center border-r border-ink-200 bg-ink-50 px-2.5 font-mono text-xs text-ink-500">
+                /
+              </span>
+              <input
+                className="min-w-0 flex-1 bg-transparent px-2 font-mono text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                disabled={isCreating}
+                maxLength={80}
+                onChange={(event) => {
+                  setSlug(slugifyTitle(event.target.value));
+                  setSlugTouched(true);
+                }}
+                pattern="[a-z0-9-]+"
+                placeholder="ai-pipeline-playbook"
+                required
+                value={slug}
+              />
+            </div>
+            <span className="mt-1.5 block text-xs leading-5 text-ink-500">
+              The path of the page. Lowercase, digits, and hyphens only.
+            </span>
           </label>
 
           <label className="block">
@@ -121,7 +167,10 @@ function CreatePageModal({
             <AceternityButton disabled={isCreating} onClick={onClose} type="button" variant="secondary">
               Cancel
             </AceternityButton>
-            <AceternityButton disabled={isCreating || !title.trim() || !downloadLink.trim()} type="submit">
+            <AceternityButton
+              disabled={isCreating || !title.trim() || !downloadLink.trim() || !slug.trim()}
+              type="submit"
+            >
               {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               {isCreating ? 'Creating page' : 'Create page'}
             </AceternityButton>
@@ -154,6 +203,8 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   const [leadMagnets, setLeadMagnets] = useState<LeadMagnet[]>(initialData.leadMagnets);
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
+  const [createSlug, setCreateSlug] = useState('');
+  const [createSlugTouched, setCreateSlugTouched] = useState(false);
   const [createDownloadLink, setCreateDownloadLink] = useState('');
   const [createState, setCreateState] = useState<SaveState>('idle');
   const [openingPageId, setOpeningPageId] = useState<string | null>(null);
@@ -183,8 +234,17 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
 
     const title = createTitle.trim();
     const downloadLink = createDownloadLink.trim();
+    const slug = createSlug.trim();
     if (!title) {
       setCreateError('Enter a page name first.');
+      return;
+    }
+    if (!slug) {
+      setCreateError('Pick a slug for the page URL.');
+      return;
+    }
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      setCreateError('Slug can only contain lowercase letters, digits, and hyphens.');
       return;
     }
     if (!downloadLink) {
@@ -210,7 +270,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
       const response = await fetch('/api/lead-magnets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, downloadLink }),
+        body: JSON.stringify({ title, slug, downloadLink }),
       });
 
       if (!response.ok) {
@@ -225,6 +285,8 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
       ]);
       setCreateOpen(false);
       setCreateTitle('');
+      setCreateSlug('');
+      setCreateSlugTouched(false);
       setCreateDownloadLink('');
       setCreateState('saved');
       setOpeningPageId(data.leadMagnet.id);
@@ -260,7 +322,11 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
           onClose={closeCreateDialog}
           onSubmit={createLeadMagnet}
           setDownloadLink={setCreateDownloadLink}
+          setSlug={setCreateSlug}
+          setSlugTouched={setCreateSlugTouched}
           setTitle={setCreateTitle}
+          slug={createSlug}
+          slugTouched={createSlugTouched}
           title={createTitle}
         />
       )}

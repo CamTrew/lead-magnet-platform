@@ -62,11 +62,41 @@ const schema = z.object({
   emailPreview: z.string().max(240),
   published: z.boolean(),
 }).strict().superRefine((value, ctx) => {
-  if (value.published && !value.downloadLink.trim()) {
+  if (!value.published) return;
+
+  // When publishing, every visible field on the page and email must be filled.
+  // Empty drafts can sit in the DB unpublished, but the moment the user toggles
+  // to "Published" we refuse silently-empty content.
+  const requirements: Array<{ key: keyof typeof value; label: string }> = [
+    { key: 'title', label: 'Title' },
+    { key: 'subtitle', label: 'Subtitle' },
+    { key: 'description', label: 'Description' },
+    { key: 'bulletsHeading', label: 'Bullets heading' },
+    { key: 'ctaText', label: 'CTA button text' },
+    { key: 'formHeading', label: 'Form heading' },
+    { key: 'formSubtext', label: 'Form subtext' },
+    { key: 'downloadLink', label: 'Resource URL' },
+    { key: 'emailSubject', label: 'Email subject' },
+    { key: 'emailBody', label: 'Email body' },
+    { key: 'emailPreview', label: 'Email preview text' },
+  ];
+
+  for (const { key, label } of requirements) {
+    const fieldValue = value[key];
+    if (typeof fieldValue !== 'string' || !fieldValue.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} is required before publishing.`,
+        path: [key],
+      });
+    }
+  }
+
+  if (!Array.isArray(value.bullets) || value.bullets.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Add a Resource URL before publishing — the email needs a link to send.',
-      path: ['downloadLink'],
+      message: 'Add at least one bullet before publishing.',
+      path: ['bullets'],
     });
   }
 });

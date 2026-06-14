@@ -38,6 +38,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +57,10 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
       }
       if (!name.trim()) {
         setError('Add your name so we know what to call you.');
+        return;
+      }
+      if (!acceptedTerms) {
+        setError('Please accept the Terms of Service to continue.');
         return;
       }
     }
@@ -177,19 +182,38 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
             </p>
           )}
 
-          <AceternityButton className="w-full" disabled={isBusy} size="md">
+          {mode === 'register' && (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-ink-200 bg-ink-50 p-3 text-xs leading-5 text-ink-700">
+              <input
+                checked={acceptedTerms}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 text-ink-950 accent-ink-950"
+                disabled={isBusy}
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+                required
+                type="checkbox"
+              />
+              <span>
+                I accept the{' '}
+                <a className="font-medium text-ink-950 underline-offset-4 hover:underline" href="/terms" rel="noreferrer" target="_blank">
+                  Terms of Service
+                </a>{' '}
+                and{' '}
+                <a className="font-medium text-ink-950 underline-offset-4 hover:underline" href="/privacy" rel="noreferrer" target="_blank">
+                  Privacy Policy
+                </a>
+                . I understand my email will be added to the Magnets product newsletter, which I can unsubscribe from at any time.
+              </span>
+            </label>
+          )}
+
+          <AceternityButton
+            className="w-full"
+            disabled={isBusy || (mode === 'register' && !acceptedTerms)}
+            size="md"
+          >
             {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
             {isNavigating ? 'Opening dashboard...' : isSubmitting ? activeCopy.pending : activeCopy.button}
           </AceternityButton>
-
-          {mode === 'register' && (
-            <p className="text-center text-[11px] leading-5 text-ink-500">
-              By creating an account you agree to the{' '}
-              <a href="/terms" className="text-ink-700 underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Terms</a>{' '}
-              and{' '}
-              <a href="/privacy" className="text-ink-700 underline-offset-4 hover:underline" target="_blank" rel="noreferrer">Privacy Policy</a>.
-            </p>
-          )}
         </form>
 
         <p className="mt-6 text-center text-sm text-ink-600">

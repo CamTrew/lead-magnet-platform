@@ -15,6 +15,12 @@ const ROUTE = '/api/lead-magnets';
 
 const schema = z.object({
   title: z.string().trim().min(1, 'Page name is required').max(120),
+  slug: z
+    .string()
+    .trim()
+    .min(1, 'Slug is required')
+    .max(80)
+    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, digits, and hyphens'),
   downloadLink: z
     .string()
     .trim()
@@ -76,8 +82,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const { title, downloadLink } = parsed.data;
-    const leadMagnet = await createLeadMagnet(payload.account.id, title, downloadLink);
+    const { title, slug, downloadLink } = parsed.data;
+    const leadMagnet = await createLeadMagnet(payload.account.id, title, slug, downloadLink);
 
     log.info('Lead magnet created', {
       route: ROUTE,

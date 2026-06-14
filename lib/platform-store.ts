@@ -857,6 +857,32 @@ export async function updateAccount(
   const apexChanged =
     updates.domain !== undefined && updates.domain !== existingAccount.domain;
 
+  // Safety net: if the caller saved a new return-path or domain but didn't
+  // re-stitch resendFromEmail, the stored sender will still carry the old
+  // suffix. We rewrite it here so the DB never holds an inconsistent
+  // local@suffix combination.
+  let resendFromEmail = updates.resendFromEmail ?? '';
+  const targetReturnPath = updates.resendReturnPath ?? '';
+  const targetDomain = updates.domain ?? existingAccount.domain;
+  if (resendFromEmail && targetReturnPath && targetDomain) {
+    const expectedSuffix = `${targetReturnPath}.${targetDomain}`.toLowerCase();
+    const bracket = resendFromEmail.match(/^(.*?)\s*<([^@<>\s]+)@([^<>\s]+)>\s*$/);
+    if (bracket) {
+      const currentSuffix = bracket[3].toLowerCase();
+      if (currentSuffix !== expectedSuffix) {
+        const localPart = bracket[2];
+        const displayName = bracket[1].trim();
+        const address = `${localPart}@${expectedSuffix}`;
+        resendFromEmail = displayName ? `${displayName} <${address}>` : address;
+      }
+    } else {
+      const plain = resendFromEmail.match(/^([^@<>\s]+)@([^<>\s]+)$/);
+      if (plain && plain[2].toLowerCase() !== expectedSuffix) {
+        resendFromEmail = `${plain[1]}@${expectedSuffix}`;
+      }
+    }
+  }
+
   const result = await query<AccountRow>(
     `
       update public.magnets_accounts
@@ -886,7 +912,7 @@ export async function updateAccount(
       updates.logoUrl,
       updates.logoText,
       JSON.stringify(updates.brand || defaultBrand),
-      updates.resendFromEmail,
+      resendFromEmail,
       resendApiKey,
       beehiivApiKey,
       updates.beehiivPublicationId,
@@ -931,10 +957,24 @@ async function uniqueLeadMagnetSlug(accountId: string, title: string) {
   return `${baseSlug}-${suffix}`;
 }
 
-export async function createLeadMagnet(accountId: string, title: string, downloadLink: string) {
+export async function createLeadMagnet(
+  accountId: string,
+  title: string,
+  slug: string,
+  downloadLink: string
+) {
   const cleanTitle = title.trim();
   const cleanLink = downloadLink.trim();
-  const slug = await uniqueLeadMagnetSlug(accountId, cleanTitle);
+  const desiredSlug = slug.trim().toLowerCase();
+  // If the user-chosen slug collides with another magnet on this account,
+  // suffix with -2, -3, etc. Same behaviour as uniqueLeadMagnetSlug but
+  // keyed off the explicit slug instead of the title.
+  const finalSlug = await uniqueLeadMagnetSlug(accountId, desiredSlug);
+
+  // Brand-new magnets ship with empty fields (just the title + slug + URL).
+  // Bullets, copy, email body all use placeholder hints in the editor; we
+  // intentionally do not pre-fill prose because users were keeping the
+  // canned text and shipping it.
   const result = await query<LeadMagnetRow>(
     `
       insert into public.magnets_lead_magnets (
@@ -958,22 +998,22 @@ export async function createLeadMagnet(accountId: string, title: string, downloa
         $1,
         $2,
         $3,
-        'A short line about what people will get.',
-        'Explain what the resource helps with and why it is worth downloading.',
-        '["What the resource covers", "Who it is for", "What to do next"]'::jsonb,
-        'Inside the resource:',
+        '',
+        '',
+        '[]'::jsonb,
+        '',
         'Send me the resource',
-        'Send me the resource',
-        'Enter your details and we will email the download link.',
+        '',
+        '',
         $4,
-        'Your resource is ready',
-        'Hi {name},\n\nHere is your download:\n\n{download_link}',
-        'Your resource is ready.',
+        '',
+        '',
+        '',
         false
       )
       returning *
     `,
-    [accountId, slug, cleanTitle, cleanLink]
+    [accountId, finalSlug, cleanTitle, cleanLink]
   );
 
   return mapLeadMagnet(result.rows[0]);
@@ -1107,6 +1147,27 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
   if (!leadMagnet.rows[0]) return null;
 
   return { account, leadMagnet: mapLeadMagnet(leadMagnet.rows[0]) };
+}
+
+/**
+ * Look up an account by the hostname currently attached to its project.
+ * Used by the public route to redirect requests for unpublished or missing
+ * pages back to the account's apex.
+ */
+export async function findAccountByAttachedHost(host: string) {
+  const hostname = host.split(':')[0].toLowerCase();
+  if (!hostname) return null;
+  const result = await query<AccountRow>(
+    `
+      select *
+      from public.magnets_accounts
+      where lower(domain_attached_host) = $1
+        and domain_attached_host <> ''
+      limit 1
+    `,
+    [hostname]
+  );
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
 }
 
 export async function findPublishedLeadMagnetById(leadMagnetId: string) {

@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import { notFound } from 'next/navigation';
-import { findPublishedLeadMagnet } from '@/lib/platform-store';
+import { notFound, redirect } from 'next/navigation';
+import {
+  findAccountByAttachedHost,
+  findPublishedLeadMagnet,
+} from '@/lib/platform-store';
 import {
   LeadMagnetPageView,
   leadMagnetMetadataSnippet,
@@ -78,7 +81,18 @@ export default async function LeadMagnetPage({
   const host = requestHeaders.get('host') || 'localhost:3000';
   const result = await findPublishedLeadMagnet(host, slug);
 
-  if (!result) notFound();
+  if (!result) {
+    // Page is missing or unpublished. If we recognise the host (it's attached
+    // to one of our accounts) we bounce the visitor to that account's apex —
+    // typically the customer's main marketing site. If we don't recognise the
+    // host, fall through to 404 since we have nowhere to send them.
+    const owner = await findAccountByAttachedHost(host);
+    if (owner?.domain) {
+      const protocol = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https';
+      redirect(`${protocol}://${owner.domain}`);
+    }
+    notFound();
+  }
 
   return <LeadMagnetPageView account={result.account} leadMagnet={result.leadMagnet} />;
 }

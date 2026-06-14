@@ -124,7 +124,7 @@ export function DeliverySection({
         index={2}
         subtitle={
           senderLocked
-            ? `Subscribers see ${account.resendFromEmail} in their inbox.`
+            ? `Subscribers see ${displayFromAddress(account)} in their inbox.`
             : 'Pick the local part. The domain part stays locked to the subdomain you chose above.'
         }
         title="Set your sender address"
@@ -239,6 +239,24 @@ function SubdomainPicker({
   onDmarcDetected: (has: boolean) => void;
   onPatch: DeliveryPatch;
 }) {
+  // When the user picks a subdomain we must also re-stitch the stored
+  // resendFromEmail so its suffix matches. Otherwise the locked sender
+  // display keeps showing the previously composed `local@oldsub.domain`
+  // string even after the subdomain has changed.
+  const setReturnPath = (label: string) => {
+    const updates: Partial<DeliveryAccount> = { resendReturnPath: label };
+    if (account.resendFromEmail && account.domain) {
+      const parsed = parseStoredFrom(account.resendFromEmail);
+      if (parsed.localPart) {
+        const newSuffix = `${label}.${account.domain}`;
+        const address = `${parsed.localPart}@${newSuffix}`;
+        updates.resendFromEmail = parsed.displayName
+          ? `${parsed.displayName} <${address}>`
+          : address;
+      }
+    }
+    onPatch(updates);
+  };
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null);
   const [customLabel, setCustomLabel] = useState('');
@@ -263,7 +281,7 @@ function SubdomainPicker({
       setSuggestion(data);
       onDmarcDetected((data?.existingDmarc?.length ?? 0) > 0);
       if (!account.resendReturnPath && data?.recommended) {
-        onPatch({ resendReturnPath: data.recommended });
+        setReturnPath(data.recommended);
       }
     } catch {
       setError('Could not probe DNS.');
@@ -319,7 +337,7 @@ function SubdomainPicker({
                 <CandidateRow
                   candidate={candidate}
                   key={candidate.label}
-                  onPick={() => onPatch({ resendReturnPath: candidate.label })}
+                  onPick={() => setReturnPath(candidate.label)}
                   selected={candidate.label === account.resendReturnPath}
                 />
               ))}
@@ -336,7 +354,7 @@ function SubdomainPicker({
               <AceternityButton
                 disabled={!customLabel.trim()}
                 onClick={() => {
-                  if (customLabel.trim()) onPatch({ resendReturnPath: customLabel.trim() });
+                  if (customLabel.trim()) setReturnPath(customLabel.trim());
                 }}
                 size="sm"
                 variant="secondary"
@@ -446,7 +464,7 @@ function SenderPicker({
       }
       confirmTitle="Change your sender address?"
       displayValue={
-        <span className="font-mono text-ink-900">{account.resendFromEmail || 'No sender set'}</span>
+        <span className="font-mono text-ink-900">{displayFromAddress(account) || 'No sender set'}</span>
       }
       locked={locked}
       onConfirmEdit={onConfirmEdit}
@@ -481,6 +499,23 @@ function SenderPicker({
       </div>
     </LockedField>
   );
+}
+
+/**
+ * What to show in the inbox preview. We always compose from the local part of
+ * the stored sender + the current `<returnPath>.<domain>` suffix so the UI
+ * stays consistent even when the user has changed the subdomain since the
+ * sender was last saved.
+ */
+function displayFromAddress(account: DeliveryAccount): string {
+  const suffix = account.resendReturnPath && account.domain
+    ? `${account.resendReturnPath}.${account.domain}`
+    : '';
+  if (!suffix) return account.resendFromEmail || '';
+  const parsed = parseStoredFrom(account.resendFromEmail);
+  if (!parsed.localPart) return account.resendFromEmail || '';
+  const address = `${parsed.localPart}@${suffix}`;
+  return parsed.displayName ? `${parsed.displayName} <${address}>` : address;
 }
 
 function parseStoredFrom(stored: string): { displayName: string; localPart: string } {

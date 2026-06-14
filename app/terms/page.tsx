@@ -42,6 +42,17 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
+      <LegalSection title="2.1 Magnets product newsletter">
+        <p>
+          When you register, we add your email address to the Magnets product newsletter. We use it for product
+          updates, occasional tips, and important changes that affect your account. You can unsubscribe at any time
+          from the link in the footer of any email, or by emailing{' '}
+          <a className="text-ink-900 underline-offset-4 hover:underline" href="mailto:hello@magnets.so">hello@magnets.so</a>
+          . Unsubscribing from the newsletter does not delete your account or stop transactional emails (password
+          resets, security alerts, etc.).
+        </p>
+      </LegalSection>
+
       <LegalSection title="3. Bring your own keys">
         <p>
           Magnets does not provide email sending or newsletter accounts. To send the resource email you must connect
