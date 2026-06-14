@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { senderMatchesAccountDomain } from './dns-records';
 import { log } from './logger';
 import type { AccountSettings, LeadMagnet } from './types';
 
@@ -75,6 +76,18 @@ export async function sendLeadMagnetEmail({
   if (!account.resendFromEmail) {
     throw new EmailDeliveryError(
       'Email could not be sent because no sender address is set.'
+    );
+  }
+
+  if (!account.domainVerifiedAt) {
+    throw new EmailDeliveryError(
+      'Email could not be sent because the account domain has not been verified.'
+    );
+  }
+
+  if (!senderMatchesAccountDomain(account)) {
+    throw new EmailDeliveryError(
+      'Email could not be sent because the sender address does not match this account domain.'
     );
   }
 

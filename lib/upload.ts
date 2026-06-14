@@ -26,8 +26,7 @@ export const MAX_LOGO_BYTES = 1_000_000; // 1 MB
 export const MAX_LOGO_DATA_URL_LENGTH = Math.ceil(MAX_LOGO_BYTES * 4 / 3) + 256; // base64 overhead + header
 
 // Lead-magnet hero images are larger by nature (photography, screenshots).
-// 4 MB matches what people typically upload from a phone.
-export const MAX_MAGNET_IMAGE_BYTES = 4_000_000;
+export const MAX_MAGNET_IMAGE_BYTES = 10_000_000; // 10 MB
 export const MAX_MAGNET_IMAGE_DATA_URL_LENGTH = Math.ceil(MAX_MAGNET_IMAGE_BYTES * 4 / 3) + 256;
 
 export type LogoValidationError =

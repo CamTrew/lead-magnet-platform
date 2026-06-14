@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addToBeehiiv } from '@/lib/beehiiv';
+import { senderMatchesAccountDomain } from '@/lib/dns-records';
 import { addToSubstack } from '@/lib/substack';
 import { findLeadMagnet, recordSubmission } from '@/lib/platform-store';
 import {
@@ -46,6 +47,32 @@ export async function POST(request: NextRequest) {
 
     if (!result || result.leadMagnet.slug !== slug || !result.leadMagnet.published) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+    }
+
+    const expectedAttachedHost =
+      result.account.subdomain && result.account.domain
+        ? `${result.account.subdomain}.${result.account.domain}`.toLowerCase()
+        : '';
+    const senderReady =
+      Boolean(result.account.resendApiKey) &&
+      Boolean(result.account.domainVerifiedAt) &&
+      result.account.domainAttachedHost.toLowerCase() === expectedAttachedHost &&
+      Boolean(result.account.resendFromEmail) &&
+      Boolean(result.account.resendReturnPath) &&
+      senderMatchesAccountDomain(result.account);
+
+    if (!senderReady) {
+      log.warn('Email delivery blocked: unsafe sender configuration', {
+        route: ROUTE,
+        method: 'POST',
+        status: 409,
+        accountId,
+        extra: { leadMagnetId },
+      });
+      return NextResponse.json(
+        { error: 'This resource is not ready to send yet. Please contact the page owner.' },
+        { status: 409 }
+      );
     }
 
     try {

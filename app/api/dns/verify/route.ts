@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
 import {
   parseSenderEmail,
+  senderMatchesAccountDomain,
   type DnsRecordDefinition,
 } from '@/lib/dns-records';
 import { getAccountWithSecrets } from '@/lib/platform-store';
@@ -340,6 +341,18 @@ export async function POST(request: NextRequest) {
       const accountWithSecrets = await getAccountWithSecrets(payload.account.id);
       if (!accountWithSecrets) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      }
+      if (
+        !senderMatchesAccountDomain({
+          domain: accountWithSecrets.domain,
+          resendFromEmail: parsed.data.resendFromEmail || '',
+          resendReturnPath: accountWithSecrets.resendReturnPath,
+        })
+      ) {
+        return NextResponse.json(
+          { error: 'Sender address must use the sending domain on this account.' },
+          { status: 400 }
+        );
       }
 
       // Resend's "domain" is whatever the user sends *from* — for

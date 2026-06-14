@@ -53,6 +53,30 @@ export function parseSenderEmail(value: string): ParsedSenderEmail | null {
   return { email, domain: normaliseRootDomain(domain) };
 }
 
+export function expectedSenderDomain(returnPath: string, domain: string) {
+  const cleanReturnPath = normaliseSubdomain(returnPath);
+  const cleanDomain = normaliseRootDomain(domain);
+  if (!cleanReturnPath || !cleanDomain) return '';
+  return `${cleanReturnPath}.${cleanDomain}`;
+}
+
+export function senderMatchesAccountDomain({
+  domain,
+  resendFromEmail,
+  resendReturnPath,
+}: {
+  domain: string;
+  resendFromEmail: string;
+  resendReturnPath: string;
+}) {
+  if (!resendFromEmail) return true;
+
+  const sender = parseSenderEmail(resendFromEmail);
+  const expected = expectedSenderDomain(resendReturnPath, domain);
+
+  return Boolean(sender && expected && sender.domain === expected);
+}
+
 export function buildPageDnsRecords({
   accountId,
   domain,

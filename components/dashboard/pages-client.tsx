@@ -211,6 +211,10 @@ function platformUrl(id: string) {
   return `/p/${id}`;
 }
 
+function leadMagnetUrl(account: DashboardPayload['account'], leadMagnet: LeadMagnet) {
+  return publicUrl(account, leadMagnet.slug) || platformUrl(leadMagnet.id);
+}
+
 export function PagesClient({ initialData }: { initialData: DashboardPayload }) {
   const router = useRouter();
   const account = initialData.account;
@@ -230,11 +234,9 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   const pageLimitReached = leadMagnets.length >= MAX_LEAD_MAGNETS_PER_ACCOUNT;
   const actionLabel = pageLimitReached
     ? 'Limit reached'
-    : isOpening
-      ? 'Opening editor'
-      : isCreating
-        ? 'Creating page'
-        : 'New page';
+    : isCreating
+      ? 'Creating page'
+      : 'New page';
 
   function openCreateDialog() {
     if (isCreating || isOpening) return;
@@ -386,7 +388,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                 disabled={pageLimitReached || isCreating || isOpening}
                 onClick={openCreateDialog}
               >
-                {isCreating || isOpening ? (
+                {isCreating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Plus className="h-4 w-4" />
@@ -397,11 +399,11 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-[#e4e4e7] bg-[#fafafa] text-xs font-black uppercase text-[#71717a]">
                 <tr>
                   <th className="px-5 py-3">Page</th>
-                  <th className="px-5 py-3">Path</th>
+                  <th className="px-5 py-3">URL</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Updated</th>
                   <th className="w-32 px-5 py-3 text-right">Actions</th>
@@ -424,70 +426,82 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                     </td>
                   </tr>
                 )}
-                {leadMagnets.map((leadMagnet) => (
-                  <tr
-                    key={leadMagnet.id}
-                    className="bg-white transition hover:bg-[#fafafa]"
-                  >
-                    <td className="max-w-[320px] px-5 py-4">
-                      <p className="truncate font-black text-[#09090b]">{leadMagnet.title}</p>
-                      <p className="truncate text-xs text-[#71717a]">{leadMagnet.subtitle}</p>
-                    </td>
-                    <td className="px-5 py-4 font-mono text-xs text-[#52525b]">/{leadMagnet.slug}</td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={cn(
-                          'rounded-lg border px-2 py-1 text-xs font-bold',
-                          leadMagnet.published
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-[#e4e4e7] bg-[#f4f4f5] text-[#18181b]'
+                {leadMagnets.map((leadMagnet) => {
+                  const url = leadMagnetUrl(account, leadMagnet);
+
+                  return (
+                    <tr
+                      key={leadMagnet.id}
+                      className="bg-white transition hover:bg-[#fafafa]"
+                    >
+                      <td className="max-w-[300px] px-5 py-4">
+                        <p className="truncate font-black text-[#09090b]">{leadMagnet.title}</p>
+                        <p className="truncate text-xs text-[#71717a]">{leadMagnet.subtitle}</p>
+                      </td>
+                      <td className="max-w-[360px] px-5 py-4">
+                        {leadMagnet.published ? (
+                          <a
+                            className="block truncate font-mono text-xs text-ink-700 underline-offset-2 hover:text-ink-950 hover:underline"
+                            href={url}
+                            rel="noreferrer"
+                            target="_blank"
+                            title={url}
+                          >
+                            {url}
+                          </a>
+                        ) : (
+                          <span className="block truncate font-mono text-xs text-[#52525b]" title={url}>
+                            {url}
+                          </span>
                         )}
-                      >
-                        {leadMagnet.published ? 'Published' : 'Draft'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-[#52525b]">{formatDate(leadMagnet.updatedAt)}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        {leadMagnet.published && (() => {
-                          const branded = publicUrl(account, leadMagnet.slug);
-                          const fallback = platformUrl(leadMagnet.id);
-                          const url = branded || fallback;
-                          const title = branded
-                            ? branded
-                            : `Open on magnets.so. your branded URL appears once your domain is set up.`;
-                          return (
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={cn(
+                            'rounded-lg border px-2 py-1 text-xs font-bold',
+                            leadMagnet.published
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-[#e4e4e7] bg-[#f4f4f5] text-[#18181b]'
+                          )}
+                        >
+                          {leadMagnet.published ? 'Published' : 'Draft'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-[#52525b]">{formatDate(leadMagnet.updatedAt)}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end gap-2">
+                          {leadMagnet.published && (
                             <a
                               aria-label={`View ${leadMagnet.title}`}
                               className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-xs font-medium text-ink-900 transition hover:bg-ink-50"
                               href={url}
                               rel="noreferrer"
                               target="_blank"
-                              title={title}
+                              title={url}
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                               View
                             </a>
-                          );
-                        })()}
-                        <AceternityButton
-                          aria-label={`Open ${leadMagnet.title}`}
-                          disabled={isCreating || isOpening}
-                          onClick={() => openLeadMagnet(leadMagnet.id)}
-                          size="sm"
-                          title="Open"
-                        >
-                          {openingPageId === leadMagnet.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Pencil className="h-4 w-4" />
                           )}
-                          Open
-                        </AceternityButton>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <AceternityButton
+                            aria-label={`Open ${leadMagnet.title}`}
+                            disabled={isCreating || isOpening}
+                            onClick={() => openLeadMagnet(leadMagnet.id)}
+                            size="sm"
+                            title="Open"
+                          >
+                            {openingPageId === leadMagnet.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Pencil className="h-4 w-4" />
+                            )}
+                            Open
+                          </AceternityButton>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

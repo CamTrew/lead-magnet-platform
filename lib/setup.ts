@@ -1,4 +1,4 @@
-import { isValidRootDomain, isValidSubdomain, parseSenderEmail } from './dns-records';
+import { isValidRootDomain, isValidSubdomain, senderMatchesAccountDomain } from './dns-records';
 import type { AccountSettings } from './types';
 
 export type SetupItemKey =
@@ -91,7 +91,7 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
       key: 'sender',
       label: 'Set your sender address',
       detail: 'In Delivery, pick the local part of your "from" email.',
-      done: Boolean(account.resendFromEmail) && parseSenderEmail(account.resendFromEmail) !== null,
+      done: Boolean(account.resendFromEmail) && senderMatchesAccountDomain(account),
     },
   ];
 }

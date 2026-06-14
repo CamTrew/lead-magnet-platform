@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { query, type QueryRunner, withTransaction } from './db';
+import { senderMatchesAccountDomain } from './dns-records';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from './limits';
 import {
   decryptSecret,
@@ -517,6 +518,27 @@ export async function findUserByEmail(email: string): Promise<PlatformUser | nul
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
+export async function updateUserName(userId: string, name: string): Promise<PlatformUser | null> {
+  const result = await query<UserRow>(
+    `
+      update neon_auth."user"
+      set
+        name = $2,
+        "updatedAt" = now()
+      where id = $1
+      returning
+        id,
+        email,
+        name,
+        "createdAt" as created_at,
+        "updatedAt" as updated_at
+    `,
+    [userId, name.trim()]
+  );
+
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
 export async function findUserWithPasswordByEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const result = await query<UserWithCredentialRow>(
@@ -890,6 +912,14 @@ export async function updateAccount(
         resendFromEmail = `${plain[1]}@${expectedSuffix}`;
       }
     }
+  }
+
+  if (!senderMatchesAccountDomain({
+    domain: targetDomain,
+    resendFromEmail,
+    resendReturnPath: targetReturnPath,
+  })) {
+    resendFromEmail = '';
   }
 
   const result = await query<AccountRow>(

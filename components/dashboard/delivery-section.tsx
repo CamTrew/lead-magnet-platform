@@ -79,7 +79,6 @@ export function DeliverySection({
   saveState: 'idle' | 'saving' | 'saved' | 'error';
 }) {
   const [unlockSubdomain, setUnlockSubdomain] = useState(false);
-  const [unlockSender, setUnlockSender] = useState(false);
   const [unlockDns, setUnlockDns] = useState(false);
   // Lifted from SendingDnsChecker so we can collapse Step 3 into a "Verified"
   // summary once every record resolves, matching the lock pattern Steps 1 & 2
@@ -91,14 +90,13 @@ export function DeliverySection({
   const [apexHasDmarc, setApexHasDmarc] = useState(false);
 
   const subdomainLocked = Boolean(account.resendReturnPath) && !unlockSubdomain;
-  const senderLocked = Boolean(account.resendFromEmail) && !unlockSender;
+  const senderLocked = Boolean(account.resendFromEmail);
   const dnsLocked = dnsVerified && !unlockDns;
 
   // Once a save completes, re-lock everything.
   useEffect(() => {
     if (saveState === 'saved') {
       setUnlockSubdomain(false);
-      setUnlockSender(false);
     }
   }, [saveState]);
 
@@ -147,9 +145,7 @@ export function DeliverySection({
       >
         <SenderPicker
           account={account}
-          locked={senderLocked}
           onCommit={onCommit}
-          onConfirmEdit={() => setUnlockSender(true)}
           onPatch={onPatch}
         />
       </Step>
@@ -470,15 +466,11 @@ function CandidateRow({
 
 function SenderPicker({
   account,
-  locked,
   onCommit,
-  onConfirmEdit,
   onPatch,
 }: {
   account: DeliveryAccount;
-  locked: boolean;
   onCommit: () => void;
-  onConfirmEdit: () => void;
   onPatch: DeliveryPatch;
 }) {
   // We store the canonical "Display Name <local@sub.domain>" string in
@@ -505,53 +497,36 @@ function SenderPicker({
   }
 
   return (
-    <LockedField
-      confirmDescription={
-        <>
-          <p>
-            Changing your sender address means subscribers see the new one on emails that go out from now on.
-            Open or in-flight sends may keep the old address.
-          </p>
-        </>
-      }
-      confirmTitle="Change your sender address?"
-      displayValue={
-        <span className="font-mono text-ink-900">{displayFromAddress(account) || 'No sender set'}</span>
-      }
-      locked={locked}
-      onConfirmEdit={onConfirmEdit}
-    >
-      <div className="grid gap-3">
-        <Field label="Display name (optional)" hint="Shown in the inbox as the sender's name.">
-          <AceternityInput
-            maxLength={80}
+    <div className="grid gap-3">
+      <Field label="Display name (optional)" hint="Shown in the inbox as the sender's name.">
+        <AceternityInput
+          maxLength={80}
+          onBlur={onCommit}
+          onChange={(event) => update({ displayName: event.target.value })}
+          placeholder="Your Brand"
+          value={displayName}
+        />
+      </Field>
+      <Field
+        label="Sender address"
+        hint={`The part before @ is up to you. The suffix is locked to the subdomain you chose above.`}
+      >
+        <div className="flex h-9 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
+          <AtSign className="my-auto ml-2 h-3.5 w-3.5 shrink-0 text-ink-400" />
+          <input
+            className="min-w-0 flex-1 bg-transparent px-2 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+            maxLength={64}
             onBlur={onCommit}
-            onChange={(event) => update({ displayName: event.target.value })}
-            placeholder="Your Brand"
-            value={displayName}
+            onChange={(event) => update({ localPart: event.target.value.toLowerCase() })}
+            placeholder="hello"
+            value={localPart}
           />
-        </Field>
-        <Field
-          label="Sender address"
-          hint={`The part before @ is up to you. The suffix is locked to the subdomain you chose above.`}
-        >
-          <div className="flex h-9 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
-            <AtSign className="my-auto ml-2 h-3.5 w-3.5 shrink-0 text-ink-400" />
-            <input
-              className="min-w-0 flex-1 bg-transparent px-2 text-sm text-ink-900 outline-none placeholder:text-ink-400"
-              maxLength={64}
-              onBlur={onCommit}
-              onChange={(event) => update({ localPart: event.target.value.toLowerCase() })}
-              placeholder="hello"
-              value={localPart}
-            />
-            <span className="flex shrink-0 items-center border-l border-ink-200 bg-ink-50 px-3 font-mono text-xs text-ink-600">
-              @{suffix || 'pick subdomain first'}
-            </span>
-          </div>
-        </Field>
-      </div>
-    </LockedField>
+          <span className="flex shrink-0 items-center border-l border-ink-200 bg-ink-50 px-3 font-mono text-xs text-ink-600">
+            @{suffix || 'pick subdomain first'}
+          </span>
+        </div>
+      </Field>
+    </div>
   );
 }
 

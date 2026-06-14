@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, KeyRound, Loader2, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, KeyRound, Loader2, Trash2, UserRound } from 'lucide-react';
 import {
   AceternityButton,
   AceternityCard,
@@ -22,25 +22,115 @@ export function AccountSettingsClient({
     <>
       <PageHeader title="Account" subtitle="Password, identity, and danger zone." />
       <div className="mx-auto max-w-6xl space-y-4">
-        <AceternityCard className="p-6">
-          <div className="flex items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-50 text-ink-700">
-              <KeyRound className="h-4 w-4" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-ink-950">Who you are</h2>
-              <p className="mt-1 text-sm text-ink-600">
-                <span className="font-medium text-ink-900">{userName || 'Unnamed'}</span> · {userEmail}
-              </p>
-            </div>
-          </div>
-        </AceternityCard>
+        <ProfileCard userEmail={userEmail} userName={userName} />
 
         <PasswordCard />
 
         <DangerZoneCard />
       </div>
     </>
+  );
+}
+
+function ProfileCard({
+  userEmail,
+  userName,
+}: {
+  userEmail: string;
+  userName: string;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState(userName);
+  const [savedName, setSavedName] = useState(userName);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const cleanName = name.trim();
+  const unchanged = cleanName === savedName.trim();
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!cleanName) {
+      setError('Enter your name.');
+      return;
+    }
+    if (unchanged) return;
+
+    setBusy(true);
+    try {
+      const response = await fetch('/api/account/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: cleanName }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'Could not update your name.');
+      }
+      const data = (await response.json()) as { user: { name: string } };
+      setName(data.user.name);
+      setSavedName(data.user.name);
+      setSuccess('Name updated.');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AceternityCard className="p-6">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-50 text-ink-700">
+          <UserRound className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <h2 className="text-base font-semibold text-ink-950">Who you are</h2>
+          <p className="mt-1 text-sm text-ink-600">{userEmail}</p>
+
+          <form className="mt-5 grid gap-4 sm:max-w-md" onSubmit={submit}>
+            <Field label="Name">
+              <AceternityInput
+                autoComplete="name"
+                disabled={busy}
+                maxLength={120}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError('');
+                  setSuccess('');
+                }}
+                placeholder="Your name"
+                required
+                value={name}
+              />
+            </Field>
+            <Field label="Email">
+              <AceternityInput disabled readOnly value={userEmail} />
+            </Field>
+            {error && (
+              <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+                {error}
+              </p>
+            )}
+            {success && (
+              <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-700">
+                {success}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <AceternityButton disabled={busy || !cleanName || unchanged} type="submit">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Update name
+              </AceternityButton>
+            </div>
+          </form>
+        </div>
+      </div>
+    </AceternityCard>
   );
 }
 

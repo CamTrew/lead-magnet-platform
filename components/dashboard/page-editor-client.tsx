@@ -30,6 +30,9 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Mode = 'page' | 'email';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 
+const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
+const MAGNET_IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
+
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -209,8 +212,8 @@ export function PageEditorClient({
       event.target.value = '';
       return;
     }
-    if (file.size > 4_000_000) {
-      setError('Image must be 4 MB or smaller. Compress and try again.');
+    if (file.size > MAX_MAGNET_IMAGE_BYTES) {
+      setError('Image must be 10 MB or smaller. Compress and try again.');
       event.target.value = '';
       return;
     }
@@ -362,7 +365,7 @@ export function PageEditorClient({
         </AceternityCard>
 
         <input
-          accept="image/*"
+          accept={MAGNET_IMAGE_ACCEPT}
           className="hidden"
           onChange={handleImageUpload}
           ref={fileInputRef}
