@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     userId = payload.user.id;
     accountId = payload.account.id;
 
-    // Hard-enforced 2-minute cooldown per user on the verification check.
+    // Hard-enforced 1-minute cooldown per user on the verification check.
     // Anything faster spams Resend / our DNS resolver for no benefit since
     // DNS propagation takes minutes. Per-IP fan-out kept separate to absorb
     // shared-network noise without locking out legitimate users.
@@ -80,13 +80,13 @@ export async function POST(request: NextRequest) {
         identifier: payload.user.id,
         limit: 1,
         scope: 'domain:verify-ownership:user',
-        windowSeconds: 120,
+        windowSeconds: 60,
       },
       {
         identifier: requestIp(request),
         limit: 30,
         scope: 'domain:verify-ownership:ip',
-        windowSeconds: 120,
+        windowSeconds: 60,
       },
     ]);
 

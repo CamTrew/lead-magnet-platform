@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     userId = payload.user.id;
     accountId = payload.account.id;
 
-    // 2-minute cooldown per user. The delivery branch calls Resend's
+    // 1-minute cooldown per user. The delivery branch calls Resend's
     // /domains API which is rate-limited by them too, so this caps us well
     // before we hit Resend's ceiling.
     await enforceRateLimits([
@@ -203,13 +203,13 @@ export async function POST(request: NextRequest) {
         identifier: payload.user.id,
         limit: 1,
         scope: 'dns:verify:user',
-        windowSeconds: 120,
+        windowSeconds: 60,
       },
       {
         identifier: requestIp(request),
         limit: 30,
         scope: 'dns:verify:ip',
-        windowSeconds: 120,
+        windowSeconds: 60,
       },
     ]);
 
