@@ -482,6 +482,7 @@ export function DashboardClient({
           brand: account.brand,
           resendFromEmail: account.resendFromEmail,
           resendApiKey: account.resendApiKey,
+          resendReturnPath: account.resendReturnPath,
           beehiivApiKey: account.beehiivApiKey,
           beehiivPublicationId: account.beehiivPublicationId,
           substackPublication: account.substackPublication,
