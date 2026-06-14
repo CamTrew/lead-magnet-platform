@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { type ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Image as ImageIcon, Loader2, Trash2 } from 'lucide-react';
 import {
   AceternityButton,
   AceternityInput,
@@ -31,9 +31,19 @@ const MAGNET_TYPES = [
 ] as const;
 const CADENCES = ['Weekly', 'Bi-weekly', 'Monthly', 'Quarterly', 'Ad-hoc'] as const;
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export function OnboardingGate({ userName }: { userName: string }) {
   const router = useRouter();
   const [businessName, setBusinessName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [magnetType, setMagnetType] = useState('');
   const [cadence, setCadence] = useState('');
@@ -51,9 +61,31 @@ export function OnboardingGate({ userName }: { userName: string }) {
 
   const valid =
     businessName.trim().length > 0 &&
+    logoUrl.length > 0 &&
     BUSINESS_TYPES.includes(businessType as (typeof BUSINESS_TYPES)[number]) &&
     MAGNET_TYPES.includes(magnetType as (typeof MAGNET_TYPES)[number]) &&
     CADENCES.includes(cadence as (typeof CADENCES)[number]);
+
+  async function handleLogoFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!allowed.includes(file.type)) {
+      setError('Logo must be a PNG, JPG, WebP, or GIF (no SVG).');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 1_000_000) {
+      setError('Logo must be 1 MB or smaller.');
+      event.target.value = '';
+      return;
+    }
+
+    setError('');
+    setLogoUrl(await readFileAsDataUrl(file));
+    event.target.value = '';
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -67,6 +99,7 @@ export function OnboardingGate({ userName }: { userName: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           businessName: businessName.trim(),
+          logoUrl,
           businessType,
           magnetType,
           cadence,
@@ -106,7 +139,7 @@ export function OnboardingGate({ userName }: { userName: string }) {
             </div>
           </div>
           <p className="mt-3 text-sm leading-6 text-ink-600">
-            Four quick questions before we open the dashboard. This shapes the defaults and helps us improve Magnets.
+            Add your brand basics before we open the dashboard. Your logo and business name appear together on every magnet.
           </p>
         </div>
 
@@ -115,13 +148,53 @@ export function OnboardingGate({ userName }: { userName: string }) {
             <AceternityInput
               autoFocus
               disabled={busy}
-              maxLength={120}
+              maxLength={80}
               onChange={(event) => setBusinessName(event.target.value)}
-              placeholder="Your brand"
+              placeholder="Your business"
               required
               value={businessName}
             />
           </Field>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">Upload your logo</span>
+            <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ink-200 bg-white text-ink-500">
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img alt="" className="h-full w-full object-contain p-1.5" src={logoUrl} />
+                ) : (
+                  <ImageIcon className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                {logoUrl && businessName.trim() ? (
+                  <p className="mb-2 truncate text-sm font-semibold text-ink-950">{businessName.trim()}</p>
+                ) : (
+                  <p className="mb-2 text-sm font-medium text-ink-700">PNG, JPG, WebP, or GIF. 1 MB max.</p>
+                )}
+                <AceternityInput
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-900"
+                  disabled={busy}
+                  onChange={handleLogoFile}
+                  required={!logoUrl}
+                  type="file"
+                />
+              </div>
+              {logoUrl && (
+                <button
+                  aria-label="Remove logo"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                  disabled={busy}
+                  onClick={() => setLogoUrl('')}
+                  type="button"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
 
           <Field label="What kind of business is it?">
             <OnboardingSelect

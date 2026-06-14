@@ -2,6 +2,8 @@ import { isValidRootDomain, isValidSubdomain, parseSenderEmail } from './dns-rec
 import type { AccountSettings } from './types';
 
 export type SetupItemKey =
+  | 'businessName'
+  | 'logo'
   | 'domain'
   | 'subdomain'
   | 'domainVerified'
@@ -20,6 +22,8 @@ export type SetupItem = {
 /**
  * Decide whether the account has completed enough setup to use the rest of the
  * dashboard. We require:
+ *  - a business name
+ *  - a logo
  *  - a valid root domain
  *  - a valid page subdomain
  *  - ownership verified (TXT proof passed)
@@ -60,6 +64,18 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
       done: Boolean(account.domainAttachedHost),
     },
     {
+      key: 'businessName',
+      label: 'Add your business name',
+      detail: 'Open Brand after your domain is connected.',
+      done: Boolean(account.logoText.trim()),
+    },
+    {
+      key: 'logo',
+      label: 'Upload your logo',
+      detail: 'Open Brand after your domain is connected.',
+      done: Boolean(account.logoUrl),
+    },
+    {
       key: 'resendKey',
       label: 'Add a sending key',
       detail: 'Without this, no email can be sent. Free at resend.com.',
@@ -87,4 +103,17 @@ export function isSetupComplete(account: AccountSettings) {
   // that can't actually send email.
   if (process.env.MAGNETS_SKIP_SETUP_GATE === '1') return true;
   return setupChecklist(account).every((item) => item.done);
+}
+
+export function isPublishingDomainReady(account: AccountSettings) {
+  if (process.env.MAGNETS_SKIP_SETUP_GATE === '1') return true;
+
+  return (
+    Boolean(account.domain) &&
+    isValidRootDomain(account.domain) &&
+    Boolean(account.subdomain) &&
+    isValidSubdomain(account.subdomain) &&
+    Boolean(account.domainVerifiedAt) &&
+    Boolean(account.domainAttachedHost)
+  );
 }

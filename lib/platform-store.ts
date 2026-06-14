@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { query } from './db';
+import { query, type QueryRunner, withTransaction } from './db';
+import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from './limits';
 import {
   decryptSecret,
   encryptSecret,
@@ -21,6 +22,13 @@ const defaultBrand: BrandSettings = {
   accent: '#d8c8ff',
   success: '#22c55e',
 };
+
+export class LeadMagnetLimitError extends Error {
+  constructor() {
+    super(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages.`);
+    this.name = 'LeadMagnetLimitError';
+  }
+}
 
 type UserRow = {
   id: string;
@@ -764,7 +772,7 @@ export async function clearDomainAttached(accountId: string) {
 
 export async function completeOnboarding(
   accountId: string,
-  answers: { businessName: string; businessType: string; magnetType: string; cadence: string }
+  answers: { businessName: string; logoUrl: string; businessType: string; magnetType: string; cadence: string }
 ) {
   const result = await query<AccountRow>(
     `
@@ -776,11 +784,12 @@ export async function completeOnboarding(
         onboarding_magnet_type = $4,
         onboarding_cadence = $5,
         logo_text = case when logo_text = '' then $2 else logo_text end,
+        logo_url = case when logo_url = '' then $6 else logo_url end,
         updated_at = now()
       where id = $1
       returning *
     `,
-    [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence]
+    [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence, answers.logoUrl]
   );
 
   return result.rows[0] ? mapAccount(result.rows[0]) : null;
@@ -934,9 +943,9 @@ function slugifyTitle(title: string) {
     .slice(0, 64) || 'resource';
 }
 
-async function uniqueLeadMagnetSlug(accountId: string, title: string) {
+async function uniqueLeadMagnetSlug(accountId: string, title: string, runner: QueryRunner = { query }) {
   const baseSlug = slugifyTitle(title);
-  const existing = await query<{ slug: string }>(
+  const existing = await runner.query<{ slug: string }>(
     `
       select slug
       from public.magnets_lead_magnets
@@ -966,57 +975,72 @@ export async function createLeadMagnet(
   const cleanTitle = title.trim();
   const cleanLink = downloadLink.trim();
   const desiredSlug = slug.trim().toLowerCase();
-  // If the user-chosen slug collides with another magnet on this account,
-  // suffix with -2, -3, etc. Same behaviour as uniqueLeadMagnetSlug but
-  // keyed off the explicit slug instead of the title.
-  const finalSlug = await uniqueLeadMagnetSlug(accountId, desiredSlug);
 
-  // Brand-new magnets ship with empty fields (just the title + slug + URL).
-  // Bullets, copy, email body all use placeholder hints in the editor; we
-  // intentionally do not pre-fill prose because users were keeping the
-  // canned text and shipping it.
-  const result = await query<LeadMagnetRow>(
-    `
-      insert into public.magnets_lead_magnets (
-        account_id,
-        slug,
-        title,
-        subtitle,
-        description,
-        bullets,
-        bullets_heading,
-        cta_text,
-        form_heading,
-        form_subtext,
-        download_link,
-        email_subject,
-        email_body,
-        email_preview,
-        published
-      )
-      values (
-        $1,
-        $2,
-        $3,
-        '',
-        '',
-        '[]'::jsonb,
-        '',
-        'Send me the resource',
-        '',
-        '',
-        $4,
-        '',
-        '',
-        '',
-        false
-      )
-      returning *
-    `,
-    [accountId, finalSlug, cleanTitle, cleanLink]
-  );
+  return withTransaction(async (client) => {
+    await client.query('select id from public.magnets_accounts where id = $1 for update', [accountId]);
 
-  return mapLeadMagnet(result.rows[0]);
+    const countResult = await client.query<{ page_count: number }>(
+      'select count(*)::int as page_count from public.magnets_lead_magnets where account_id = $1',
+      [accountId]
+    );
+    const pageCount = countResult.rows[0]?.page_count ?? 0;
+
+    if (pageCount >= MAX_LEAD_MAGNETS_PER_ACCOUNT) {
+      throw new LeadMagnetLimitError();
+    }
+
+    // If the user-chosen slug collides with another magnet on this account,
+    // suffix with -2, -3, etc. Same behaviour as uniqueLeadMagnetSlug but
+    // keyed off the explicit slug instead of the title.
+    const finalSlug = await uniqueLeadMagnetSlug(accountId, desiredSlug, client);
+
+    // Brand-new magnets ship with empty fields (just the title + slug + URL).
+    // Bullets, copy, email body all use placeholder hints in the editor; we
+    // intentionally do not pre-fill prose because users were keeping the
+    // canned text and shipping it.
+    const result = await client.query<LeadMagnetRow>(
+      `
+        insert into public.magnets_lead_magnets (
+          account_id,
+          slug,
+          title,
+          subtitle,
+          description,
+          bullets,
+          bullets_heading,
+          cta_text,
+          form_heading,
+          form_subtext,
+          download_link,
+          email_subject,
+          email_body,
+          email_preview,
+          published
+        )
+        values (
+          $1,
+          $2,
+          $3,
+          '',
+          '',
+          '[]'::jsonb,
+          '',
+          'Send me the resource',
+          '',
+          '',
+          $4,
+          '',
+          '',
+          '',
+          false
+        )
+        returning *
+      `,
+      [accountId, finalSlug, cleanTitle, cleanLink]
+    );
+
+    return mapLeadMagnet(result.rows[0]);
+  });
 }
 
 export async function updateLeadMagnet(

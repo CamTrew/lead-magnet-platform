@@ -31,6 +31,7 @@ const ROUTE = '/api/account';
 const hexColorSchema = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
 const logoSchema = z
   .string()
+  .min(1, 'Upload your logo')
   .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
   .superRefine((value, ctx) => {
     const result = validateLogoDataUrl(value);
@@ -60,7 +61,7 @@ const schema = z.object({
     ),
   domain: domainSchema,
   logoUrl: logoSchema,
-  logoText: z.string().trim().max(80),
+  logoText: z.string().trim().min(1, 'Enter your business name').max(80),
   brand: z.object({
     primary: hexColorSchema,
     accent: hexColorSchema,

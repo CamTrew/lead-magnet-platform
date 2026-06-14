@@ -7,7 +7,6 @@ import {
   Globe2,
   Loader2,
   Mail,
-  Palette,
 } from 'lucide-react';
 import {
   AceternityCard,
@@ -23,7 +22,7 @@ import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSection = 'publishing' | 'delivery';
-type SectionIcon = typeof Palette;
+type SectionIcon = typeof Globe2;
 
 function SectionHeader({
   description,
@@ -201,7 +200,9 @@ export function DashboardClient({
 
   function patchAccount(updates: Partial<AccountSettings>, section: SaveSection) {
     markChanged(section);
-    setAccount((current) => ({ ...current, ...updates }));
+    const next = { ...accountRef.current, ...updates };
+    accountRef.current = next;
+    setAccount(next);
   }
 
   const commitSection = useCallback(
@@ -267,7 +268,7 @@ export function DashboardClient({
 
   return (
     <>
-      <PageHeader title="Configure" subtitle="Brand, domain, and delivery" />
+      <PageHeader title="Configure" subtitle="Domain and delivery" />
       <div className="mx-auto max-w-6xl space-y-4">
         {setupChecklist.length > 0 && setupChecklist.some((item) => !item.done) && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
@@ -278,8 +279,8 @@ export function DashboardClient({
             </p>
             <p className="mt-1 text-xs leading-5 text-amber-800">
               {showRedirectNotice
-                ? 'Pages and Signups unlock once the items below are complete.'
-                : 'Configure the items below to unlock Pages and Signups.'}
+                ? 'Brand, Pages, and Signups unlock as the items below are completed.'
+                : 'Configure the items below to unlock Brand, Pages, and Signups.'}
             </p>
             <ul className="mt-3 space-y-2 text-sm text-amber-900">
               {setupChecklist.map((item) => (

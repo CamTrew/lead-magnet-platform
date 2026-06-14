@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import type { DashboardPayload, LeadMagnet } from '@/lib/types';
+import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from '@/lib/limits';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -226,10 +227,21 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   const [createError, setCreateError] = useState('');
   const isCreating = createState === 'saving';
   const isOpening = Boolean(openingPageId) || isPending;
-  const actionLabel = isOpening ? 'Opening editor' : isCreating ? 'Creating page' : 'New page';
+  const pageLimitReached = leadMagnets.length >= MAX_LEAD_MAGNETS_PER_ACCOUNT;
+  const actionLabel = pageLimitReached
+    ? 'Limit reached'
+    : isOpening
+      ? 'Opening editor'
+      : isCreating
+        ? 'Creating page'
+        : 'New page';
 
   function openCreateDialog() {
     if (isCreating || isOpening) return;
+    if (pageLimitReached) {
+      setError(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages. Delete a page before creating another.`);
+      return;
+    }
     setCreateError('');
     setError('');
     setCreateOpen(true);
@@ -250,6 +262,10 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   async function createLeadMagnet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isCreating || isOpening) return;
+    if (pageLimitReached) {
+      setCreateError(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages. Delete a page before creating another.`);
+      return;
+    }
 
     const title = createTitle.trim();
     const downloadLink = createDownloadLink.trim();
@@ -360,9 +376,16 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
               <p className="mt-1 text-sm text-[#52525b]">
                 Open a page to edit the copy, email, and download link.
               </p>
+              <p className="mt-1 text-xs font-medium text-[#71717a]">
+                {leadMagnets.length} / {MAX_LEAD_MAGNETS_PER_ACCOUNT} pages used
+              </p>
             </div>
             <div className="flex items-center gap-2">
-              <AceternityButton className="min-w-[152px]" disabled={isCreating || isOpening} onClick={openCreateDialog}>
+              <AceternityButton
+                className="min-w-[152px]"
+                disabled={pageLimitReached || isCreating || isOpening}
+                onClick={openCreateDialog}
+              >
                 {isCreating || isOpening ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -390,7 +413,11 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                     <td colSpan={5} className="px-5 py-10 text-center">
                       <p className="font-black text-[#09090b]">No pages yet</p>
                       <p className="mt-1 text-sm text-[#71717a]">Create a page when the resource is ready.</p>
-                      <AceternityButton className="mt-4 min-w-[152px]" disabled={isOpening} onClick={openCreateDialog}>
+                      <AceternityButton
+                        className="mt-4 min-w-[152px]"
+                        disabled={pageLimitReached || isOpening}
+                        onClick={openCreateDialog}
+                      >
                         <Plus className="h-4 w-4" />
                         Create page
                       </AceternityButton>

@@ -1,0 +1,1 @@
+export const MAX_LEAD_MAGNETS_PER_ACCOUNT = 250;

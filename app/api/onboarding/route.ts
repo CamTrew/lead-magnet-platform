@@ -9,6 +9,11 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
+import {
+  logoValidationMessage,
+  MAX_LOGO_DATA_URL_LENGTH,
+  validateLogoDataUrl,
+} from '@/lib/upload';
 
 const ROUTE = '/api/onboarding';
 
@@ -33,8 +38,20 @@ const MAGNET_TYPES = [
 ] as const;
 const CADENCES = ['Weekly', 'Bi-weekly', 'Monthly', 'Quarterly', 'Ad-hoc'] as const;
 
+const logoSchema = z
+  .string()
+  .min(1, 'Upload your logo')
+  .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
+  .superRefine((value, ctx) => {
+    const result = validateLogoDataUrl(value);
+    if (!result.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: logoValidationMessage(result.reason) });
+    }
+  });
+
 const schema = z.object({
-  businessName: z.string().trim().min(1).max(120),
+  businessName: z.string().trim().min(1).max(80),
+  logoUrl: logoSchema,
   businessType: z.enum(BUSINESS_TYPES),
   magnetType: z.enum(MAGNET_TYPES),
   cadence: z.enum(CADENCES),

@@ -85,9 +85,6 @@ export async function sendLeadMagnetEmail({
   const text = magnet.downloadLink && !body.includes(magnet.downloadLink)
     ? `${body}\n\n${magnet.downloadLink}`
     : body;
-  const safePrimary = /^#[0-9a-fA-F]{6}$/.test(account.brand.primary)
-    ? account.brand.primary
-    : '#111111';
 
   let result;
   try {
@@ -100,7 +97,6 @@ export async function sendLeadMagnetEmail({
         <div style="display:none;max-height:0;overflow:hidden">${escapeHtml(magnet.emailPreview)}</div>
         <main style="margin:0;background:#fafafa;padding:32px;font-family:Inter,Arial,sans-serif;color:#18181b">
           <section style="margin:0 auto;max-width:640px;border:1px solid #e4e4e7;background:#ffffff;border-radius:8px;padding:40px">
-            <p style="margin:0 0 28px;color:${escapeHtml(safePrimary)};font-size:22px;font-weight:700">${escapeHtml(account.logoText)}</p>
             <div style="font-size:16px;line-height:1.7;color:#3f3f46">${renderParagraphs(text)}</div>
           </section>
         </main>

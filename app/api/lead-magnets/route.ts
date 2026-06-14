@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
-import { createLeadMagnet } from '@/lib/platform-store';
+import { createLeadMagnet, LeadMagnetLimitError } from '@/lib/platform-store';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -103,6 +103,10 @@ export async function POST(request: Request) {
     }
     if (isUniqueViolation(err)) {
       return NextResponse.json({ error: 'That page path is already in use.' }, { status: 409 });
+    }
+    if (err instanceof LeadMagnetLimitError) {
+      log.warn('Lead magnet page limit reached', { route: ROUTE, method: 'POST', status: 403, userId, accountId });
+      return NextResponse.json({ error: err.message }, { status: 403 });
     }
     log.error('Lead magnet create failed', {
       route: ROUTE,

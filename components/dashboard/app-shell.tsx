@@ -11,6 +11,7 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Palette,
   PanelLeftClose,
   Settings,
   Users,
@@ -21,6 +22,7 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Configure', requiresSetup: false },
+  { href: '/dashboard/brand', icon: Palette, label: 'Brand', requiresDomain: true },
   { href: '/dashboard/pages', icon: FileText, label: 'Pages', requiresSetup: true },
   { href: '/dashboard/signups', icon: Users, label: 'Signups', requiresSetup: true },
   { href: '/dashboard/account', icon: Settings, label: 'Account', requiresSetup: false },
@@ -107,6 +109,7 @@ function SidebarContent({
   onLogout,
   onNavigate,
   isLoggingOut,
+  publishingDomainReady,
   setupComplete,
   userName,
   userEmail,
@@ -116,6 +119,7 @@ function SidebarContent({
   isLoggingOut?: boolean;
   onLogout: () => void;
   onNavigate?: () => void;
+  publishingDomainReady: boolean;
   setupComplete: boolean;
   userName: string;
   userEmail: string;
@@ -175,7 +179,9 @@ function SidebarContent({
           const active = isDashboardRoot
             ? pathname === item.href
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const disabled = item.requiresSetup && !setupComplete;
+          const disabled =
+            Boolean(item.requiresSetup && !setupComplete) ||
+            Boolean(item.requiresDomain && !publishingDomainReady);
           return (
             <SidebarLink
               key={item.href}
@@ -186,7 +192,13 @@ function SidebarContent({
               icon={item.icon}
               label={item.label}
               onClick={onNavigate}
-              tooltip={disabled ? 'Finish setup on Configure first' : undefined}
+              tooltip={
+                item.requiresDomain && !publishingDomainReady
+                  ? 'Verify and connect your domain on Configure first'
+                  : disabled
+                    ? 'Finish setup on Configure first'
+                    : undefined
+              }
             />
           );
         })}
@@ -222,11 +234,13 @@ function SidebarContent({
 
 export function DashboardLayoutShell({
   children,
+  publishingDomainReady,
   setupComplete,
   userName,
   userEmail,
 }: {
   children: ReactNode;
+  publishingDomainReady: boolean;
   setupComplete: boolean;
   userName: string;
   userEmail: string;
@@ -267,6 +281,7 @@ export function DashboardLayoutShell({
             onCollapseToggle={toggleSidebar}
             isLoggingOut={isLoggingOut}
             onLogout={handleLogout}
+            publishingDomainReady={publishingDomainReady}
             setupComplete={setupComplete}
             userName={userName}
             userEmail={userEmail}
@@ -306,6 +321,7 @@ export function DashboardLayoutShell({
                   isLoggingOut={isLoggingOut}
                   onLogout={handleLogout}
                   onNavigate={() => setMobileOpen(false)}
+                  publishingDomainReady={publishingDomainReady}
                   setupComplete={setupComplete}
                   userName={userName}
                   userEmail={userEmail}
