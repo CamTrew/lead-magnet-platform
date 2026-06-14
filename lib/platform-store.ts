@@ -1336,6 +1336,23 @@ export async function listAccountSignups(accountId: string): Promise<AccountSign
   return result.rows.map(mapSignup);
 }
 
+export async function deleteAccountSignup(accountId: string, email: string) {
+  const result = await query<{ deleted: string }>(
+    `
+      with deleted as (
+        delete from public.magnets_submissions
+        where account_id = $1::uuid
+          and lower(email) = lower($2)
+        returning 1
+      )
+      select count(*)::text as deleted from deleted
+    `,
+    [accountId, email.trim()]
+  );
+
+  return Number(result.rows[0]?.deleted || 0);
+}
+
 export async function recordSubmission(submission: Omit<Submission, 'id' | 'createdAt'>) {
   const result = await query<SubmissionRow>(
     `

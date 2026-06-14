@@ -8,6 +8,7 @@ import {
   Mail,
   Plus,
   Search,
+  Trash2,
   Upload,
   Users,
   X,
@@ -47,10 +48,11 @@ export function SignupsClient({
   leadMagnets: LeadMagnetOption[];
 }) {
   const router = useRouter();
-  const [signups] = useState<AccountSignup[]>(initialSignups);
+  const [signups, setSignups] = useState<AccountSignup[]>(initialSignups);
   const [search, setSearch] = useState('');
   const [manualOpen, setManualOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [signupToRemove, setSignupToRemove] = useState<AccountSignup | null>(null);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -89,6 +91,19 @@ export function SignupsClient({
           leadMagnets={leadMagnets}
           onClose={() => setImportOpen(false)}
           onSuccess={onAfterImport}
+        />
+      )}
+      {signupToRemove && (
+        <RemoveSignupModal
+          onClose={() => setSignupToRemove(null)}
+          onRemoved={(email) => {
+            setSignups((current) =>
+              current.filter((signup) => signup.email.toLowerCase() !== email.toLowerCase())
+            );
+            setSignupToRemove(null);
+            router.refresh();
+          }}
+          signup={signupToRemove}
         />
       )}
 
@@ -186,7 +201,7 @@ export function SignupsClient({
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500">
                 <tr>
                   <th className="px-5 py-3">Email</th>
@@ -194,12 +209,13 @@ export function SignupsClient({
                   <th className="px-5 py-3">First magnet</th>
                   <th className="px-5 py-3">First signup</th>
                   <th className="px-5 py-3">Signups</th>
+                  <th className="w-20 px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-200">
                 {filtered.length === 0 ? (
                   <tr className="bg-white">
-                    <td colSpan={5} className="px-5 py-12 text-center">
+                    <td colSpan={6} className="px-5 py-12 text-center">
                       <p className="font-semibold text-ink-950">
                         {totalCount === 0 ? 'No signups yet' : 'No matches'}
                       </p>
@@ -226,6 +242,19 @@ export function SignupsClient({
                         <span className="inline-flex rounded-md border border-ink-200 bg-ink-50 px-2 py-0.5 text-xs font-medium text-ink-800">
                           {signup.signupCount}
                         </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end">
+                          <button
+                            aria-label={`Remove ${signup.email}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-500 transition hover:bg-red-50 hover:text-red-700"
+                            onClick={() => setSignupToRemove(signup)}
+                            title="Remove signup"
+                            type="button"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -270,6 +299,76 @@ function ModalShell({
         <div className="p-5">{children}</div>
       </div>
     </div>
+  );
+}
+
+function RemoveSignupModal({
+  onClose,
+  onRemoved,
+  signup,
+}: {
+  onClose: () => void;
+  onRemoved: (email: string) => void;
+  signup: AccountSignup;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function removeSignup() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/signups', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: signup.email }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'Could not remove this signup');
+      }
+
+      onRemoved(signup.email);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ModalShell onClose={onClose} title="Remove signup">
+      <div className="space-y-4">
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">Remove {signup.email}?</p>
+          <p className="mt-1 leading-6">
+            This removes the email from your signups list across every magnet on this account. It does not unsubscribe them
+            from Beehiiv, Substack, or any external tool.
+          </p>
+        </div>
+        {error && (
+          <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2 border-t border-ink-200 pt-4">
+          <AceternityButton disabled={busy} onClick={onClose} type="button" variant="secondary">
+            Cancel
+          </AceternityButton>
+          <button
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-red-600 bg-red-600 px-3.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:pointer-events-none disabled:opacity-60"
+            disabled={busy}
+            onClick={removeSignup}
+            type="button"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Remove signup
+          </button>
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -675,4 +774,3 @@ function ColumnSelect({
     </select>
   );
 }
-
