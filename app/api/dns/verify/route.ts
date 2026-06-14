@@ -323,9 +323,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
 
+      // The Resend domain is always created on the apex (e.g. headcount.so),
+      // with the user's return-path used as the subdomain namespace ('send').
+      // We use the user-stored apex for both the Resend API call and the
+      // lookup stitching so we don't accidentally double up the return-path
+      // when the user's sender email itself sits on the namespace (e.g.
+      // cam@send.headcount.so → sender.domain = send.headcount.so).
+      const apexDomain =
+        normaliseDomainForResend(accountWithSecrets.domain) ||
+        normaliseDomainForResend(sender.domain);
       try {
         records = await getResendEmailDnsRecords(
-          sender.domain,
+          apexDomain,
           accountWithSecrets.resendApiKey,
           accountWithSecrets.resendReturnPath || null
         );
