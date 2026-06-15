@@ -33,6 +33,8 @@ function rgbValue(hex: string) {
 }
 
 const pageBackground = [
+  'radial-gradient(circle at 7% 38%, var(--brand-primary-edge) 0, transparent 34%)',
+  'radial-gradient(circle at 93% 42%, var(--brand-primary-edge) 0, transparent 34%)',
   'linear-gradient(180deg, #ffffff 0%, #f8fbff 44%, #ffffff 100%)',
   'linear-gradient(to right, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
   'linear-gradient(to bottom, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
@@ -56,9 +58,10 @@ export function LeadMagnetPageView({
     '--brand-primary': account.brand.primary,
     '--brand-primary-rgb': rgbValue(account.brand.primary),
     '--brand-primary-soft': alpha(account.brand.primary, 0.16),
-    '--brand-primary-faint': alpha(account.brand.primary, 0.05),
+    '--brand-primary-faint': alpha(account.brand.primary, 0.08),
+    '--brand-primary-edge': alpha(account.brand.primary, 0.1),
     backgroundImage: pageBackground,
-    backgroundSize: 'auto, 72px 72px, 72px 72px',
+    backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
 
   return (
@@ -67,7 +70,7 @@ export function LeadMagnetPageView({
       style={brandStyle}
     >
       <header className="relative z-10">
-        <div className="mx-auto flex max-w-[1380px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
           <Link href={homeHref} className="inline-flex min-h-10 max-w-full items-center gap-2 transition-transform hover:scale-[1.01]">
             <BrandLockup account={account} displayName={displayName} />
           </Link>
@@ -75,14 +78,14 @@ export function LeadMagnetPageView({
       </header>
 
       <main className="relative z-10 flex-1">
-        <div className="mx-auto max-w-[1380px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
+        <div className="mx-auto max-w-[1280px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
-            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-16"
+            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
             style={{
-              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(account.brand.primary, 0.02)}`,
+              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(account.brand.primary, 0.08)}`,
             }}
           >
-            <div className="lg:grid lg:grid-cols-[minmax(0,560px)_minmax(380px,560px)] lg:items-start lg:gap-16">
+            <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-14">
               <section className="min-w-0 lg:pt-1">
                 <h1 className="mb-6 max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-[58px] lg:leading-[1.05]">
                   {magnet.title}
@@ -155,7 +158,7 @@ export function LeadMagnetPageView({
       </main>
 
       <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="mx-auto flex max-w-[1380px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
         </div>
       </footer>
@@ -253,9 +256,13 @@ function CaptureCard({
     <div
       className="rounded-[22px] border bg-white p-6 backdrop-blur-sm sm:p-8"
       style={{
-        borderColor: alpha(account.brand.primary, 0.12),
-        backgroundImage: 'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.96) 100%)',
-        boxShadow: '0 22px 70px -44px rgb(59 130 246 / 0.24), 0 18px 48px -42px rgb(15 23 42 / 0.22)',
+        borderColor: alpha(account.brand.primary, 0.28),
+        backgroundImage: [
+          `radial-gradient(circle at 18% 0%, ${alpha(account.brand.primary, 0.1)} 0, transparent 38%)`,
+          `radial-gradient(circle at 82% 100%, ${alpha(account.brand.primary, 0.08)} 0, transparent 42%)`,
+          'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.97) 100%)',
+        ].join(', '),
+        boxShadow: `0 26px 78px -48px ${alpha(account.brand.primary, 0.5)}, 0 18px 48px -42px rgb(15 23 42 / 0.24)`,
       }}
     >
       {magnet.formHeading && (

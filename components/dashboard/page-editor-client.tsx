@@ -76,6 +76,8 @@ function alpha(hex: string, opacity: number) {
 }
 
 const pageBackground = [
+  'radial-gradient(circle at 7% 38%, var(--brand-primary-edge) 0, transparent 34%)',
+  'radial-gradient(circle at 93% 42%, var(--brand-primary-edge) 0, transparent 34%)',
   'linear-gradient(180deg, #ffffff 0%, #f8fbff 44%, #ffffff 100%)',
   'linear-gradient(to right, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
   'linear-gradient(to bottom, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
@@ -406,15 +408,16 @@ function PageCanvas({
   const previewStyle: PreviewCss = {
     '--brand-primary': brandPrimary,
     '--brand-primary-soft': alpha(brandPrimary, 0.16),
-    '--brand-primary-faint': alpha(brandPrimary, 0.05),
+    '--brand-primary-faint': alpha(brandPrimary, 0.08),
+    '--brand-primary-edge': alpha(brandPrimary, 0.1),
     backgroundImage: pageBackground,
-    backgroundSize: 'auto, 72px 72px, 72px 72px',
+    backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
 
   return (
     <div className="relative bg-white text-zinc-900" style={previewStyle}>
       <header className="relative z-10">
-        <div className="mx-auto flex max-w-[1380px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
           <BrandPreviewLockup
             account={account}
             accountHasLogo={accountHasLogo}
@@ -424,14 +427,14 @@ function PageCanvas({
       </header>
 
       <main className="relative z-10">
-        <div className="mx-auto max-w-[1380px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
+        <div className="mx-auto max-w-[1280px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
-            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-16"
+            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
             style={{
-              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(brandPrimary, 0.02)}`,
+              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(brandPrimary, 0.08)}`,
             }}
           >
-            <div className="lg:grid lg:grid-cols-[minmax(0,560px)_minmax(380px,560px)] lg:items-start lg:gap-16">
+            <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-14">
               <section className="min-w-0 lg:pt-1">
                 <InlineText
                   ariaLabel="Page headline"
@@ -573,7 +576,7 @@ function PageCanvas({
       </main>
 
       <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="mx-auto flex max-w-[1380px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
         </div>
       </footer>
@@ -671,9 +674,13 @@ function CaptureCardPreview({
     <div
       className="rounded-[22px] border bg-white p-6 sm:p-8"
       style={{
-        borderColor: alpha(brandPrimary, 0.12),
-        backgroundImage: 'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.96) 100%)',
-        boxShadow: '0 22px 70px -44px rgb(59 130 246 / 0.24), 0 18px 48px -42px rgb(15 23 42 / 0.22)',
+        borderColor: alpha(brandPrimary, 0.28),
+        backgroundImage: [
+          `radial-gradient(circle at 18% 0%, ${alpha(brandPrimary, 0.1)} 0, transparent 38%)`,
+          `radial-gradient(circle at 82% 100%, ${alpha(brandPrimary, 0.08)} 0, transparent 42%)`,
+          'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.97) 100%)',
+        ].join(', '),
+        boxShadow: `0 26px 78px -48px ${alpha(brandPrimary, 0.5)}, 0 18px 48px -42px rgb(15 23 42 / 0.24)`,
       }}
     >
       <InlineText
