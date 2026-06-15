@@ -67,12 +67,12 @@ export function LeadMagnetForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <input
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="h-16 w-full rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
+        className="h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
         placeholder="Name"
         required
       />
@@ -80,7 +80,7 @@ export function LeadMagnetForm({
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="h-16 w-full rounded-2xl border-2 border-gray-200 bg-white/80 px-6 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
+        className="h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
         placeholder="Email"
         required
       />
@@ -94,7 +94,7 @@ export function LeadMagnetForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="inline-flex min-h-16 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-base font-bold uppercase leading-tight text-white shadow-xl shadow-gray-900/30 transition-all duration-200 hover:scale-[1.01] hover:shadow-2xl hover:shadow-gray-900/40 disabled:opacity-50 disabled:hover:scale-100"
+        className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-sm font-bold uppercase leading-tight text-white shadow-xl shadow-gray-900/30 transition-all duration-200 hover:scale-[1.01] hover:shadow-2xl hover:shadow-gray-900/40 disabled:opacity-50 disabled:hover:scale-100"
       >
         {isSubmitting && <Loader2 className="h-5 w-5 animate-spin" />}
         {isSubmitting ? 'Sending' : magnet.ctaText}
