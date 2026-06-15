@@ -2,7 +2,6 @@ import { isValidRootDomain, isValidSubdomain, senderMatchesAccountDomain } from 
 import type { AccountSettings } from './types';
 
 export type SetupItemKey =
-  | 'businessName'
   | 'logo'
   | 'domain'
   | 'subdomain'
@@ -22,7 +21,6 @@ export type SetupItem = {
 /**
  * Decide whether the account has completed enough setup to use the rest of the
  * dashboard. We require:
- *  - a business name
  *  - a logo
  *  - a valid root domain
  *  - a valid page subdomain
@@ -62,12 +60,6 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
       label: 'Connect the subdomain',
       detail: 'Once verified, click Connect subdomain to attach it to your account.',
       done: Boolean(account.domainAttachedHost),
-    },
-    {
-      key: 'businessName',
-      label: 'Add your business name',
-      detail: 'Open Brand after your domain is connected.',
-      done: Boolean(account.logoText.trim()),
     },
     {
       key: 'logo',

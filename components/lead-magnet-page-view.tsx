@@ -75,7 +75,7 @@ export function LeadMagnetPageView({
     >
       <header className="relative z-10">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
-          <Link href={homeHref} className="inline-flex min-h-10 max-w-full items-center gap-2 transition-transform hover:scale-[1.01]">
+          <Link href={homeHref} className="inline-flex min-h-10 max-w-full items-center justify-center gap-2 transition-transform hover:scale-[1.01]">
             <BrandLockup account={account} displayName={displayName} />
           </Link>
         </div>

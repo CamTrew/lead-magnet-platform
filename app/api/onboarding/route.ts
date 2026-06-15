@@ -51,7 +51,7 @@ const logoSchema = z
   });
 
 const schema = z.object({
-  businessName: z.string().trim().min(1).max(80),
+  businessName: z.string().trim().max(80),
   logoUrl: logoSchema,
   businessType: z.enum(BUSINESS_TYPES),
   magnetType: z.enum(MAGNET_TYPES),

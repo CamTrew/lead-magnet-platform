@@ -604,7 +604,7 @@ function BrandPreviewLockup({
 
   if (accountHasLogo) {
     return (
-      <div className="inline-flex min-h-10 max-w-full items-center gap-2">
+      <div className="inline-flex min-h-10 max-w-full items-center justify-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img alt="" className="h-8 w-auto max-w-[52px] object-contain sm:h-10" src={account.logoUrl} />
         {logoText && (

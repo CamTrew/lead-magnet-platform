@@ -98,10 +98,6 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
   async function save() {
     if (saving) return;
-    if (!draft.logoText.trim()) {
-      setError('Enter your business name.');
-      return;
-    }
     if (!draft.logoUrl) {
       setError('Upload your logo.');
       return;
@@ -146,7 +142,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
   return (
     <>
-      <PageHeader title="Brand" subtitle="Logo, business name, primary color, and highlight intensity for every magnet" />
+      <PageHeader title="Brand" subtitle="Logo, optional business name, primary color, and highlight intensity for every magnet" />
 
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
         <AceternityCard className="p-5">
@@ -169,10 +165,12 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
                 disabled={saving}
                 maxLength={80}
                 onChange={(event) => patch({ logoText: event.target.value })}
-                placeholder="Your business name"
-                required
+                placeholder="Optional if your logo stands alone"
                 value={draft.logoText}
               />
+              <span className="mt-1.5 block text-xs leading-5 text-ink-500">
+                Optional when your uploaded logo already includes your name.
+              </span>
             </label>
 
             <div>
@@ -235,7 +233,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
             <div className="flex items-center justify-between gap-3 border-t border-ink-200 pt-4">
               <SaveStatus state={saveState} />
-              <AceternityButton disabled={saving || !draft.logoText.trim() || !draft.logoUrl} onClick={save} type="button">
+              <AceternityButton disabled={saving || !draft.logoUrl} onClick={save} type="button">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {saving ? 'Saving' : 'Save brand'}
               </AceternityButton>
@@ -285,7 +283,8 @@ function BrandPagePreview({
   account: AccountSettings;
   magnet: LeadMagnet;
 }) {
-  const businessName = account.logoText.trim() || 'Your business';
+  const logoText = account.logoText.trim();
+  const businessName = logoText || (account.logoUrl ? '' : 'Your business');
   const brandPrimary = account.brand.primary;
   const brandIntensity = account.brand.highlightIntensity;
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
@@ -318,7 +317,11 @@ function BrandPagePreview({
         ) : (
           <span className="h-10 w-10 rounded-lg border border-dashed border-ink-300 bg-white" />
         )}
-        <span className="min-w-0 truncate text-[32px] font-extrabold leading-none text-ink-950">{businessName}</span>
+        {businessName && (
+          <span className="min-w-0 truncate text-[32px] font-extrabold leading-none text-ink-950">
+            {businessName}
+          </span>
+        )}
       </div>
 
       <div className="px-5 pb-6">

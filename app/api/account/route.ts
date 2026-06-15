@@ -65,7 +65,7 @@ const schema = z.object({
     ),
   domain: domainSchema,
   logoUrl: logoSchema,
-  logoText: z.string().trim().min(1, 'Enter your business name').max(80),
+  logoText: z.string().trim().max(80),
   brand: z.object({
     primary: hexColorSchema,
     accent: hexColorSchema,

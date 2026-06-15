@@ -61,7 +61,6 @@ export function OnboardingGate({ userName }: { userName: string }) {
   }, []);
 
   const valid =
-    businessName.trim().length > 0 &&
     logoUrl.length > 0 &&
     BUSINESS_TYPES.includes(businessType as (typeof BUSINESS_TYPES)[number]) &&
     MAGNET_TYPES.includes(magnetType as (typeof MAGNET_TYPES)[number]) &&
@@ -140,19 +139,18 @@ export function OnboardingGate({ userName }: { userName: string }) {
             </div>
           </div>
           <p className="mt-3 text-sm leading-6 text-ink-600">
-            Add your brand basics before we open the dashboard. Your logo and business name appear together on every magnet.
+            Add your brand basics before we open the dashboard. Your logo appears on every magnet; business name is optional.
           </p>
         </div>
 
         <div className="grid gap-4 px-6 py-6">
-          <Field label="What should we call your business?">
+          <Field label="Business name (optional)">
             <AceternityInput
               autoFocus
               disabled={busy}
               maxLength={80}
               onChange={(event) => setBusinessName(event.target.value)}
-              placeholder="Your business"
-              required
+              placeholder="Optional if your logo stands alone"
               value={businessName}
             />
           </Field>
@@ -171,6 +169,8 @@ export function OnboardingGate({ userName }: { userName: string }) {
               <div className="min-w-0 flex-1">
                 {logoUrl && businessName.trim() ? (
                   <p className="mb-2 truncate text-sm font-semibold text-ink-950">{businessName.trim()}</p>
+                ) : logoUrl ? (
+                  <p className="mb-2 text-sm font-medium text-ink-700">Logo uploaded</p>
                 ) : (
                   <p className="mb-2 text-sm font-medium text-ink-700">PNG, JPG, WebP, or GIF. 1 MB max.</p>
                 )}
