@@ -1,0 +1,1 @@
+ALTER TABLE "magnets_accounts" ALTER COLUMN "brand" SET DEFAULT '{"primary":"#8b76e8","accent":"#d8c8ff","success":"#22c55e","highlightIntensity":100}'::jsonb;

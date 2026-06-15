@@ -10,6 +10,7 @@ export interface BrandSettings {
   primary: string;
   accent: string;
   success: string;
+  highlightIntensity: number;
 }
 
 export interface OnboardingAnswers {

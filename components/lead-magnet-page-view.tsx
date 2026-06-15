@@ -2,6 +2,7 @@
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
+import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 type BrandCss = CSSProperties & Record<`--${string}`, string>;
@@ -54,12 +55,15 @@ export function LeadMagnetPageView({
   const brandName = account.logoText.trim();
   const displayName = brandName || 'Your Brand';
   const homeHref = account.domain ? `https://${account.domain}` : '#';
+  const brandPrimary = account.brand.primary;
+  const brandIntensity = account.brand.highlightIntensity;
+  const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const brandStyle: BrandCss = {
-    '--brand-primary': account.brand.primary,
-    '--brand-primary-rgb': rgbValue(account.brand.primary),
-    '--brand-primary-soft': alpha(account.brand.primary, 0.16),
-    '--brand-primary-faint': alpha(account.brand.primary, 0.08),
-    '--brand-primary-edge': alpha(account.brand.primary, 0.1),
+    '--brand-primary': brandPrimary,
+    '--brand-primary-rgb': rgbValue(brandPrimary),
+    '--brand-primary-soft': tone(0.16),
+    '--brand-primary-faint': tone(0.08),
+    '--brand-primary-edge': tone(0.1),
     backgroundImage: pageBackground,
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
@@ -82,7 +86,7 @@ export function LeadMagnetPageView({
           <div
             className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
             style={{
-              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(account.brand.primary, 0.08)}`,
+              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${tone(0.08)}`,
             }}
           >
             <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-14">
@@ -126,8 +130,8 @@ export function LeadMagnetPageView({
                             aria-hidden
                             className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-white"
                             style={{
-                              background: `linear-gradient(135deg, ${account.brand.primary}, ${alpha(account.brand.primary, 0.85)})`,
-                              boxShadow: `0 6px 16px -6px ${alpha(account.brand.primary, 0.5)}`,
+                              background: `linear-gradient(135deg, ${brandPrimary}, ${alpha(brandPrimary, 0.85)})`,
+                              boxShadow: `0 6px 16px -6px ${tone(0.5)}`,
                             }}
                           >
                             <svg viewBox="0 0 12 12" className="h-3 w-3">
@@ -252,17 +256,21 @@ function CaptureCard({
   account: AccountSettings;
   magnet: LeadMagnet;
 }) {
+  const brandPrimary = account.brand.primary;
+  const brandIntensity = account.brand.highlightIntensity;
+  const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
+
   return (
     <div
       className="rounded-[22px] border bg-white p-6 backdrop-blur-sm sm:p-8"
       style={{
-        borderColor: alpha(account.brand.primary, 0.28),
+        borderColor: tone(0.28),
         backgroundImage: [
-          `radial-gradient(circle at 18% 0%, ${alpha(account.brand.primary, 0.1)} 0, transparent 38%)`,
-          `radial-gradient(circle at 82% 100%, ${alpha(account.brand.primary, 0.08)} 0, transparent 42%)`,
+          `radial-gradient(circle at 18% 0%, ${tone(0.1)} 0, transparent 38%)`,
+          `radial-gradient(circle at 82% 100%, ${tone(0.08)} 0, transparent 42%)`,
           'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.97) 100%)',
         ].join(', '),
-        boxShadow: `0 26px 78px -48px ${alpha(account.brand.primary, 0.5)}, 0 18px 48px -42px rgb(15 23 42 / 0.24)`,
+        boxShadow: `0 26px 78px -48px ${tone(0.5)}, 0 18px 48px -42px rgb(15 23 42 / 0.24)`,
       }}
     >
       {magnet.formHeading && (

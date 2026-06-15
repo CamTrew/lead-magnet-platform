@@ -78,6 +78,13 @@
       "when": 1781452900000,
       "tag": "0010_thick_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1781494099114,
+      "tag": "0011_spooky_tempest",
+      "breakpoints": true
     }
   ]
 }

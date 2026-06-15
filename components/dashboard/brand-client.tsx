@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Check, Loader2, Palette, Trash2, Upload } from 'lucide-react';
 import { AceternityButton, AceternityCard, AceternityInput } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import {
+  brandHighlightOpacity,
+  MAX_BRAND_HIGHLIGHT_INTENSITY,
+  MIN_BRAND_HIGHLIGHT_INTENSITY,
+  normaliseBrandHighlightIntensity,
+} from '@/lib/brand-highlight';
 import type { AccountSettings, DashboardPayload, LeadMagnet } from '@/lib/types';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -140,7 +146,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
   return (
     <>
-      <PageHeader title="Brand" subtitle="Logo, business name, and primary color for every magnet" />
+      <PageHeader title="Brand" subtitle="Logo, business name, primary color, and highlight intensity for every magnet" />
 
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
         <AceternityCard className="p-5">
@@ -216,6 +222,11 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
               />
             </div>
 
+            <HighlightIntensityField
+              onChange={(value) => patchBrand({ highlightIntensity: value })}
+              value={normaliseBrandHighlightIntensity(draft.brand.highlightIntensity)}
+            />
+
             {error && (
               <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
                 {error}
@@ -276,6 +287,8 @@ function BrandPagePreview({
 }) {
   const businessName = account.logoText.trim() || 'Your business';
   const brandPrimary = account.brand.primary;
+  const brandIntensity = account.brand.highlightIntensity;
+  const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const subtitle = magnet.subtitle.trim();
   const description = magnet.description
     .split('\n\n')
@@ -287,10 +300,10 @@ function BrandPagePreview({
     <div
       className="overflow-hidden rounded-lg border bg-white text-ink-950"
       style={{
-        borderColor: alpha(brandPrimary, 0.16),
+        borderColor: tone(0.16),
         backgroundImage: [
-          `radial-gradient(circle at 7% 38%, ${alpha(brandPrimary, 0.16)} 0, transparent 34%)`,
-          `radial-gradient(circle at 93% 42%, ${alpha(brandPrimary, 0.16)} 0, transparent 34%)`,
+          `radial-gradient(circle at 7% 38%, ${tone(0.16)} 0, transparent 34%)`,
+          `radial-gradient(circle at 93% 42%, ${tone(0.16)} 0, transparent 34%)`,
           'linear-gradient(180deg, #ffffff 0%, #f8fbff 44%, #ffffff 100%)',
           'linear-gradient(to right, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
           'linear-gradient(to bottom, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
@@ -312,13 +325,13 @@ function BrandPagePreview({
         <div
           className="rounded-2xl border bg-white/95 p-5 shadow-[0_24px_70px_-54px_rgba(15,23,42,0.72)]"
           style={{
-            borderColor: alpha(brandPrimary, 0.12),
+            borderColor: tone(0.12),
             backgroundImage: [
-              `radial-gradient(circle at 0% 0%, ${alpha(brandPrimary, 0.06)} 0, transparent 42%)`,
-              `radial-gradient(circle at 100% 100%, ${alpha(brandPrimary, 0.05)} 0, transparent 42%)`,
+              `radial-gradient(circle at 0% 0%, ${tone(0.06)} 0, transparent 42%)`,
+              `radial-gradient(circle at 100% 100%, ${tone(0.05)} 0, transparent 42%)`,
               'linear-gradient(180deg, rgb(255 255 255 / 0.98) 0%, rgb(255 255 255 / 0.95) 100%)',
             ].join(', '),
-            boxShadow: `0 24px 70px -54px rgba(15,23,42,0.72), 0 0 0 1px ${alpha(brandPrimary, 0.1)}`,
+            boxShadow: `0 24px 70px -54px rgba(15,23,42,0.72), 0 0 0 1px ${tone(0.1)}`,
           }}
         >
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(220px,260px)]">
@@ -353,7 +366,7 @@ function BrandPagePreview({
                           className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white"
                           style={{
                             background: `linear-gradient(135deg, ${brandPrimary}, ${alpha(brandPrimary, 0.85)})`,
-                            boxShadow: `0 5px 14px -6px ${alpha(brandPrimary, 0.5)}`,
+                            boxShadow: `0 5px 14px -6px ${tone(0.5)}`,
                           }}
                         >
                           <svg viewBox="0 0 12 12" className="h-3 w-3">
@@ -380,8 +393,8 @@ function BrandPagePreview({
                 <div
                   className="group overflow-hidden rounded-xl border bg-ink-50"
                   style={{
-                    borderColor: alpha(brandPrimary, 0.16),
-                    boxShadow: `0 14px 40px -34px ${alpha(brandPrimary, 0.35)}`,
+                    borderColor: tone(0.16),
+                    boxShadow: `0 14px 40px -34px ${tone(0.35)}`,
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -395,8 +408,8 @@ function BrandPagePreview({
                 <div
                   className="aspect-[16/10] rounded-xl border border-dashed bg-ink-50"
                   style={{
-                    borderColor: alpha(brandPrimary, 0.28),
-                    backgroundColor: alpha(brandPrimary, 0.05),
+                    borderColor: tone(0.28),
+                    backgroundColor: tone(0.05),
                   }}
                 />
               )}
@@ -404,13 +417,13 @@ function BrandPagePreview({
               <div
                 className="rounded-xl border bg-white p-4"
                 style={{
-                  borderColor: alpha(brandPrimary, 0.34),
+                  borderColor: tone(0.34),
                   backgroundImage: [
-                    `radial-gradient(circle at 18% 0%, ${alpha(brandPrimary, 0.14)} 0, transparent 38%)`,
-                    `radial-gradient(circle at 82% 100%, ${alpha(brandPrimary, 0.12)} 0, transparent 42%)`,
+                    `radial-gradient(circle at 18% 0%, ${tone(0.14)} 0, transparent 38%)`,
+                    `radial-gradient(circle at 82% 100%, ${tone(0.12)} 0, transparent 42%)`,
                     'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.97) 100%)',
                   ].join(', '),
-                  boxShadow: `0 18px 52px -34px ${alpha(brandPrimary, 0.6)}, 0 12px 30px -28px rgb(15 23 42 / 0.2)`,
+                  boxShadow: `0 18px 52px -34px ${tone(0.6)}, 0 12px 30px -28px rgb(15 23 42 / 0.2)`,
                 }}
               >
                 <p className="text-center text-lg font-black leading-tight text-ink-950">
@@ -422,13 +435,13 @@ function BrandPagePreview({
                 <div className="mt-4 space-y-2">
                   <div
                     className="flex h-9 items-center rounded-lg border bg-white px-3 text-xs text-ink-400"
-                    style={{ borderColor: alpha(brandPrimary, 0.18) }}
+                    style={{ borderColor: tone(0.18) }}
                   >
                     Name
                   </div>
                   <div
                     className="flex h-9 items-center rounded-lg border bg-white px-3 text-xs text-ink-400"
-                    style={{ borderColor: alpha(brandPrimary, 0.18) }}
+                    style={{ borderColor: tone(0.18) }}
                   >
                     Email
                   </div>
@@ -478,6 +491,40 @@ function ColorField({
           spellCheck={false}
           value={value}
         />
+      </div>
+    </label>
+  );
+}
+
+function HighlightIntensityField({
+  onChange,
+  value,
+}: {
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-ink-700">
+        <span>Highlight intensity</span>
+        <span className="rounded-md border border-ink-200 bg-ink-50 px-2 py-0.5 font-mono text-[11px] text-ink-600">
+          {value}%
+        </span>
+      </span>
+      <input
+        aria-label="Highlight intensity"
+        className="h-2 w-full cursor-pointer accent-ink-950"
+        max={MAX_BRAND_HIGHLIGHT_INTENSITY}
+        min={MIN_BRAND_HIGHLIGHT_INTENSITY}
+        onChange={(event) => onChange(Number(event.target.value))}
+        step={5}
+        type="range"
+        value={value}
+      />
+      <div className="mt-1.5 flex justify-between text-[11px] font-medium text-ink-400">
+        <span>Subtle</span>
+        <span>Balanced</span>
+        <span>Bold</span>
       </div>
     </label>
   );

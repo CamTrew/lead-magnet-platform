@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { query, type QueryRunner, withTransaction } from './db';
+import { normaliseBrandHighlightIntensity } from './brand-highlight';
 import { senderMatchesAccountDomain } from './dns-records';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from './limits';
 import {
@@ -22,6 +23,7 @@ const defaultBrand: BrandSettings = {
   primary: '#8b76e8',
   accent: '#d8c8ff',
   success: '#22c55e',
+  highlightIntensity: 100,
 };
 
 export class LeadMagnetLimitError extends Error {
@@ -165,6 +167,7 @@ function parseBrand(value: AccountRow['brand']): BrandSettings {
     primary: parsed.primary || defaultBrand.primary,
     accent: parsed.accent || defaultBrand.accent,
     success: parsed.success || defaultBrand.success,
+    highlightIntensity: normaliseBrandHighlightIntensity(parsed.highlightIntensity),
   };
 }
 

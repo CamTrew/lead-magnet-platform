@@ -17,9 +17,10 @@ export const defaultBrand: BrandSettings = {
   primary: '#8b76e8',
   accent: '#d8c8ff',
   success: '#22c55e',
+  highlightIntensity: 100,
 };
 
-const defaultBrandSql = sql`'{"primary":"#8b76e8","accent":"#d8c8ff","success":"#22c55e"}'::jsonb`;
+const defaultBrandSql = sql`'{"primary":"#8b76e8","accent":"#d8c8ff","success":"#22c55e","highlightIntensity":100}'::jsonb`;
 
 export const accounts = pgTable(
   'magnets_accounts',

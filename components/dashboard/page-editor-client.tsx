@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import type { DashboardPayload, LeadMagnet } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import {
@@ -351,6 +352,7 @@ export function PageEditorClient({
               account={account}
               accountLogoFallback={accountLogo.fallback}
               accountHasLogo={accountLogo.hasImage}
+              brandIntensity={brand.highlightIntensity}
               brandPrimary={brandTextColor(brand.primary)}
               leadMagnet={leadMagnet}
               onPatch={patchLeadMagnet}
@@ -392,6 +394,7 @@ function PageCanvas({
   account,
   accountHasLogo,
   accountLogoFallback,
+  brandIntensity,
   brandPrimary,
   leadMagnet,
   onPatch,
@@ -400,16 +403,18 @@ function PageCanvas({
   account: DashboardPayload['account'];
   accountHasLogo: boolean;
   accountLogoFallback: string;
+  brandIntensity: number;
   brandPrimary: string;
   leadMagnet: LeadMagnet;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   onPickImage: () => void;
 }) {
+  const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const previewStyle: PreviewCss = {
     '--brand-primary': brandPrimary,
-    '--brand-primary-soft': alpha(brandPrimary, 0.16),
-    '--brand-primary-faint': alpha(brandPrimary, 0.08),
-    '--brand-primary-edge': alpha(brandPrimary, 0.1),
+    '--brand-primary-soft': tone(0.16),
+    '--brand-primary-faint': tone(0.08),
+    '--brand-primary-edge': tone(0.1),
     backgroundImage: pageBackground,
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
@@ -431,7 +436,7 @@ function PageCanvas({
           <div
             className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
             style={{
-              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${alpha(brandPrimary, 0.08)}`,
+              boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${tone(0.08)}`,
             }}
           >
             <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-14">
@@ -459,6 +464,7 @@ function PageCanvas({
 
                 <div className="mb-10 lg:hidden">
                   <MediaAndCapturePreview
+                    brandIntensity={brandIntensity}
                     brandPrimary={brandPrimary}
                     ctaText={leadMagnet.ctaText}
                     formHeading={leadMagnet.formHeading}
@@ -504,7 +510,7 @@ function PageCanvas({
                           className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-white"
                           style={{
                             background: `linear-gradient(135deg, ${brandPrimary}, ${alpha(brandPrimary, 0.85)})`,
-                            boxShadow: `0 6px 16px -6px ${alpha(brandPrimary, 0.5)}`,
+                            boxShadow: `0 6px 16px -6px ${tone(0.5)}`,
                           }}
                         >
                           <svg viewBox="0 0 12 12" className="h-3 w-3">
@@ -559,6 +565,7 @@ function PageCanvas({
 
               <aside className="hidden lg:sticky lg:top-10 lg:block">
                 <MediaAndCapturePreview
+                  brandIntensity={brandIntensity}
                   brandPrimary={brandPrimary}
                   ctaText={leadMagnet.ctaText}
                   formHeading={leadMagnet.formHeading}
@@ -617,6 +624,7 @@ function BrandPreviewLockup({
 }
 
 function MediaAndCapturePreview({
+  brandIntensity,
   brandPrimary,
   ctaText,
   formHeading,
@@ -627,6 +635,7 @@ function MediaAndCapturePreview({
   onRemoveImage,
   title,
 }: {
+  brandIntensity: number;
   brandPrimary: string;
   ctaText: string;
   formHeading: string;
@@ -640,6 +649,7 @@ function MediaAndCapturePreview({
   return (
     <div className="space-y-8">
       <ImageHotspot
+        brandIntensity={brandIntensity}
         brandPrimary={brandPrimary}
         imageUrl={imageUrl}
         onPickImage={onPickImage}
@@ -647,6 +657,7 @@ function MediaAndCapturePreview({
         title={title}
       />
       <CaptureCardPreview
+        brandIntensity={brandIntensity}
         brandPrimary={brandPrimary}
         ctaText={ctaText}
         formHeading={formHeading}
@@ -658,29 +669,32 @@ function MediaAndCapturePreview({
 }
 
 function CaptureCardPreview({
+  brandIntensity,
   brandPrimary,
   ctaText,
   formHeading,
   formSubtext,
   onPatch,
 }: {
+  brandIntensity: number;
   brandPrimary: string;
   ctaText: string;
   formHeading: string;
   formSubtext: string;
   onPatch: (updates: Partial<LeadMagnet>) => void;
 }) {
+  const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   return (
     <div
       className="rounded-[22px] border bg-white p-6 sm:p-8"
       style={{
-        borderColor: alpha(brandPrimary, 0.28),
+        borderColor: tone(0.28),
         backgroundImage: [
-          `radial-gradient(circle at 18% 0%, ${alpha(brandPrimary, 0.1)} 0, transparent 38%)`,
-          `radial-gradient(circle at 82% 100%, ${alpha(brandPrimary, 0.08)} 0, transparent 42%)`,
+          `radial-gradient(circle at 18% 0%, ${tone(0.1)} 0, transparent 38%)`,
+          `radial-gradient(circle at 82% 100%, ${tone(0.08)} 0, transparent 42%)`,
           'linear-gradient(180deg, #ffffff 0%, rgb(248 251 255 / 0.97) 100%)',
         ].join(', '),
-        boxShadow: `0 26px 78px -48px ${alpha(brandPrimary, 0.5)}, 0 18px 48px -42px rgb(15 23 42 / 0.24)`,
+        boxShadow: `0 26px 78px -48px ${tone(0.5)}, 0 18px 48px -42px rgb(15 23 42 / 0.24)`,
       }}
     >
       <InlineText
@@ -730,18 +744,22 @@ function CaptureCardPreview({
 }
 
 function ImageHotspot({
+  brandIntensity,
   brandPrimary,
   imageUrl,
   onPickImage,
   onRemoveImage,
   title,
 }: {
+  brandIntensity: number;
   brandPrimary: string;
   imageUrl: string;
   onPickImage: () => void;
   onRemoveImage: () => void;
   title: string;
 }) {
+  const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
+
   if (!imageUrl) {
     return (
       <button
@@ -759,7 +777,7 @@ function ImageHotspot({
   return (
     <div
       className="group/image relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50 transition-all duration-300"
-      style={{ boxShadow: `0 18px 50px -26px ${alpha(brandPrimary, 0.26)}` }}
+      style={{ boxShadow: `0 18px 50px -26px ${tone(0.26)}` }}
     >
       <div className="aspect-[16/10] w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}

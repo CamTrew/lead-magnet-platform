@@ -25,6 +25,10 @@ import {
   validateLogoDataUrl,
 } from '@/lib/upload';
 import { log } from '@/lib/logger';
+import {
+  MAX_BRAND_HIGHLIGHT_INTENSITY,
+  MIN_BRAND_HIGHLIGHT_INTENSITY,
+} from '@/lib/brand-highlight';
 
 const ROUTE = '/api/account';
 
@@ -66,6 +70,11 @@ const schema = z.object({
     primary: hexColorSchema,
     accent: hexColorSchema,
     success: hexColorSchema,
+    highlightIntensity: z
+      .number()
+      .int()
+      .min(MIN_BRAND_HIGHLIGHT_INTENSITY)
+      .max(MAX_BRAND_HIGHLIGHT_INTENSITY),
   }),
   resendFromEmail: z
     .string()
