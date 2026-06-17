@@ -9,6 +9,7 @@ import {
   LeadMagnetPageView,
   leadMagnetMetadataSnippet,
 } from '@/components/lead-magnet-page-view';
+import { isPlatformHost, leadMagnetMetadataIcons } from '@/lib/favicon';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,7 @@ export async function generateMetadata({
       brandName,
       leadMagnet.slug.replace(/-/g, ' '),
     ],
+    icons: leadMagnetMetadataIcons(account, host && !isPlatformHost(host) ? '/favicon.ico' : undefined),
     openGraph: {
       type: 'website',
       title: titleText,

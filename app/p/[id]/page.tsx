@@ -5,6 +5,7 @@ import {
   LeadMagnetPageView,
   leadMagnetMetadataSnippet,
 } from '@/components/lead-magnet-page-view';
+import { leadMagnetMetadataIcons } from '@/lib/favicon';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,7 @@ export async function generateMetadata({
   return {
     title: titleText,
     description,
+    icons: leadMagnetMetadataIcons(account),
     openGraph: {
       type: 'website',
       title: titleText,
