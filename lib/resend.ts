@@ -10,6 +10,36 @@ export class EmailDeliveryError extends Error {
   }
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function cleanEmailText(value: string) {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/^\s+/, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd();
+}
+
+function cleanPreviewText(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function renderPlainEmailHtml(text: string, previewText: string) {
+  const preheader = previewText
+    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;font-size:1px;line-height:1px">${escapeHtml(previewText)}</div>`
+    : '';
+
+  return `${preheader}<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${escapeHtml(text)}</div>`;
+}
+
 function scrubResendErrorMessage(message: string) {
   // The Resend SDK occasionally echoes the key back in error messages. Strip
   // anything that looks like one before we hand it to a caller that may end up
@@ -76,12 +106,18 @@ export async function sendLeadMagnetEmail({
   }
 
   const resend = new Resend(account.resendApiKey);
-  const body = magnet.emailBody
-    .replace(/{name}/g, name)
-    .replace(/{download_link}/g, magnet.downloadLink || '');
-  const text = magnet.downloadLink && !body.includes(magnet.downloadLink)
-    ? `${body}\n\n${magnet.downloadLink}`
-    : body;
+  const downloadLink = (magnet.downloadLink || '').trim();
+  const body = cleanEmailText(
+    magnet.emailBody
+      .replace(/{name}/g, name)
+      .replace(/{download_link}/g, downloadLink)
+  );
+  const text = cleanEmailText(
+    downloadLink && !body.includes(downloadLink)
+      ? [body, downloadLink].filter(Boolean).join('\n\n')
+      : body
+  );
+  const previewText = cleanPreviewText(magnet.emailPreview);
 
   let result;
   try {
@@ -90,6 +126,7 @@ export async function sendLeadMagnetEmail({
       to,
       subject: magnet.emailSubject,
       text,
+      html: renderPlainEmailHtml(text, previewText),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
