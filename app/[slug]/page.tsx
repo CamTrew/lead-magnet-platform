@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import {
@@ -13,6 +14,9 @@ import { isPlatformHost, leadMagnetMetadataIcons } from '@/lib/favicon';
 
 export const dynamic = 'force-dynamic';
 
+const getPublishedLeadMagnet = cache(findPublishedLeadMagnet);
+const getAccountByAttachedHost = cache(findAccountByAttachedHost);
+
 export async function generateMetadata({
   params,
 }: {
@@ -22,7 +26,7 @@ export async function generateMetadata({
   const requestHeaders = await headers();
   const host = requestHeaders.get('host') || '';
 
-  const result = await findPublishedLeadMagnet(host, slug);
+  const result = await getPublishedLeadMagnet(host, slug);
 
   if (!result) {
     return {
@@ -81,14 +85,14 @@ export default async function LeadMagnetPage({
   const { slug } = await params;
   const requestHeaders = await headers();
   const host = requestHeaders.get('host') || 'localhost:3000';
-  const result = await findPublishedLeadMagnet(host, slug);
+  const result = await getPublishedLeadMagnet(host, slug);
 
   if (!result) {
     // Page is missing or unpublished. If we recognise the host (it's attached
     // to one of our accounts) we bounce the visitor to that account's apex —
     // typically the customer's main marketing site. If we don't recognise the
     // host, fall through to 404 since we have nowhere to send them.
-    const owner = await findAccountByAttachedHost(host);
+    const owner = await getAccountByAttachedHost(host);
     if (owner?.domain) {
       const protocol = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https';
       redirect(`${protocol}://${owner.domain}`);

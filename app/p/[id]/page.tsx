@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import { findPublishedLeadMagnetById } from '@/lib/platform-store';
 import {
@@ -10,6 +11,7 @@ import { leadMagnetMetadataIcons } from '@/lib/favicon';
 export const dynamic = 'force-dynamic';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const getPublishedLeadMagnetById = cache(findPublishedLeadMagnetById);
 
 export async function generateMetadata({
   params,
@@ -20,7 +22,7 @@ export async function generateMetadata({
   if (!UUID_REGEX.test(id)) {
     return { title: 'Resource not found', robots: { index: false, follow: false } };
   }
-  const result = await findPublishedLeadMagnetById(id);
+  const result = await getPublishedLeadMagnetById(id);
   if (!result) return { title: 'Resource not found', robots: { index: false, follow: false } };
 
   const { account, leadMagnet } = result;
@@ -61,7 +63,7 @@ export default async function LeadMagnetByIdPage({
 }) {
   const { id } = await params;
   if (!UUID_REGEX.test(id)) notFound();
-  const result = await findPublishedLeadMagnetById(id);
+  const result = await getPublishedLeadMagnetById(id);
   if (!result) notFound();
 
   return <LeadMagnetPageView account={result.account} leadMagnet={result.leadMagnet} />;

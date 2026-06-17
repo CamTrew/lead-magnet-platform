@@ -85,6 +85,13 @@
       "when": 1781494099114,
       "tag": "0011_spooky_tempest",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1781681038977,
+      "tag": "0012_public_page_lookup_indexes",
+      "breakpoints": true
     }
   ]
 }

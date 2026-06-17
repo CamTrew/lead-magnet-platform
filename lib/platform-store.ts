@@ -149,6 +149,11 @@ type DashboardPayloadRow = DashboardBaseRow & {
   lead_magnets: LeadMagnetRow[] | string | null;
 };
 
+type PublicLeadMagnetLookupRow = {
+  account: AccountRow;
+  lead_magnet: LeadMagnetRow;
+};
+
 function iso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -1147,63 +1152,66 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
   // `subdomain || '.' || domain` field, which is unverified user input — that
   // is what previously allowed one account to claim another account's apex.
   // The hostname must equal domain_attached_host exactly.
-  const accountResult = await query<AccountRow>(
+  const publicLookup = await query<PublicLeadMagnetLookupRow>(
     `
-      select *
-      from public.magnets_accounts
-      where lower(domain_attached_host) = $1
-        and domain_attached_host <> ''
-      order by created_at asc
-      limit 1
-    `,
-    [hostname]
-  );
-  const accountRow = accountResult.rows[0];
-
-  if (!accountRow && canUseLocalFallback) {
-    const localLeadMagnet = await query<LeadMagnetRow>(
-      `
+      with account_row as (
         select *
-        from public.magnets_lead_magnets
-        where slug = $1
-          and published = true
-        order by updated_at desc
+        from public.magnets_accounts
+        where lower(domain_attached_host) = $1
+          and domain_attached_host <> ''
+        limit 1
+      ),
+      lead_magnet_row as (
+        select lm.*
+        from public.magnets_lead_magnets lm
+        join account_row a on a.id = lm.account_id
+        where lm.slug = $2
+          and lm.published = true
+        limit 1
+      )
+      select
+        row_to_json(a) as account,
+        row_to_json(lm) as lead_magnet
+      from account_row a
+      join lead_magnet_row lm on true
+    `,
+    [hostname, slug]
+  );
+  const publicLookupRow = publicLookup.rows[0];
+
+  if (publicLookupRow) {
+    return {
+      account: mapAccount(publicLookupRow.account),
+      leadMagnet: mapLeadMagnet(publicLookupRow.lead_magnet),
+    };
+  }
+
+  if (canUseLocalFallback) {
+    const localLookup = await query<PublicLeadMagnetLookupRow>(
+      `
+        select
+          row_to_json(a) as account,
+          row_to_json(lm) as lead_magnet
+        from public.magnets_lead_magnets lm
+        join public.magnets_accounts a on a.id = lm.account_id
+        where lm.slug = $1
+          and lm.published = true
+        order by lm.updated_at desc
         limit 1
       `,
       [slug]
     );
-    const leadMagnetRow = localLeadMagnet.rows[0];
+    const localLookupRow = localLookup.rows[0];
 
-    if (leadMagnetRow) {
-      const localAccount = await query<AccountRow>(
-        'select * from public.magnets_accounts where id = $1 limit 1',
-        [leadMagnetRow.account_id]
-      );
-
-      if (localAccount.rows[0]) {
-        return { account: mapAccount(localAccount.rows[0]), leadMagnet: mapLeadMagnet(leadMagnetRow) };
-      }
+    if (localLookupRow) {
+      return {
+        account: mapAccount(localLookupRow.account),
+        leadMagnet: mapLeadMagnet(localLookupRow.lead_magnet),
+      };
     }
   }
 
-  if (!accountRow) return null;
-
-  const account = mapAccount(accountRow);
-  const leadMagnet = await query<LeadMagnetRow>(
-    `
-      select *
-      from public.magnets_lead_magnets
-      where account_id = $1
-        and slug = $2
-        and published = true
-      limit 1
-    `,
-    [account.id, slug]
-  );
-
-  if (!leadMagnet.rows[0]) return null;
-
-  return { account, leadMagnet: mapLeadMagnet(leadMagnet.rows[0]) };
+  return null;
 }
 
 /**
@@ -1228,28 +1236,25 @@ export async function findAccountByAttachedHost(host: string) {
 }
 
 export async function findPublishedLeadMagnetById(leadMagnetId: string) {
-  const magnetRow = await query<LeadMagnetRow>(
+  const lookup = await query<PublicLeadMagnetLookupRow>(
     `
-      select *
-      from public.magnets_lead_magnets
-      where id = $1
-        and published = true
+      select
+        row_to_json(a) as account,
+        row_to_json(lm) as lead_magnet
+      from public.magnets_lead_magnets lm
+      join public.magnets_accounts a on a.id = lm.account_id
+      where lm.id = $1
+        and lm.published = true
       limit 1
     `,
     [leadMagnetId]
   );
-
-  if (!magnetRow.rows[0]) return null;
-
-  const accountRow = await query<AccountRow>(
-    'select * from public.magnets_accounts where id = $1 limit 1',
-    [magnetRow.rows[0].account_id]
-  );
-  if (!accountRow.rows[0]) return null;
+  const row = lookup.rows[0];
+  if (!row) return null;
 
   return {
-    account: mapAccount(accountRow.rows[0]),
-    leadMagnet: mapLeadMagnet(magnetRow.rows[0]),
+    account: mapAccount(row.account),
+    leadMagnet: mapLeadMagnet(row.lead_magnet),
   };
 }
 
