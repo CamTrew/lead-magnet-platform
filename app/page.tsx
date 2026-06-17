@@ -17,6 +17,7 @@ import { findAccountByAttachedHost } from '@/lib/platform-store';
 export const dynamic = 'force-dynamic';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
+const VSL_EMBED_URL = 'https://www.loom.com/embed/adc4c43d43884842998acc42127497ca?hide_owner=true&hide_share=true&hide_title=true&hideEmbedTopBar=true';
 
 export const metadata: Metadata = {
   title: 'Free lead-magnet pages on your own domain',
@@ -129,6 +130,7 @@ export default async function HomePage() {
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-ink-600 sm:flex">
+            <Link href="#demo" className="hover:text-ink-900">Demo</Link>
             <Link href="#features" className="hover:text-ink-900">Features</Link>
             <Link href="#integrations" className="hover:text-ink-900">Integrations</Link>
             <Link href="#setup" className="hover:text-ink-900">Setup</Link>
@@ -176,7 +178,7 @@ export default async function HomePage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="#features"
+                href="#demo"
                 className="inline-flex h-10 items-center gap-2 rounded-md border border-ink-200 bg-white px-4 text-sm font-medium text-ink-900 transition hover:bg-ink-50"
               >
                 See how it works
@@ -191,6 +193,34 @@ export default async function HomePage() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="demo" className="border-b border-ink-200 bg-ink-50 px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Watch the pitch</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-ink-950 sm:text-4xl">
+              See why Magnets is free.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-ink-600">
+              A quick walkthrough of the idea, the setup, and how your first lead magnet goes live on your own domain.
+            </p>
+          </div>
+
+          <div className="mt-8 overflow-hidden rounded-lg border border-ink-200 bg-black shadow-sm">
+            <div className="aspect-video w-full">
+              <iframe
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className="h-full w-full"
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+                src={VSL_EMBED_URL}
+                title="Magnets walkthrough video"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -352,6 +382,7 @@ export default async function HomePage() {
             </div>
           </Link>
           <div className="flex flex-wrap gap-4 text-sm text-ink-600">
+            <Link href="#demo" className="hover:text-ink-900">Demo</Link>
             <Link href="#features" className="hover:text-ink-900">Features</Link>
             <Link href="#integrations" className="hover:text-ink-900">Integrations</Link>
             <Link href="#setup" className="hover:text-ink-900">Setup</Link>
