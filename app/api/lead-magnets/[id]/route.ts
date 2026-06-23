@@ -20,16 +20,32 @@ const ROUTE = '/api/lead-magnets/[id]';
 
 const idSchema = z.string().uuid();
 
+function isVercelBlobImageUrl(value: string) {
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.endsWith('.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
 const imageSchema = z
   .string()
   .max(MAX_MAGNET_IMAGE_DATA_URL_LENGTH, 'Image is too large')
   .superRefine((value, ctx) => {
+    if (!value || isVercelBlobImageUrl(value)) return;
+
     const result = validateLogoDataUrl(value, {
       maxBytes: MAX_MAGNET_IMAGE_BYTES,
       maxLength: MAX_MAGNET_IMAGE_DATA_URL_LENGTH,
     });
     if (!result.ok) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: logoValidationMessage(result.reason) });
+      const message = result.reason === 'too_large'
+        ? 'Image must be 10 MB or smaller.'
+        : logoValidationMessage(result.reason).replace(/^The logo|^Logo/, 'Image');
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
     }
   });
 

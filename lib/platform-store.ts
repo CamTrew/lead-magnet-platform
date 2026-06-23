@@ -1133,6 +1133,25 @@ export async function updateLeadMagnet(
   return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
 }
 
+export async function updateLeadMagnetImageUrl(
+  accountId: string,
+  leadMagnetId: string,
+  imageUrl: string
+) {
+  const result = await query<LeadMagnetRow>(
+    `
+      update public.magnets_lead_magnets
+      set image_url = $3
+      where account_id = $1
+        and id = $2
+      returning *
+    `,
+    [accountId, leadMagnetId, imageUrl]
+  );
+
+  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
 export async function deleteLeadMagnet(accountId: string, leadMagnetId: string) {
   const result = await query(
     'delete from public.magnets_lead_magnets where account_id = $1 and id = $2',
@@ -1256,6 +1275,15 @@ export async function findPublishedLeadMagnetById(leadMagnetId: string) {
     account: mapAccount(row.account),
     leadMagnet: mapLeadMagnet(row.lead_magnet),
   };
+}
+
+export async function findLeadMagnetForAccount(accountId: string, leadMagnetId: string) {
+  const result = await query<LeadMagnetRow>(
+    'select * from public.magnets_lead_magnets where id = $1 and account_id = $2 limit 1',
+    [leadMagnetId, accountId]
+  );
+
+  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
 }
 
 export async function findLeadMagnet(accountId: string, leadMagnetId: string) {

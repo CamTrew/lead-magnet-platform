@@ -16,6 +16,7 @@
     "@tiptap/extension-placeholder": "^3.26.1",
     "@tiptap/react": "^3.26.1",
     "@tiptap/starter-kit": "^3.26.1",
+    "@vercel/blob": "^2.4.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "geist": "^1.7.2",

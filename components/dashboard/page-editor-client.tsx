@@ -3,6 +3,7 @@
 import type { CSSProperties, ChangeEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { upload } from '@vercel/blob/client';
 import {
   ArrowLeft,
   Check,
@@ -32,14 +33,24 @@ type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
 const MAGNET_IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
+const MAGNET_IMAGE_TYPES = new Set(MAGNET_IMAGE_ACCEPT.split(','));
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+function extensionForImage(file: File) {
+  if (file.type === 'image/png') return 'png';
+  if (file.type === 'image/webp') return 'webp';
+  if (file.type === 'image/gif') return 'gif';
+  return 'jpg';
+}
+
+function safeImageName(file: File) {
+  const base = file.name
+    .toLowerCase()
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'image';
+
+  return `${base}-${Date.now()}.${extensionForImage(file)}`;
 }
 
 function slugify(value: string) {
@@ -96,6 +107,8 @@ export function PageEditorClient({
   const [mode, setMode] = useState<Mode>('page');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -127,7 +140,7 @@ export function PageEditorClient({
   }, []);
 
   async function saveLeadMagnet(overrides: Partial<LeadMagnet> = {}) {
-    if (saveState === 'saving') return;
+    if (saveState === 'saving' || isUploadingImage) return;
     setSaveState('saving');
     setError('');
 
@@ -164,6 +177,10 @@ export function PageEditorClient({
       });
 
       if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error('The image is still embedded in this save request. Re-upload it so it goes straight to storage, then save again.');
+        }
+
         const data = (await response.json().catch(() => null)) as { error?: string } | null;
         // If the publish-time validation tripped, revert the toggle locally
         // so the user can see what's wrong without the page bouncing back
@@ -208,21 +225,41 @@ export function PageEditorClient({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-    if (!allowed.includes(file.type)) {
+    if (!MAGNET_IMAGE_TYPES.has(file.type)) {
       setError('Image must be a PNG, JPG, WebP, or GIF.');
       event.target.value = '';
       return;
     }
     if (file.size > MAX_MAGNET_IMAGE_BYTES) {
-      setError('Image must be 10 MB or smaller. Compress and try again.');
+      setError('Image must be 10 MB or smaller.');
       event.target.value = '';
       return;
     }
 
     setError('');
-    patchLeadMagnet({ imageUrl: await readFileAsDataUrl(file) });
-    event.target.value = '';
+    setIsUploadingImage(true);
+    setImageUploadProgress(0);
+    try {
+      const blob = await upload(
+        `lead-magnets/${account.id}/${leadMagnet.id}/${safeImageName(file)}`,
+        file,
+        {
+          access: 'public',
+          contentType: file.type,
+          handleUploadUrl: `/api/lead-magnets/${leadMagnet.id}/image`,
+          multipart: file.size > 8_000_000,
+          onUploadProgress: ({ percentage }) => setImageUploadProgress(Math.round(percentage)),
+        }
+      );
+
+      patchLeadMagnet({ imageUrl: blob.url });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Image could not be uploaded.');
+    } finally {
+      setIsUploadingImage(false);
+      setImageUploadProgress(0);
+      event.target.value = '';
+    }
   }
 
   const brand = account.brand;
@@ -313,7 +350,7 @@ export function PageEditorClient({
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                     : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
                 )}
-                disabled={saveState === 'saving'}
+                disabled={saveState === 'saving' || isUploadingImage}
                 onClick={() => saveLeadMagnet({ published: !leadMagnet.published })}
                 type="button"
               >
@@ -327,18 +364,26 @@ export function PageEditorClient({
                 {leadMagnet.published ? 'Published' : 'Draft'}
               </button>
               <AceternityButton
-                disabled={saveState === 'saving'}
+                disabled={saveState === 'saving' || isUploadingImage}
                 onClick={() => saveLeadMagnet()}
                 variant="secondary"
               >
-                {saveState === 'saving' ? (
+                {saveState === 'saving' || isUploadingImage ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : saveState === 'saved' ? (
                   <Check className="h-4 w-4" />
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                {saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Save now'}
+                {isUploadingImage
+                  ? imageUploadProgress > 0
+                    ? `Uploading ${imageUploadProgress}%`
+                    : 'Uploading image'
+                  : saveState === 'saving'
+                    ? 'Saving'
+                    : saveState === 'saved'
+                      ? 'Saved'
+                      : 'Save now'}
               </AceternityButton>
               <AceternityButton onClick={() => setConfirmDelete(true)} variant="danger" disabled={isDeleting}>
                 {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -769,7 +814,7 @@ function ImageHotspot({
       >
         <ImageIcon className="h-7 w-7" />
         <span className="mt-2 text-sm font-semibold">Add an image</span>
-        <span className="text-xs text-gray-500">PNG, JPG, WebP, or GIF</span>
+        <span className="text-xs text-gray-500">PNG, JPG, WebP, or GIF. 10 MB max.</span>
       </button>
     );
   }
