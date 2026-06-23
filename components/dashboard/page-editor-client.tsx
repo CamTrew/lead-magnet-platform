@@ -3,7 +3,7 @@
 import type { CSSProperties, ChangeEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { upload } from '@vercel/blob/client';
+import { uploadPresigned } from '@vercel/blob/client';
 import {
   ArrowLeft,
   Check,
@@ -240,17 +240,16 @@ export function PageEditorClient({
     setIsUploadingImage(true);
     setImageUploadProgress(0);
     try {
-      const blob = await upload(
-        `lead-magnets/${account.id}/${leadMagnet.id}/${safeImageName(file)}`,
-        file,
-        {
-          access: 'public',
-          contentType: file.type,
-          handleUploadUrl: `/api/lead-magnets/${leadMagnet.id}/image`,
-          multipart: file.size > 8_000_000,
-          onUploadProgress: ({ percentage }) => setImageUploadProgress(Math.round(percentage)),
-        }
-      );
+      const multipart = file.size > 8_000_000;
+      const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/image`;
+      const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/${safeImageName(file)}`;
+      const blob = await uploadPresigned(pathname, file, {
+        access: 'public',
+        contentType: file.type,
+        handleUploadUrl,
+        multipart,
+        onUploadProgress: ({ percentage }) => setImageUploadProgress(Math.round(percentage)),
+      });
 
       patchLeadMagnet({ imageUrl: blob.url });
     } catch (err) {

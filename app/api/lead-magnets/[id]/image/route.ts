@@ -1,4 +1,5 @@
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { issueSignedToken } from '@vercel/blob';
+import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/blob/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentDashboardPayload } from '@/lib/auth';
@@ -59,23 +60,17 @@ export async function POST(
   }
   const leadMagnetId = idParse.data;
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return NextResponse.json(
-      { error: 'Image storage is not configured yet. Add BLOB_READ_WRITE_TOKEN in Vercel and redeploy.' },
-      { status: 500 }
-    );
-  }
-
-  const body = (await request.json().catch(() => null)) as HandleUploadBody | null;
+  const body = (await request.json().catch(() => null)) as HandleUploadPresignedBody | null;
   if (!body) {
     return NextResponse.json({ error: 'Invalid upload request' }, { status: 400 });
   }
 
   try {
-    const response = await handleUpload({
+    const response = await handleUploadPresigned({
       body,
       request,
-      onBeforeGenerateToken: async (pathname) => {
+      webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
+      getSignedToken: async (pathname) => {
         const payload = await getCurrentDashboardPayload();
         if (!payload) {
           throw new UploadRouteError('Not authenticated', 401);
@@ -92,14 +87,21 @@ export async function POST(
         }
 
         return {
-          addRandomSuffix: true,
-          allowedContentTypes,
-          cacheControlMaxAge: 60 * 60 * 24 * 365,
-          maximumSizeInBytes: MAX_MAGNET_IMAGE_BYTES,
-          tokenPayload: JSON.stringify({
-            accountId: payload.account.id,
-            leadMagnetId,
+          token: await issueSignedToken({
+            allowedContentTypes,
+            maximumSizeInBytes: MAX_MAGNET_IMAGE_BYTES,
+            operations: ['put'],
+            pathname,
+            storeId: process.env.BLOB_STORE_ID || process.env.VERCEL_BLOB_STORE_ID,
           }),
+          urlOptions: {
+            addRandomSuffix: true,
+            cacheControlMaxAge: 60 * 60 * 24 * 365,
+            tokenPayload: JSON.stringify({
+              accountId: payload.account.id,
+              leadMagnetId,
+            }),
+          },
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
@@ -129,10 +131,21 @@ export async function POST(
 
     return NextResponse.json(response);
   } catch (err) {
+    const missingBlobStore =
+      err instanceof Error &&
+      (err.message.includes('No blob credentials found') ||
+        err.message.includes('no storeId was found') ||
+        err.message.includes('BLOB_STORE_ID'));
+    const missingWebhookKey =
+      err instanceof Error && err.message.includes('Missing webhook public key');
     const status = err instanceof UploadRouteError ? err.status : 500;
     const message = err instanceof UploadRouteError
       ? err.message
-      : 'Image could not be uploaded';
+      : missingBlobStore
+        ? 'Image storage is connected, but the deployment is missing Blob env vars. Connect this Blob store to the project environment or add BLOB_STORE_ID and redeploy.'
+        : missingWebhookKey
+          ? 'Image storage is missing BLOB_WEBHOOK_PUBLIC_KEY. Add the Blob webhook public key to this project environment and redeploy.'
+          : 'Image could not be uploaded';
 
     log.warn('Lead magnet image upload failed', {
       route: ROUTE,
