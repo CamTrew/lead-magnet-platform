@@ -53,6 +53,33 @@ function safeImageName(file: File) {
   return `${base}-${Date.now()}.${extensionForImage(file)}`;
 }
 
+function magnetImageProxyUrl(leadMagnetId: string) {
+  return `/magnet-images/${leadMagnetId}?v=${Date.now()}`;
+}
+
+async function recordUploadedMagnetImage(leadMagnetId: string, imageUrl: string) {
+  const response = await fetch(`/api/lead-magnets/${leadMagnetId}/image`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageUrl }),
+  });
+
+  const data = (await response.json().catch(() => null)) as {
+    leadMagnet?: LeadMagnet;
+    error?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Image uploaded, but could not be attached to this page.');
+  }
+
+  if (!data?.leadMagnet) {
+    throw new Error('Image uploaded, but this page did not refresh correctly.');
+  }
+
+  return data.leadMagnet;
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -240,6 +267,7 @@ export function PageEditorClient({
     setIsUploadingImage(true);
     setImageUploadProgress(0);
     try {
+      const wasDirty = dirtyRef.current;
       const multipart = file.size > 8_000_000;
       const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/image`;
       const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/${safeImageName(file)}`;
@@ -250,8 +278,13 @@ export function PageEditorClient({
         multipart,
         onUploadProgress: ({ percentage }) => setImageUploadProgress(Math.round(percentage)),
       });
+      const uploadedLeadMagnet = await recordUploadedMagnetImage(leadMagnet.id, blob.url);
+      const imageUrl = uploadedLeadMagnet.imageUrl || magnetImageProxyUrl(leadMagnet.id);
 
-      patchLeadMagnet({ imageUrl: blob.url });
+      setLeadMagnet((current) => ({ ...current, imageUrl }));
+      lastSavedRef.current = { ...lastSavedRef.current, imageUrl };
+      dirtyRef.current = wasDirty;
+      setSaveState(wasDirty ? 'idle' : 'saved');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Image could not be uploaded.');
     } finally {

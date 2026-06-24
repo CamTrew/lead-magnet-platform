@@ -31,11 +31,15 @@ function isVercelBlobImageUrl(value: string) {
   }
 }
 
+function isLeadMagnetImageProxyUrl(value: string) {
+  return /^\/magnet-images\/[0-9a-f-]{36}(\?.*)?$/i.test(value);
+}
+
 const imageSchema = z
   .string()
   .max(MAX_MAGNET_IMAGE_DATA_URL_LENGTH, 'Image is too large')
   .superRefine((value, ctx) => {
-    if (!value || isVercelBlobImageUrl(value)) return;
+    if (!value || isVercelBlobImageUrl(value) || isLeadMagnetImageProxyUrl(value)) return;
 
     const result = validateLogoDataUrl(value, {
       maxBytes: MAX_MAGNET_IMAGE_BYTES,

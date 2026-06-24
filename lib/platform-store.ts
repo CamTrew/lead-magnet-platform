@@ -95,6 +95,14 @@ type LeadMagnetRow = {
   updated_at: Date;
 };
 
+type LeadMagnetImageSourceRow = {
+  id: string;
+  account_id: string;
+  image_url: string;
+  published: boolean;
+  updated_at: Date;
+};
+
 type SubmissionRow = {
   id: string;
   account_id: string;
@@ -187,6 +195,22 @@ function parseBullets(value: LeadMagnetRow['bullets']) {
   }
 }
 
+function isBlobStorageUrl(value: string) {
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.endsWith('.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
+function leadMagnetImageProxyUrl(row: Pick<LeadMagnetRow, 'id' | 'image_url' | 'updated_at'>) {
+  if (!isBlobStorageUrl(row.image_url)) return row.image_url;
+  return `/magnet-images/${row.id}?v=${encodeURIComponent(iso(row.updated_at))}`;
+}
+
 function mapUser(row: UserRow): PlatformUser {
   return {
     id: row.id,
@@ -245,7 +269,7 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     ctaText: row.cta_text,
     formHeading: row.form_heading,
     formSubtext: row.form_subtext,
-    imageUrl: row.image_url,
+    imageUrl: leadMagnetImageProxyUrl(row),
     downloadLink: row.download_link,
     emailSubject: row.email_subject,
     emailBody: row.email_body,
@@ -1099,7 +1123,12 @@ export async function updateLeadMagnet(
         cta_text = $9,
         form_heading = $10,
         form_subtext = $11,
-        image_url = $12,
+        image_url = case
+          when $12 = ('/magnet-images/' || id::text)
+            or $12 like ('/magnet-images/' || id::text || '?%')
+            then image_url
+          else $12
+        end,
         download_link = $13,
         email_subject = $14,
         email_body = $15,
@@ -1150,6 +1179,34 @@ export async function updateLeadMagnetImageUrl(
   );
 
   return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
+export async function getLeadMagnetImageSource(leadMagnetId: string) {
+  const result = await query<LeadMagnetImageSourceRow>(
+    `
+      select
+        id,
+        account_id,
+        image_url,
+        published,
+        updated_at
+      from public.magnets_lead_magnets
+      where id = $1
+      limit 1
+    `,
+    [leadMagnetId]
+  );
+
+  const row = result.rows[0];
+  if (!row || !isBlobStorageUrl(row.image_url)) return null;
+
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    imageUrl: row.image_url,
+    published: row.published,
+    updatedAt: iso(row.updated_at),
+  };
 }
 
 export async function deleteLeadMagnet(accountId: string, leadMagnetId: string) {

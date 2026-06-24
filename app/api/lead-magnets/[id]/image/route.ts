@@ -14,6 +14,9 @@ const ROUTE = '/api/lead-magnets/[id]/image';
 
 const idSchema = z.string().uuid();
 const allowedContentTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const recordImageSchema = z.object({
+  imageUrl: z.string().url(),
+}).strict();
 
 class UploadRouteError extends Error {
   status: number;
@@ -156,5 +159,68 @@ export async function POST(
     });
 
     return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const start = Date.now();
+  const { id: rawId } = await params;
+  const idParse = idSchema.safeParse(rawId);
+  if (!idParse.success) {
+    return NextResponse.json({ error: 'Invalid page id' }, { status: 400 });
+  }
+  const leadMagnetId = idParse.data;
+
+  try {
+    const payload = await getCurrentDashboardPayload();
+    if (!payload) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => null);
+    const parsed = recordImageSchema.safeParse(body);
+    if (!parsed.success || !isAllowedBlobUrl(parsed.data.imageUrl)) {
+      return NextResponse.json({ error: 'Invalid uploaded image URL' }, { status: 400 });
+    }
+
+    const leadMagnet = await findLeadMagnetForAccount(payload.account.id, leadMagnetId);
+    if (!leadMagnet) {
+      return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+    }
+
+    const updated = await updateLeadMagnetImageUrl(
+      payload.account.id,
+      leadMagnetId,
+      parsed.data.imageUrl
+    );
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+    }
+
+    log.info('Lead magnet image recorded', {
+      route: ROUTE,
+      method: 'PUT',
+      status: 200,
+      userId: payload.user.id,
+      accountId: payload.account.id,
+      durationMs: Date.now() - start,
+      extra: { leadMagnetId },
+    });
+
+    return NextResponse.json({ leadMagnet: updated });
+  } catch (err) {
+    log.warn('Lead magnet image record failed', {
+      route: ROUTE,
+      method: 'PUT',
+      status: 500,
+      durationMs: Date.now() - start,
+      extra: { leadMagnetId, error: err },
+    });
+
+    return NextResponse.json({ error: 'Image uploaded, but could not be attached to this page.' }, { status: 500 });
   }
 }
