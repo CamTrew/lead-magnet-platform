@@ -53,7 +53,7 @@ export function LeadMagnetPageView({
   leadMagnet: LeadMagnet;
 }) {
   const brandName = account.logoText.trim();
-  const displayName = brandName || 'Your Brand';
+  const displayName = brandName || account.domain.trim() || 'Your Brand';
   const homeHref = account.domain ? `https://${account.domain}` : '#';
   const brandPrimary = account.brand.primary;
   const brandIntensity = account.brand.highlightIntensity;

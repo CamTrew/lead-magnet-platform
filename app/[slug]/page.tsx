@@ -11,6 +11,7 @@ import {
   leadMagnetMetadataSnippet,
 } from '@/components/lead-magnet-page-view';
 import { isPlatformHost, leadMagnetMetadataIcons } from '@/lib/favicon';
+import { absoluteMetadataUrl, leadMagnetSiteName } from '@/lib/lead-magnet-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,26 +37,30 @@ export async function generateMetadata({
   }
 
   const { account, leadMagnet } = result;
-  const brandName = account.logoText.trim() || 'this brand';
   const titleText = leadMagnet.title.trim() || 'Free resource';
+  const protocol = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https';
+  const baseUrl = host ? `${protocol}://${host}` : undefined;
+  const canonical = baseUrl ? `${baseUrl}/${leadMagnet.slug}` : undefined;
+  const siteName = leadMagnetSiteName(account, host);
+  const imageUrl = leadMagnet.imageUrl
+    ? absoluteMetadataUrl(leadMagnet.imageUrl, baseUrl)
+    : undefined;
   const descriptionSource =
     leadMagnet.subtitle.trim() ||
     leadMagnet.emailPreview.trim() ||
     leadMagnet.description.trim() ||
-    `${titleText}, a free resource from ${brandName}.`;
+    `${titleText}, a free resource from ${siteName}.`;
   const description = leadMagnetMetadataSnippet(descriptionSource);
-  const protocol = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https';
-  const canonical = host ? `${protocol}://${host}/${leadMagnet.slug}` : undefined;
 
   return {
-    title: titleText,
+    title: { absolute: titleText },
     description,
     alternates: canonical ? { canonical } : undefined,
     keywords: [
       titleText,
       'free resource',
       'download',
-      brandName,
+      siteName,
       leadMagnet.slug.replace(/-/g, ' '),
     ],
     icons: leadMagnetMetadataIcons(account, host && !isPlatformHost(host) ? '/favicon.ico' : undefined),
@@ -63,15 +68,15 @@ export async function generateMetadata({
       type: 'website',
       title: titleText,
       description,
-      siteName: brandName,
+      siteName,
       url: canonical,
-      images: leadMagnet.imageUrl ? [{ url: leadMagnet.imageUrl }] : undefined,
+      images: imageUrl ? [{ url: imageUrl }] : undefined,
     },
     twitter: {
-      card: leadMagnet.imageUrl ? 'summary_large_image' : 'summary',
+      card: imageUrl ? 'summary_large_image' : 'summary',
       title: titleText,
       description,
-      images: leadMagnet.imageUrl ? [leadMagnet.imageUrl] : undefined,
+      images: imageUrl ? [imageUrl] : undefined,
     },
     robots: { index: true, follow: true },
   };
