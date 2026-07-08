@@ -1,16 +1,22 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="512" height="512" rx="112" fill="#111111"/>
   <defs>
-    <linearGradient id="magnet-gradient" x1="106" x2="401" y1="378" y2="134" gradientUnits="userSpaceOnUse">
+    <linearGradient id="magnets-mark-gradient" x1="0%" x2="100%" y1="100%" y2="0%">
       <stop stop-color="#FDC957"/>
       <stop offset="0.48" stop-color="#FE6F34"/>
       <stop offset="1" stop-color="#FE504F"/>
     </linearGradient>
   </defs>
-  <g transform="translate(38 32) scale(0.84)">
-    <path d="M378 86C400.2 76 426.3 85.9 436.3 108.1C446.3 130.3 436.4 156.4 414.2 166.4L230 249C186.5 268.5 167 319.6 186.5 363.1C206 406.6 257.1 426.1 300.6 406.6L379.5 371.2C401.7 361.2 427.8 371.1 437.8 393.3C447.8 415.5 437.9 441.6 415.7 451.6L336.8 487C249.2 526.3 146.3 487.1 107 399.5C67.7 311.9 106.9 209 194.5 169.7L378 86Z" fill="url(#magnet-gradient)"/>
-    <path d="M338.7 236.8C360.9 226.8 387 236.7 397 258.9C407 281.1 397.1 307.2 374.9 317.2L264.5 366.7C242.3 376.7 216.2 366.8 206.2 344.6C196.2 322.4 206.1 296.3 228.3 286.3L338.7 236.8Z" fill="url(#magnet-gradient)"/>
-    <circle cx="391" cy="241" r="47" fill="#FE504F"/>
-    <circle cx="420" cy="133" r="31" fill="#7FD4DD"/>
+  <g transform="translate(76 76) scale(5)">
+    <path
+      d="M47.8 9.7a6.25 6.25 0 0 1 5 11.43L29.75 31.47c-5.44 2.44-7.88 8.83-5.44 14.27 2.44 5.45 8.83 7.89 14.27 5.44l9.86-4.42a6.25 6.25 0 1 1 5.12 11.4l-9.86 4.43C31.94 67.87 18.13 62.6 12.84 50.84 7.56 39.08 12.82 25.27 24.59 19.99L47.8 9.7Z"
+      fill="url(#magnets-mark-gradient)"
+    />
+    <path
+      d="M42.84 29.61a6.25 6.25 0 0 1 5.12 11.4l-13.8 6.2a6.25 6.25 0 1 1-5.12-11.41l13.8-6.19Z"
+      fill="url(#magnets-mark-gradient)"
+    />
+    <circle cx="49.5" cy="30.2" r="6.5" fill="#FE504F"/>
+    <circle cx="53.2" cy="16.6" r="4.2" fill="#7FD4DD"/>
   </g>
 </svg>
