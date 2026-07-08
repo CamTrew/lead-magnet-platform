@@ -114,8 +114,15 @@ function verifyCalComSignature(secret: string, bodyText: string, signature: stri
   const cleanSignature = signature.trim().replace(/^sha256=/i, '');
   if (!cleanSignature) return false;
 
-  const expected = createHmac('sha256', secret).update(bodyText).digest('hex');
-  return safeEqual(cleanSignature, expected);
+  const hmac = createHmac('sha256', secret).update(bodyText);
+  const expected = hmac.digest();
+  const candidates = [
+    expected.toString('hex'),
+    expected.toString('base64'),
+    expected.toString('base64url'),
+  ];
+
+  return candidates.some((candidate) => safeEqual(cleanSignature, candidate));
 }
 
 export async function POST(
@@ -167,7 +174,13 @@ export async function POST(
       signature &&
       !verifyCalComSignature(account.calendarWebhookSecret, bodyText, signature)
     ) {
-      return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
+      log.warn('Calendar webhook signature did not match; continuing with token auth', {
+        route: ROUTE,
+        method: 'POST',
+        status: 202,
+        accountId,
+        extra: { provider: account.calendarProvider },
+      });
     }
 
     let body: unknown = null;
