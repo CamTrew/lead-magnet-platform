@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import {
+  extractCalendarInviteeEmail,
+  isCalendarBookingEvent,
+} from '../lib/calendar-webhook-payload';
+import {
   startLeadMagnetFollowUpSequence,
   stopAccountFollowUpSequencesForEmail,
   stopLeadMagnetFollowUpSequence,
@@ -64,6 +68,12 @@ function resetRequests() {
 function eventSendBodies() {
   return requests
     .filter((request) => request.pathname === '/events/send' && request.method === 'POST')
+    .map((request) => request.body);
+}
+
+function automationPatchBodies(automationId: string) {
+  return requests
+    .filter((request) => request.pathname === `/automations/${automationId}` && request.method === 'PATCH')
     .map((request) => request.body);
 }
 
@@ -198,6 +208,22 @@ const magnet: LeadMagnet = {
 };
 
 async function run() {
+  const calBookingRequestedPayload = {
+    triggerEvent: 'BOOKING_REQUESTED',
+    payload: {
+      attendees: [{ email: 'Lead@Example.com' }],
+    },
+  };
+  assert.equal(isCalendarBookingEvent(calBookingRequestedPayload), true);
+  assert.equal(extractCalendarInviteeEmail(calBookingRequestedPayload), 'lead@example.com');
+  assert.equal(
+    isCalendarBookingEvent({
+      triggerEvent: 'FORM_SUBMITTED',
+      payload: { responses: { email: { value: 'lead@example.com' } } },
+    }),
+    false
+  );
+
   const synced = await syncLeadMagnetFollowUpAutomation(account, magnet);
 
   assert.equal(synced.automationId, 'auto_1');
@@ -244,6 +270,14 @@ async function run() {
     )
   );
   assert.ok(
+    steps.some(
+      (step) =>
+        step.key === 'booked_2' &&
+        step.type === 'delay' &&
+        (step.config as JsonRecord | undefined)?.duration === '1 minute'
+    )
+  );
+  assert.ok(
     connections.some(
       (connection) =>
         connection.from === 'wait_2' &&
@@ -252,8 +286,13 @@ async function run() {
     )
   );
   assert.ok(
-    !connections.some((connection) => connection.type === 'event_received'),
-    'booking event should stop the branch rather than continue to the next email.'
+    connections.some(
+      (connection) =>
+        connection.from === 'wait_2' &&
+        connection.to === 'booked_2' &&
+        connection.type === 'event_received'
+    ),
+    'booking event should take an explicit branch that never reaches the next email.'
   );
 
   resetRequests();
@@ -286,7 +325,10 @@ async function run() {
   });
 
   assert.deepEqual(started, { started: true, reason: null });
-  assert.deepEqual(findBody('/automations/auto_1', 'PATCH'), { status: 'enabled' });
+  const startAutomationPatches = automationPatchBodies('auto_1');
+  assert.equal(startAutomationPatches.length, 2);
+  assert.ok(Array.isArray(startAutomationPatches[0]?.steps));
+  assert.deepEqual(startAutomationPatches[1], { status: 'enabled' });
   assert.deepEqual(eventSendBodies(), [
     {
       event: 'magnets.lead_magnet.magnet_smoke.signup',

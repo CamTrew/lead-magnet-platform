@@ -1,6 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  calendarEmailFingerprint,
+  extractCalendarEventType,
+  extractCalendarInviteeEmail,
+  isCalendarBookingEvent,
+} from '@/lib/calendar-webhook-payload';
 import { stopAccountFollowUpSequencesForEmail } from '@/lib/follow-up-sequences';
 import { getAccountWithSecrets } from '@/lib/platform-store';
 import {
@@ -16,98 +22,11 @@ const paramsSchema = z.object({
   accountId: z.string().uuid(),
 });
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
-}
-
-function stringAt(value: unknown, path: string[]) {
-  let current = value;
-  for (const key of path) {
-    if (typeof current !== 'object' || current === null || !(key in current)) return '';
-    current = (current as Record<string, unknown>)[key];
-  }
-  return typeof current === 'string' ? current : '';
-}
-
-function findEmail(value: unknown, depth = 0): string {
-  if (depth > 6 || value === null || value === undefined) return '';
-  if (typeof value === 'string') {
-    const trimmed = value.trim().toLowerCase();
-    return emailRegex.test(trimmed) ? trimmed : '';
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findEmail(item, depth + 1);
-      if (found) return found;
-    }
-    return '';
-  }
-  if (typeof value !== 'object') return '';
-
-  const object = value as Record<string, unknown>;
-  for (const [key, item] of Object.entries(object)) {
-    if (key.toLowerCase().includes('email')) {
-      const found = findEmail(item, depth + 1);
-      if (found) return found;
-    }
-  }
-  for (const item of Object.values(object)) {
-    const found = findEmail(item, depth + 1);
-    if (found) return found;
-  }
-  return '';
-}
-
-function extractInviteeEmail(body: unknown) {
-  const candidates = [
-    ['payload', 'email'],
-    ['payload', 'invitee', 'email'],
-    ['payload', 'attendee', 'email'],
-    ['payload', 'attendees', '0', 'email'],
-    ['payload', 'responses', 'email', 'value'],
-    ['payload', 'booking', 'attendees', '0', 'email'],
-    ['payload', 'booking', 'user', 'email'],
-    ['data', 'attendees', '0', 'email'],
-    ['data', 'booking', 'attendees', '0', 'email'],
-    ['email'],
-    ['invitee', 'email'],
-    ['attendee', 'email'],
-  ];
-
-  for (const path of candidates) {
-    const value = stringAt(body, path);
-    if (emailRegex.test(value.trim().toLowerCase())) {
-      return value.trim().toLowerCase();
-    }
-  }
-
-  return findEmail(body);
-}
-
-function extractEventType(body: unknown) {
-  return [
-    stringAt(body, ['event']),
-    stringAt(body, ['type']),
-    stringAt(body, ['triggerEvent']),
-    stringAt(body, ['event_type']),
-    stringAt(body, ['payload', 'event']),
-    stringAt(body, ['payload', 'type']),
-    stringAt(body, ['payload', 'triggerEvent']),
-    stringAt(body, ['data', 'triggerEvent']),
-  ].find(Boolean) || '';
-}
-
-function isBookingCreatedEvent(body: unknown) {
-  const eventType = extractEventType(body).toLowerCase();
-  return eventType === 'invitee.created' ||
-    eventType === 'booking_created' ||
-    eventType === 'booking.created' ||
-    eventType === 'bookingcreated';
 }
 
 function verifyCalComSignature(secret: string, bodyText: string, signature: string) {
@@ -185,20 +104,21 @@ export async function POST(
     } catch {
       return NextResponse.json({ error: 'Invalid webhook payload' }, { status: 400 });
     }
-    if (!isBookingCreatedEvent(body)) {
-      return NextResponse.json({ ok: true, ignored: true });
+    const eventType = extractCalendarEventType(body);
+    if (!isCalendarBookingEvent(body)) {
+      return NextResponse.json({ ok: true, ignored: true, eventType });
     }
 
-    const email = extractInviteeEmail(body);
+    const email = extractCalendarInviteeEmail(body);
     if (!email) {
       log.warn('Calendar webhook missing invitee email', {
         route: ROUTE,
         method: 'POST',
         status: 202,
         accountId,
-        extra: { eventType: extractEventType(body), provider: account.calendarProvider },
+        extra: { eventType, provider: account.calendarProvider },
       });
-      return NextResponse.json({ ok: true, ignored: true });
+      return NextResponse.json({ ok: true, ignored: true, eventType });
     }
 
     const stopped = await stopAccountFollowUpSequencesForEmail({
@@ -214,6 +134,8 @@ export async function POST(
       accountId,
       extra: {
         provider: account.calendarProvider,
+        eventType,
+        emailFingerprint: calendarEmailFingerprint(email),
         stopped: stopped.stopped,
         stoppedCount: stopped.stoppedCount,
       },
@@ -221,6 +143,7 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
+      eventType,
       stopped: stopped.stopped,
       stoppedCount: stopped.stoppedCount,
     });

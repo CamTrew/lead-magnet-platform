@@ -210,13 +210,20 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
       const duration = durationFromHours(delayHours);
 
       if (magnet.followUpStopOnBooking) {
+        const bookedKey = `booked_${index + 1}`;
         steps.push({
           key: waitKey,
           type: 'wait_for_event',
           config: { event_name: bookedEvent, timeout: duration },
         });
+        steps.push({
+          key: bookedKey,
+          type: 'delay',
+          config: { duration: '1 minute' },
+        });
         connections.push({ from: previousKey, to: waitKey, type: 'default' });
         connections.push({ from: waitKey, to: emailKey, type: 'timeout' });
+        connections.push({ from: waitKey, to: bookedKey, type: 'event_received' });
       } else {
         steps.push({
           key: waitKey,
@@ -297,6 +304,20 @@ async function enableAutomation(apiKey: string, automationId: string) {
     method: 'PATCH',
     body: JSON.stringify({ status: 'enabled' }),
   });
+}
+
+async function refreshAutomationGraph(account: AccountSettings, magnet: LeadMagnet) {
+  if (!magnet.followUpEnabled || !magnet.resendFollowUpAutomationId) return;
+
+  const emails = normaliseFollowUpEmails(magnet.followUpEmails)
+    .filter((email) => email.subject && email.body && email.resendTemplateId);
+  if (emails.length === 0) return;
+
+  await upsertAutomation(
+    account.resendApiKey,
+    magnet.resendFollowUpAutomationId,
+    buildAutomationGraph(account, magnet, emails)
+  );
 }
 
 async function sendEvent(
@@ -407,6 +428,7 @@ export async function startLeadMagnetFollowUpSequence({
   }
 
   try {
+    await refreshAutomationGraph(account, magnet);
     await enableAutomation(account.resendApiKey, magnet.resendFollowUpAutomationId);
     await sendEvent(account, magnet.id, 'signup', email, {
       name: name.trim() || 'there',
