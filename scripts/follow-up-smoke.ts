@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  startLeadMagnetFollowUpSequence,
   stopAccountFollowUpSequencesForEmail,
   stopLeadMagnetFollowUpSequence,
   syncLeadMagnetFollowUpAutomation,
@@ -227,6 +228,7 @@ async function run() {
   const automationBody = findBody('/automations', 'POST');
   assert.equal(automationBody.status, 'enabled');
   assert.equal(automationBody.name, 'Magnets follow-up: Smoke Test Magnet');
+  assert.deepEqual(findBody('/automations/auto_1', 'PATCH'), { status: 'enabled' });
 
   const steps = expectRecordArray(automationBody.steps, 'automation steps');
   const connections = expectRecordArray(automationBody.connections, 'automation connections');
@@ -253,6 +255,50 @@ async function run() {
     !connections.some((connection) => connection.type === 'event_received'),
     'booking event should stop the branch rather than continue to the next email.'
   );
+
+  resetRequests();
+  const started = await startLeadMagnetFollowUpSequence({
+    account,
+    magnet: {
+      ...magnet,
+      followUpEmails: synced.emails,
+      resendFollowUpAutomationId: synced.automationId,
+    },
+    email: 'Lead@Example.com',
+    name: 'Lead',
+    store: {
+      createFollowUpRun: async (input) => {
+        assert.equal(input.accountId, account.id);
+        assert.equal(input.leadMagnetId, magnet.id);
+        assert.equal(input.email, 'Lead@Example.com');
+        return { created: true, runId: 'run_start' };
+      },
+      markFollowUpRunFailed: async () => undefined,
+      hasActiveFollowUpRunForEmail: async () => false,
+      stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+      listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+      stopFollowUpRunsForAccountEmail: async () => ({
+        stopped: false,
+        stoppedCount: 0,
+        leadMagnetIds: [],
+      }),
+    },
+  });
+
+  assert.deepEqual(started, { started: true, reason: null });
+  assert.deepEqual(findBody('/automations/auto_1', 'PATCH'), { status: 'enabled' });
+  assert.deepEqual(eventSendBodies(), [
+    {
+      event: 'magnets.lead_magnet.magnet_smoke.signup',
+      email: 'lead@example.com',
+      payload: {
+        name: 'Lead',
+        downloadLink: magnet.downloadLink,
+        leadMagnetId: magnet.id,
+        leadMagnetTitle: magnet.title,
+      },
+    },
+  ]);
 
   resetRequests();
   await syncLeadMagnetFollowUpAutomation(account, {

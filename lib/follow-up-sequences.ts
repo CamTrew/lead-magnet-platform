@@ -292,6 +292,13 @@ async function disableAutomation(apiKey: string, automationId: string) {
   });
 }
 
+async function enableAutomation(apiKey: string, automationId: string) {
+  await resendRequest(apiKey, `/automations/${encodeURIComponent(automationId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'enabled' }),
+  });
+}
+
 async function sendEvent(
   account: AccountSettings,
   leadMagnetId: string,
@@ -353,6 +360,7 @@ export async function syncLeadMagnetFollowUpAutomation(
     magnet.resendFollowUpAutomationId,
     buildAutomationGraph(account, magnet, syncedEmails)
   );
+  await enableAutomation(account.resendApiKey, automationId);
 
   return {
     automationId,
@@ -399,6 +407,7 @@ export async function startLeadMagnetFollowUpSequence({
   }
 
   try {
+    await enableAutomation(account.resendApiKey, magnet.resendFollowUpAutomationId);
     await sendEvent(account, magnet.id, 'signup', email, {
       name: name.trim() || 'there',
       downloadLink: magnet.downloadLink.trim(),
