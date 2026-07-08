@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { MagnetsLogo } from '@/components/magnets-logo-mark';
 import { AceternityButton, AceternityInput } from '@/components/ui/aceternity';
 
 type AuthMode = 'login' | 'register';
@@ -112,10 +112,9 @@ export function AuthCard({
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-white px-4 py-10 text-ink-900">
-      <div className="vercel-grid-bg pointer-events-none absolute inset-0 opacity-50 [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_70%)]" />
+    <main className="brand-soft-bg relative flex min-h-screen items-center justify-center px-4 py-10 text-ink-900">
       <Link
-        className="absolute left-4 top-4 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-ink-600 transition hover:bg-ink-100 hover:text-ink-900 sm:left-6 sm:top-6"
+        className="absolute left-4 top-4 inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white/75 px-3 text-xs font-bold text-ink-700 transition hover:bg-white hover:text-ink-950 sm:left-6 sm:top-6"
         href="/"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
@@ -123,15 +122,15 @@ export function AuthCard({
       </Link>
 
       <div className="relative w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-3">
-          <MagnetsLogoMark className="h-10 w-10" iconClassName="h-5 w-5" />
+        <div className="mb-8 flex flex-col items-center gap-4">
+          <MagnetsLogo markClassName="h-12 w-12" textClassName="text-3xl" />
           <div className="text-center">
-            <h1 className="text-2xl font-semibold tracking-tight text-ink-950">{activeCopy.title}</h1>
+            <h1 className="text-2xl font-black text-ink-950">{activeCopy.title}</h1>
             <p className="mt-1.5 text-sm text-ink-600">{activeCopy.description}</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-ink-200 bg-white p-6">
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-ink-200 bg-white p-6 shadow-[0_24px_70px_-56px_rgba(17,17,17,0.75)]">
           {mode === 'register' && (
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-ink-700">Name</span>

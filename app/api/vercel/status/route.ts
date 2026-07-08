@@ -50,8 +50,11 @@ export async function GET(request: NextRequest) {
       return rateLimitResponse(err);
     }
     if (err instanceof VercelApiError) {
+      const message = err.status === 429
+        ? 'Publishing status is busy right now. Try again in a minute.'
+        : 'Could not check publishing status right now. Try again in a minute.';
       return NextResponse.json(
-        { error: err.message, code: err.code },
+        { error: message },
         { status: err.status === 429 ? 429 : 502 }
       );
     }

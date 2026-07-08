@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import { uploadPresigned } from '@vercel/blob/client';
 import {
   ArrowLeft,
+  CalendarCheck,
   Check,
+  Clock,
   Image as ImageIcon,
   Loader2,
   Mail,
@@ -23,12 +25,13 @@ import {
   AceternityButton,
   AceternityCard,
   AceternityInput,
+  AceternityTextarea,
 } from '@/components/ui/aceternity';
 import { ConfirmDialog } from '@/components/dashboard/confirm-dialog';
 import { EditableHotspot, InlineParagraphs, InlineText } from '@/components/dashboard/inline-edit';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type Mode = 'page' | 'email';
+type Mode = 'page' | 'email' | 'sequence';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
@@ -55,6 +58,17 @@ function safeImageName(file: File) {
 
 function magnetImageProxyUrl(leadMagnetId: string) {
   return `/magnet-images/${leadMagnetId}?v=${Date.now()}`;
+}
+
+function newFollowUpEmail() {
+  return {
+    id: `email-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    delayHours: 24,
+    subject: '',
+    preview: '',
+    body: '',
+    resendTemplateId: '',
+  };
 }
 
 async function recordUploadedMagnetImage(leadMagnetId: string, imageUrl: string) {
@@ -199,6 +213,10 @@ export function PageEditorClient({
           emailSubject: payload.emailSubject,
           emailBody: payload.emailBody,
           emailPreview: payload.emailPreview,
+          followUpEnabled: payload.followUpEnabled,
+          followUpStopOnBooking: payload.followUpStopOnBooking,
+          followUpEmails: payload.followUpEmails,
+          resendFollowUpAutomationId: payload.resendFollowUpAutomationId,
           published: payload.published,
         }),
       });
@@ -330,7 +348,7 @@ export function PageEditorClient({
         )}
 
         <AceternityCard className="overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e4e7] bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dfd8cf] bg-white p-4">
             <div className="flex flex-wrap items-center gap-2">
               <AceternityButton onClick={() => router.push('/dashboard/pages')} variant="secondary">
                 <ArrowLeft className="h-4 w-4" />
@@ -350,7 +368,7 @@ export function PageEditorClient({
               </div>
 
               <div className="flex h-9 items-center rounded-md border border-ink-200 bg-ink-50 p-1">
-                {(['page', 'email'] as const).map((item) => (
+                {(['page', 'email', 'sequence'] as const).map((item) => (
                   <button
                     key={item}
                     className={cn(
@@ -435,8 +453,14 @@ export function PageEditorClient({
               onPatch={patchLeadMagnet}
               onPickImage={() => fileInputRef.current?.click()}
             />
-          ) : (
+          ) : mode === 'email' ? (
             <EmailCanvas
+              account={account}
+              leadMagnet={leadMagnet}
+              onPatch={patchLeadMagnet}
+            />
+          ) : (
+            <SequenceCanvas
               account={account}
               leadMagnet={leadMagnet}
               onPatch={patchLeadMagnet}
@@ -452,7 +476,7 @@ export function PageEditorClient({
           type="file"
         />
 
-        {mode === 'email' && (
+        {(mode === 'email' || mode === 'sequence') && (
           <p className="text-center text-xs text-ink-500">
             Tip: in the email body, use <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{name}'}</code> for the recipient name and{' '}
             <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{download_link}'}</code> for the resource URL.
@@ -912,7 +936,7 @@ function EmailCanvas({
 
         <div className="rounded-lg border border-ink-200 bg-white p-4 text-sm">
           <label className="block">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Resource URL</span>
+            <span className="text-[11px] font-medium uppercase text-ink-500">Resource URL</span>
             <p className="mt-0.5 text-xs text-ink-500">
               Where {'{download_link}'} resolves to in the email body.
             </p>
@@ -934,7 +958,7 @@ function EmailCanvas({
 
           <div className="space-y-2 border-b border-ink-200 bg-white px-5 py-4">
             <label className="block">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Subject</span>
+              <span className="text-[11px] font-medium uppercase text-ink-500">Subject</span>
               <InlineText
                 ariaLabel="Email subject"
                 as="div"
@@ -946,7 +970,7 @@ function EmailCanvas({
               />
             </label>
             <label className="block">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Preview text</span>
+              <span className="text-[11px] font-medium uppercase text-ink-500">Preview text</span>
               <InlineText
                 ariaLabel="Email preview text"
                 as="div"
@@ -969,6 +993,218 @@ function EmailCanvas({
               />
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SequenceCanvas({
+  account,
+  leadMagnet,
+  onPatch,
+}: {
+  account: DashboardPayload['account'];
+  leadMagnet: LeadMagnet;
+  onPatch: (updates: Partial<LeadMagnet>) => void;
+}) {
+  const resendConfigured = Boolean(
+    account.resendApiKey &&
+    account.resendFromEmail &&
+    account.resendReturnPath
+  );
+  const calendarConnected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
+  const calendarProviderLabel =
+    account.calendarProvider === 'calendly'
+      ? 'Calendly'
+      : account.calendarProvider === 'calcom'
+        ? 'Cal.com'
+        : 'a calendar provider';
+
+  function updateEmail(index: number, updates: Partial<LeadMagnet['followUpEmails'][number]>) {
+    const next = leadMagnet.followUpEmails.map((email, emailIndex) =>
+      emailIndex === index ? { ...email, ...updates } : email
+    );
+    onPatch({ followUpEmails: next });
+  }
+
+  function addEmail() {
+    if (leadMagnet.followUpEmails.length >= 10) return;
+    onPatch({
+      followUpEmails: [
+        ...leadMagnet.followUpEmails,
+        newFollowUpEmail(),
+      ],
+    });
+  }
+
+  return (
+    <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-4xl space-y-4">
+        {!resendConfigured && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-semibold">Finish Resend setup first.</p>
+            <p className="mt-1 text-xs leading-5">
+              Follow-up sequences need your sending key, sender address, and sending domain before they can be enabled.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-ink-200 bg-white p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-ink-950">Follow-up sequence</p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
+                Send extra emails after the lead magnet email. Delays are counted from the previous email or from signup for the first one.
+              </p>
+            </div>
+            <button
+              aria-pressed={leadMagnet.followUpEnabled}
+              className={cn(
+                'inline-flex h-8 shrink-0 items-center gap-2 rounded-full border px-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50',
+                leadMagnet.followUpEnabled
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-ink-200 bg-white text-ink-600'
+              )}
+              disabled={!resendConfigured}
+              onClick={() => onPatch({ followUpEnabled: !leadMagnet.followUpEnabled })}
+              type="button"
+            >
+              <span
+                className={cn(
+                  'block h-4 w-4 rounded-full transition',
+                  leadMagnet.followUpEnabled ? 'bg-emerald-500' : 'bg-ink-300'
+                )}
+              />
+              {leadMagnet.followUpEnabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              aria-pressed={leadMagnet.followUpStopOnBooking}
+              className={cn(
+                'flex min-h-16 items-start gap-3 rounded-lg border p-3 text-left transition',
+                leadMagnet.followUpStopOnBooking
+                  ? 'border-ink-950 bg-ink-950 text-white'
+                  : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
+              )}
+              onClick={() => onPatch({ followUpStopOnBooking: !leadMagnet.followUpStopOnBooking })}
+              type="button"
+            >
+              <CalendarCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                <span className="block text-sm font-semibold">Stop when a call is booked</span>
+                <span className={cn('mt-1 block text-xs leading-5', leadMagnet.followUpStopOnBooking ? 'text-white/70' : 'text-ink-500')}>
+                  Calendly and Cal.com booking-created webhooks stop this magnet&apos;s sequence for that email.
+                </span>
+              </span>
+            </button>
+            <div className="rounded-lg border border-ink-200 bg-ink-50 p-3">
+              <p className="text-xs font-semibold uppercase text-ink-500">Calendar connection</p>
+              <p className="mt-2 text-xs leading-5 text-ink-600">
+                {calendarConnected
+                  ? `${calendarProviderLabel} is connected on this account. If this option is on, a booked call from the same email stops this magnet's active sequence.`
+                  : 'Connect Calendly or Cal.com in Configure to let booked calls stop this sequence.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {leadMagnet.followUpEmails.length === 0 && (
+            <div className="rounded-lg border border-dashed border-ink-300 bg-white p-6 text-center">
+              <p className="text-sm font-semibold text-ink-950">No follow-up emails yet</p>
+              <p className="mt-1 text-xs text-ink-500">Add up to 10 emails to build this magnet&apos;s sequence.</p>
+            </div>
+          )}
+
+          {leadMagnet.followUpEmails.map((email, index) => (
+            <div key={email.id} className="rounded-lg border border-ink-200 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 bg-ink-50 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-ink-700" />
+                  <p className="text-sm font-semibold text-ink-950">Email {index + 1}</p>
+                </div>
+                <button
+                  aria-label={`Remove email ${index + 1}`}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                  onClick={() =>
+                    onPatch({
+                      followUpEmails: leadMagnet.followUpEmails.filter((_, emailIndex) => emailIndex !== index),
+                    })
+                  }
+                  type="button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              </div>
+
+              <div className="space-y-4 p-5">
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
+                    <Clock className="h-3.5 w-3.5" />
+                    Delay from previous email
+                  </span>
+                  <div className="flex max-w-xs items-center gap-2">
+                    <AceternityInput
+                      min={0}
+                      max={720}
+                      onChange={(event) =>
+                        updateEmail(index, {
+                          delayHours: Math.max(0, Math.min(720, Number(event.target.value) || 0)),
+                        })
+                      }
+                      type="number"
+                      value={email.delayHours}
+                    />
+                    <span className="text-sm text-ink-500">hours</span>
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Subject</span>
+                  <AceternityInput
+                    onChange={(event) => updateEmail(index, { subject: event.target.value })}
+                    placeholder="Quick follow-up"
+                    value={email.subject}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Preview text</span>
+                  <AceternityInput
+                    onChange={(event) => updateEmail(index, { preview: event.target.value })}
+                    placeholder="Short inbox teaser"
+                    value={email.preview}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Body</span>
+                  <AceternityTextarea
+                    className="min-h-44"
+                    onChange={(event) => updateEmail(index, { body: event.target.value })}
+                    placeholder="Write the follow-up email..."
+                    value={email.body}
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end">
+          <AceternityButton
+            disabled={leadMagnet.followUpEmails.length >= 10}
+            onClick={addEmail}
+            type="button"
+            variant="secondary"
+          >
+            <Plus className="h-4 w-4" />
+            Add email
+          </AceternityButton>
         </div>
       </div>
     </div>

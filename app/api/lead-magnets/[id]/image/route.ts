@@ -145,9 +145,9 @@ export async function POST(
     const message = err instanceof UploadRouteError
       ? err.message
       : missingBlobStore
-        ? 'Image storage is connected, but the deployment is missing Blob env vars. Connect this Blob store to the project environment or add BLOB_STORE_ID and redeploy.'
+        ? 'Image storage is not available on this deployment yet. Try again after the next deploy, or contact support.'
         : missingWebhookKey
-          ? 'Image storage is missing BLOB_WEBHOOK_PUBLIC_KEY. Add the Blob webhook public key to this project environment and redeploy.'
+          ? 'Image storage is not available on this deployment yet. Try again after the next deploy, or contact support.'
           : 'Image could not be uploaded';
 
     log.warn('Lead magnet image upload failed', {

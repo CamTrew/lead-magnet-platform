@@ -9,6 +9,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/submit',
+  '/api/calendar-webhooks',
 ];
 
 function isPublicApi(pathname: string) {
@@ -38,6 +39,10 @@ function applySecurityHeaders(response: NextResponse, request: NextRequest) {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+
+  if (pathname === '/') {
+    return applySecurityHeaders(NextResponse.redirect(new URL('/login', request.url)), request);
+  }
 
   // Dashboard pages — redirect unauthenticated users to /login with a return URL.
   if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {

@@ -109,8 +109,8 @@ export function InlineText({
       aria-label={ariaLabel}
       className={cn(
         'inline-edit relative -mx-1 -my-0.5 rounded-md px-1 py-0.5 outline-none transition',
-        'hover:bg-[#f4f4f5]/70 focus:bg-white focus:ring-2 focus:ring-[#09090b]/35',
-        isEmpty && 'min-w-[3ch] text-[#a1a1aa]',
+        'hover:bg-[#f7f5f1]/70 focus:bg-white focus:ring-2 focus:ring-[#111111]/35',
+        isEmpty && 'min-w-[3ch] text-[#9d9488]',
         className
       )}
       contentEditable
@@ -195,7 +195,7 @@ export function InlineParagraphs({
       aria-label={ariaLabel}
       className={cn(
         'inline-edit relative -mx-1 -my-0.5 space-y-3 rounded-md px-2 py-1 outline-none transition',
-        'hover:bg-[#f4f4f5]/70 focus:bg-white focus:ring-2 focus:ring-[#09090b]/35',
+        'hover:bg-[#f7f5f1]/70 focus:bg-white focus:ring-2 focus:ring-[#111111]/35',
         paragraphClassName,
         className
       )}
@@ -253,14 +253,14 @@ export function EditableHotspot({ children, className, label, onActivate }: Edit
     <div
       aria-label={label}
       className={cn(
-        'group/edit relative cursor-text rounded-lg transition hover:ring-2 hover:ring-[#09090b]/30 focus-within:ring-2 focus-within:ring-[#09090b]/50',
+        'group/edit relative cursor-text rounded-lg transition hover:ring-2 hover:ring-[#111111]/30 focus-within:ring-2 focus-within:ring-[#111111]/50',
         className
       )}
       onClick={onActivate}
       role={onActivate ? 'button' : undefined}
       tabIndex={onActivate ? 0 : undefined}
     >
-      <span className="pointer-events-none absolute -right-2 -top-2 z-10 hidden h-7 w-7 items-center justify-center rounded-full bg-[#09090b] text-white shadow-sm group-hover/edit:flex group-focus-within/edit:flex">
+      <span className="pointer-events-none absolute -right-2 -top-2 z-10 hidden h-7 w-7 items-center justify-center rounded-full bg-[#111111] text-white shadow-sm group-hover/edit:flex group-focus-within/edit:flex">
         <Pencil className="h-3.5 w-3.5" />
       </span>
       {children}

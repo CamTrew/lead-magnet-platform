@@ -19,7 +19,7 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
-function cleanEmailText(value: string) {
+export function cleanEmailText(value: string) {
   return value
     .replace(/\r\n?/g, '\n')
     .replace(/^\s+/, '')
@@ -28,11 +28,11 @@ function cleanEmailText(value: string) {
     .trimEnd();
 }
 
-function cleanPreviewText(value: string) {
+export function cleanPreviewText(value: string) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function renderPlainEmailHtml(text: string, previewText: string) {
+export function renderPlainEmailHtml(text: string, previewText: string) {
   const preheader = previewText
     ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;font-size:1px;line-height:1px">${escapeHtml(previewText)}</div>`
     : '';
@@ -40,7 +40,7 @@ function renderPlainEmailHtml(text: string, previewText: string) {
   return `${preheader}<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${escapeHtml(text)}</div>`;
 }
 
-function scrubResendErrorMessage(message: string) {
+export function scrubResendErrorMessage(message: string) {
   // The Resend SDK occasionally echoes the key back in error messages. Strip
   // anything that looks like one before we hand it to a caller that may end up
   // logging or returning it to the public form-submit endpoint.

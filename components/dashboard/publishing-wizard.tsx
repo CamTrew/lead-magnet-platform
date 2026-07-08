@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -41,10 +41,19 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
   const [verifyError, setVerifyError] = useState<string>('');
   const [verifyFound, setVerifyFound] = useState<string[]>([]);
   const [attachError, setAttachError] = useState<string>('');
+  const refreshInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 7_000);
+
     try {
-      const response = await fetch('/api/domain/status', { cache: 'no-store' });
+      const response = await fetch('/api/domain/status', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       if (!response.ok) {
         if (response.status !== 401) {
           setVerifyError('Could not load domain status.');
@@ -55,6 +64,9 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
       setStatus(data);
     } catch {
       setVerifyError('Could not load domain status.');
+    } finally {
+      window.clearTimeout(timeout);
+      refreshInFlight.current = false;
     }
   }, []);
 
@@ -74,7 +86,9 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
   useEffect(() => {
     if (!status) return;
     if (status.stage !== 'attached-pending') return;
-    const handle = window.setInterval(refresh, 8_000);
+    const handle = window.setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 15_000);
     return () => window.clearInterval(handle);
   }, [refresh, status]);
 
@@ -325,7 +339,7 @@ function RecordRow({ record }: { record: DnsRecord }) {
 function Cell({ children, label }: { children: React.ReactNode; label: string }) {
   return (
     <div className="bg-white px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-500">{label}</p>
+      <p className="text-[10px] font-medium uppercase text-ink-500">{label}</p>
       <div className="mt-1 text-sm">{children}</div>
     </div>
   );

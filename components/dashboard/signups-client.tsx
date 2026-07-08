@@ -8,6 +8,7 @@ import {
   Mail,
   Plus,
   Search,
+  Square,
   Trash2,
   Upload,
   Users,
@@ -53,6 +54,8 @@ export function SignupsClient({
   const [manualOpen, setManualOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [signupToRemove, setSignupToRemove] = useState<AccountSignup | null>(null);
+  const [stoppingEmail, setStoppingEmail] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -73,6 +76,43 @@ export function SignupsClient({
     setManualOpen(false);
     setImportOpen(false);
     router.refresh();
+  }
+
+  async function stopSequence(signup: AccountSignup) {
+    if (stoppingEmail) return;
+    setStoppingEmail(signup.email);
+    setActionError('');
+    try {
+      const response = await fetch('/api/signups/sequence/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: signup.email,
+          leadMagnetId: signup.firstLeadMagnetId,
+        }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'Could not stop sequence');
+      }
+      setSignups((current) =>
+        current.map((item) =>
+          item.email.toLowerCase() === signup.email.toLowerCase()
+            ? {
+                ...item,
+                followUpStatus: 'stopped',
+                followUpStopReason: 'manual',
+                followUpStoppedAt: new Date().toISOString(),
+              }
+            : item
+        )
+      );
+      router.refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not stop sequence');
+    } finally {
+      setStoppingEmail('');
+    }
   }
 
   return (
@@ -114,7 +154,7 @@ export function SignupsClient({
               <Users className="h-4 w-4" />
             </span>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Unique signups</p>
+              <p className="text-xs font-medium uppercase text-ink-500">Unique signups</p>
               <p className="mt-0.5 text-2xl font-semibold text-ink-950">{totalCount}</p>
             </div>
           </AceternityCard>
@@ -123,7 +163,7 @@ export function SignupsClient({
               <Mail className="h-4 w-4" />
             </span>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Latest signup</p>
+              <p className="text-xs font-medium uppercase text-ink-500">Latest signup</p>
               <p className="mt-0.5 truncate text-sm font-medium text-ink-900">
                 {signups[0] ? formatDate(signups[0].latestSignupAt) : 'No signups yet'}
               </p>
@@ -134,7 +174,7 @@ export function SignupsClient({
               <Download className="h-4 w-4" />
             </span>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Export</p>
+              <p className="text-xs font-medium uppercase text-ink-500">Export</p>
               <p className="mt-0.5 text-sm font-medium text-ink-900">CSV ready to download</p>
             </div>
           </AceternityCard>
@@ -199,23 +239,29 @@ export function SignupsClient({
               {matchCount} of {totalCount} signups match
             </p>
           )}
+          {actionError && (
+            <p className="border-b border-red-200 bg-red-50 px-5 py-2 text-xs font-medium text-red-700">
+              {actionError}
+            </p>
+          )}
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase text-ink-500">
                 <tr>
                   <th className="px-5 py-3">Email</th>
                   <th className="px-5 py-3">Name</th>
                   <th className="px-5 py-3">First magnet</th>
                   <th className="px-5 py-3">First signup</th>
                   <th className="px-5 py-3">Signups</th>
-                  <th className="w-20 px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3">Sequence</th>
+                  <th className="w-28 px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-200">
                 {filtered.length === 0 ? (
                   <tr className="bg-white">
-                    <td colSpan={6} className="px-5 py-12 text-center">
+                    <td colSpan={7} className="px-5 py-12 text-center">
                       <p className="font-semibold text-ink-950">
                         {totalCount === 0 ? 'No signups yet' : 'No matches'}
                       </p>
@@ -244,7 +290,26 @@ export function SignupsClient({
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex justify-end">
+                        <SequenceStatus signup={signup} />
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end gap-1">
+                          {signup.followUpStatus === 'active' && (
+                            <button
+                              aria-label={`Stop sequence for ${signup.email}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-900 disabled:opacity-50"
+                              disabled={stoppingEmail === signup.email}
+                              onClick={() => stopSequence(signup)}
+                              title="Stop follow-up sequence"
+                              type="button"
+                            >
+                              {stoppingEmail === signup.email ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Square className="h-4 w-4" />
+                              )}
+                            </button>
+                          )}
                           <button
                             aria-label={`Remove ${signup.email}`}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-500 transition hover:bg-red-50 hover:text-red-700"
@@ -265,6 +330,36 @@ export function SignupsClient({
         </AceternityCard>
       </div>
     </>
+  );
+}
+
+function SequenceStatus({ signup }: { signup: AccountSignup }) {
+  const status = signup.followUpStatus;
+  if (status === 'none') {
+    return <span className="text-xs text-ink-400">None</span>;
+  }
+
+  const className =
+    status === 'active'
+      ? 'border-blue-200 bg-blue-50 text-blue-700'
+      : status === 'stopped'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : status === 'completed'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : 'border-red-200 bg-red-50 text-red-700';
+  const label =
+    status === 'active'
+      ? 'Active'
+      : status === 'stopped'
+        ? 'Stopped'
+        : status === 'completed'
+          ? 'Completed'
+          : 'Failed';
+
+  return (
+    <span className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${className}`}>
+      {label}
+    </span>
   );
 }
 
@@ -761,7 +856,10 @@ function ColumnSelect({
       onChange={(event) => {
         const raw = event.target.value;
         if (raw === '') onChange(null);
-        else onChange(Number(raw));
+        else {
+          const index = Number.parseInt(raw, 10);
+          onChange(Number.isNaN(index) ? null : index);
+        }
       }}
       value={value == null ? '' : String(value)}
     >

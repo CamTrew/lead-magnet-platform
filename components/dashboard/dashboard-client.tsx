@@ -1,15 +1,18 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  CalendarCheck,
   Check,
   CircleHelp,
+  Copy,
   Globe2,
   Loader2,
   Mail,
 } from 'lucide-react';
 import {
   AceternityCard,
+  AceternityButton,
   AceternityInput,
   Field,
 } from '@/components/ui/aceternity';
@@ -17,12 +20,25 @@ import { PageHeader } from '@/components/dashboard/app-shell';
 import { DeliverySection } from '@/components/dashboard/delivery-section';
 import { LockedField } from '@/components/dashboard/locked-field';
 import { PublishingWizard } from '@/components/dashboard/publishing-wizard';
-import type { AccountSettings, DashboardPayload } from '@/lib/types';
+import type { AccountSettings, CalendarProvider, DashboardPayload } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSection = 'publishing' | 'delivery';
 type SectionIcon = typeof Globe2;
+
+function calendarWebhookUrl({
+  accountId,
+  origin,
+  token,
+}: {
+  accountId: string;
+  origin: string;
+  token: string;
+}) {
+  if (!origin || !token) return '';
+  return `${origin}/api/calendar-webhooks/${accountId}?token=${encodeURIComponent(token)}`;
+}
 
 function SectionHeader({
   description,
@@ -35,12 +51,12 @@ function SectionHeader({
 }) {
   return (
     <div className="flex gap-3">
-      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#d4d4d8] bg-white text-[#18181b] shadow-sm">
+      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#c9bfb2] bg-white text-[#1f1d1b] shadow-sm">
         <Icon className="h-4 w-4" />
       </span>
       <div>
-        <h2 className="text-base font-black text-[#09090b]">{title}</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-[#52525b]">{description}</p>
+        <h2 className="text-base font-black text-[#111111]">{title}</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5c554e]">{description}</p>
       </div>
     </div>
   );
@@ -68,7 +84,7 @@ function HelpTooltip({ ariaLabel, help, width = 'w-64' }: { ariaLabel: string; h
     <>
       <span
         aria-label={ariaLabel}
-        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[#e4e4e7] bg-[#fafafa] text-[#52525b] outline-none transition hover:border-[#d4d4d8] hover:text-[#18181b] focus:border-[#09090b] focus:text-[#18181b]"
+        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[#dfd8cf] bg-[#f7f5f1] text-[#5c554e] outline-none transition hover:border-[#c9bfb2] hover:text-[#1f1d1b] focus:border-[#111111] focus:text-[#1f1d1b]"
         onBlur={() => setOpen(false)}
         onFocus={() => {
           recalc();
@@ -130,7 +146,7 @@ function SaveStatus({ state }: { state: SaveState }) {
   if (state === 'idle') return null;
   if (state === 'saving') {
     return (
-      <div className="flex items-center justify-end gap-1.5 border-t border-[#e4e4e7] pt-3 text-xs text-ink-500">
+      <div className="flex items-center justify-end gap-1.5 border-t border-[#dfd8cf] pt-3 text-xs text-ink-500">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Saving…
       </div>
@@ -138,16 +154,286 @@ function SaveStatus({ state }: { state: SaveState }) {
   }
   if (state === 'saved') {
     return (
-      <div className="flex items-center justify-end gap-1.5 border-t border-[#e4e4e7] pt-3 text-xs text-emerald-700">
+      <div className="flex items-center justify-end gap-1.5 border-t border-[#dfd8cf] pt-3 text-xs text-emerald-700">
         <Check className="h-3.5 w-3.5" />
         Saved
       </div>
     );
   }
   return (
-    <div className="flex items-center justify-end gap-1.5 border-t border-[#e4e4e7] pt-3 text-xs text-red-700">
+    <div className="flex items-center justify-end gap-1.5 border-t border-[#dfd8cf] pt-3 text-xs text-red-700">
       Could not save — try editing again.
     </div>
+  );
+}
+
+function providerLabel(provider: CalendarProvider) {
+  if (provider === 'calendly') return 'Calendly';
+  if (provider === 'calcom') return 'Cal.com';
+  return 'Calendar';
+}
+
+function CalendarConnectionSetup({
+  account,
+  onAccountUpdated,
+  resendConfigured,
+}: {
+  account: AccountSettings;
+  onAccountUpdated: (account: AccountSettings) => void;
+  resendConfigured: boolean;
+}) {
+  const [origin, setOrigin] = useState('');
+  const [provider, setProvider] = useState<CalendarProvider>(account.calendarProvider || 'calendly');
+  const [apiKey, setApiKey] = useState(account.calendarApiKey);
+  const [webhookSecret, setWebhookSecret] = useState(account.calendarWebhookSecret);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [localError, setLocalError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  useEffect(() => {
+    setProvider(account.calendarProvider || 'calendly');
+    setApiKey(account.calendarApiKey);
+    setWebhookSecret(account.calendarWebhookSecret);
+  }, [
+    account.calendarApiKey,
+    account.calendarProvider,
+    account.calendarWebhookSecret,
+    account.id,
+  ]);
+
+  const connected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
+  const webhookUrl = calendarWebhookUrl({
+    accountId: account.id,
+    origin,
+    token: account.calendarWebhookToken,
+  });
+
+  async function copyUrl(value: string) {
+    if (!value) return;
+    await navigator.clipboard?.writeText(value).catch(() => undefined);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function saveConnection() {
+    if (!resendConfigured || saveState === 'saving') return;
+    setSaveState('saving');
+    setLocalError('');
+
+    try {
+      const response = await fetch('/api/account/calendar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: true,
+          provider,
+          apiKey,
+          webhookSecret,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as { account?: AccountSettings; error?: string } | null;
+
+      if (!response.ok || !data?.account) {
+        throw new Error(data?.error || 'Could not connect calendar.');
+      }
+
+      onAccountUpdated(data.account);
+      setSaveState('saved');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Something went wrong');
+      setSaveState('error');
+    }
+  }
+
+  async function disconnect() {
+    if (saveState === 'saving') return;
+    setSaveState('saving');
+    setLocalError('');
+
+    try {
+      const response = await fetch('/api/account/calendar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: false,
+          provider: '',
+          apiKey: '',
+          webhookSecret: '',
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as { account?: AccountSettings; error?: string } | null;
+
+      if (!response.ok || !data?.account) {
+        throw new Error(data?.error || 'Could not disconnect calendar.');
+      }
+
+      onAccountUpdated(data.account);
+      setSaveState('saved');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Something went wrong');
+      setSaveState('error');
+    }
+  }
+
+  return (
+    <details className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
+        <div className="flex min-w-0 gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-900">
+            <CalendarCheck className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink-950">Calendar booking connection</p>
+            <p className="mt-0.5 text-xs leading-5 text-ink-600">
+              {connected
+                ? `Connected to ${providerLabel(account.calendarProvider)}. Magnet sequences decide whether bookings stop follow-up emails.`
+                : 'Optional. Connect Calendly or Cal.com once, then control booking cancellation inside each magnet.'}
+            </p>
+          </div>
+        </div>
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
+          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5">
+            <path
+              d="M4 6l4 4 4-4"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+            />
+          </svg>
+        </span>
+      </summary>
+
+      <div className="space-y-4 border-t border-ink-200 p-4">
+        {!resendConfigured && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+            Finish your Resend sending key, sender address, and sending domain first.
+          </p>
+        )}
+
+        {localError && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {localError}
+          </p>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Calendar provider">
+            <select
+              className="flex h-9 w-full rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition focus:border-brand-orange focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!resendConfigured || saveState === 'saving'}
+              onChange={(event) => {
+                setProvider(event.target.value as CalendarProvider);
+                setSaveState('idle');
+                setLocalError('');
+              }}
+              value={provider}
+            >
+              <option value="calendly">Calendly</option>
+              <option value="calcom">Cal.com</option>
+            </select>
+          </Field>
+
+          <Field
+            label={provider === 'calendly' ? 'Calendly personal access token' : 'Cal.com API key'}
+            hint={
+              provider === 'calendly'
+                ? 'Calendly requires a paid plan for webhooks.'
+                : 'Use an API key from Cal.com. We listen for BOOKING_CREATED.'
+            }
+          >
+            <AceternityInput
+              autoComplete="new-password"
+              disabled={!resendConfigured || saveState === 'saving'}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setSaveState('idle');
+                setLocalError('');
+              }}
+              placeholder={provider === 'calendly' ? 'Calendly API token' : 'cal_live_xxxxxxxxxxxx'}
+              type="password"
+              value={apiKey}
+            />
+          </Field>
+        </div>
+
+        {provider === 'calcom' && (
+          <Field label="Webhook signing secret" hint="Optional. Leave blank and we will generate one for Cal.com.">
+            <AceternityInput
+              autoComplete="new-password"
+              disabled={!resendConfigured || saveState === 'saving'}
+              onChange={(event) => {
+                setWebhookSecret(event.target.value);
+                setSaveState('idle');
+                setLocalError('');
+              }}
+              placeholder="Generate automatically"
+              type="password"
+              value={webhookSecret}
+            />
+          </Field>
+        )}
+
+        {connected && webhookUrl && (
+          <div className="rounded-md border border-ink-200 bg-ink-50 p-3">
+            <p className="text-xs font-semibold uppercase text-ink-500">Account webhook URL</p>
+            <div className="mt-2 flex gap-2">
+              <input
+                className="min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-3 py-2 font-mono text-xs text-ink-700 outline-none"
+                readOnly
+                value={webhookUrl}
+              />
+              <button
+                aria-label="Copy account webhook URL"
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3 text-xs font-medium text-ink-700 transition hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!webhookUrl}
+                onClick={() => copyUrl(webhookUrl)}
+                type="button"
+              >
+                <Copy className="h-4 w-4" />
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-ink-500">
+            One calendar connection applies to the account. Each magnet controls its sequence and stop-on-booking setting in the Sequence tab.
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            {connected && (
+              <AceternityButton
+                disabled={saveState === 'saving'}
+                onClick={disconnect}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                Disconnect
+              </AceternityButton>
+            )}
+            <AceternityButton
+              disabled={!resendConfigured || saveState === 'saving'}
+              onClick={saveConnection}
+              size="sm"
+              type="button"
+            >
+              {saveState === 'saving' ? 'Connecting' : connected ? 'Update connection' : 'Connect calendar'}
+            </AceternityButton>
+          </div>
+        </div>
+
+        {saveState === 'saved' && (
+          <p className="text-right text-xs font-medium text-emerald-700">Saved</p>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -218,12 +504,12 @@ export function DashboardClient({
     [sectionState.publishing, sectionState.delivery]
   );
 
-  async function saveAccount(section: SaveSection) {
+  async function saveAccount(section: SaveSection, snapshotOverride?: AccountSettings) {
     setSaveState(section, 'saving');
     setError('');
 
     try {
-      const snapshot = accountRef.current;
+      const snapshot = snapshotOverride || accountRef.current;
       const response = await fetch('/api/account', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -239,6 +525,7 @@ export function DashboardClient({
           beehiivApiKey: snapshot.beehiivApiKey,
           beehiivPublicationId: snapshot.beehiivPublicationId,
           substackPublication: snapshot.substackPublication,
+          calendarWebhookEnabled: snapshot.calendarWebhookEnabled,
         }),
       });
 
@@ -265,6 +552,11 @@ export function DashboardClient({
   const configuredDomain = account.domain.trim();
   const displayDomain = configuredDomain || 'example.com';
   const pageHost = `${pageSubdomain}.${displayDomain}`;
+  const resendConfigured = Boolean(
+    account.resendApiKey &&
+    account.resendFromEmail &&
+    account.resendReturnPath
+  );
 
   return (
     <>
@@ -330,11 +622,11 @@ export function DashboardClient({
             />
 
             <div className="space-y-5">
-              <div className="rounded-lg border border-[#e4e4e7] bg-white p-4 shadow-sm">
-                <p className="text-xs font-bold uppercase text-[#71717a]">
+              <div className="rounded-lg border border-[#dfd8cf] bg-white p-4 shadow-sm">
+                <p className="text-xs font-bold uppercase text-[#746d64]">
                   {configuredDomain ? 'Live page host' : 'Example page host'}
                 </p>
-                <p className="mt-1 break-all font-mono text-sm text-[#09090b]">{pageHost}</p>
+                <p className="mt-1 break-all font-mono text-sm text-[#111111]">{pageHost}</p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -462,6 +754,16 @@ export function DashboardClient({
                 onCommit={() => commitSection('delivery')}
                 onPatch={(updates) => patchAccount(updates, 'delivery')}
                 saveState={sectionState.delivery}
+              />
+
+              <CalendarConnectionSetup
+                account={account}
+                onAccountUpdated={(nextAccount) => {
+                  accountRef.current = nextAccount;
+                  setAccount(nextAccount);
+                  dirty.current.delivery = false;
+                }}
+                resendConfigured={resendConfigured}
               />
 
               <details className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white">

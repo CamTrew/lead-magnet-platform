@@ -81,7 +81,7 @@ function CreatePageModal({
   title: string;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#09090b]/20 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/20 p-4 backdrop-blur-sm">
       <button
         aria-label="Close new page dialog"
         className="absolute inset-0"
@@ -92,7 +92,7 @@ function CreatePageModal({
       <div
         aria-label="Create page"
         aria-modal="true"
-        className="relative z-10 w-full max-w-md rounded-lg border border-[#d4d4d8] bg-white p-6 shadow-sm"
+        className="relative z-10 w-full max-w-md rounded-lg border border-[#c9bfb2] bg-white p-6 shadow-sm"
         role="dialog"
       >
         <div className="mb-5 flex items-start justify-between gap-4">
@@ -104,7 +104,7 @@ function CreatePageModal({
           </div>
           <button
             aria-label="Close"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition hover:bg-[#f4f4f5] hover:text-[#18181b] disabled:opacity-50"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#746d64] transition hover:bg-[#f7f5f1] hover:text-[#1f1d1b] disabled:opacity-50"
             disabled={isCreating}
             onClick={onClose}
             type="button"
@@ -178,7 +178,7 @@ function CreatePageModal({
             </p>
           )}
 
-          <div className="flex justify-end gap-2 border-t border-[#e4e4e7] pt-4">
+          <div className="flex justify-end gap-2 border-t border-[#dfd8cf] pt-4">
             <AceternityButton disabled={isCreating} onClick={onClose} type="button" variant="secondary">
               Cancel
             </AceternityButton>
@@ -372,13 +372,13 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
         <AceternityCard className="overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-[#e4e4e7] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 border-b border-[#dfd8cf] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-base font-black text-[#09090b]">All pages</h2>
-              <p className="mt-1 text-sm text-[#52525b]">
+              <h2 className="text-base font-black text-[#111111]">All pages</h2>
+              <p className="mt-1 text-sm text-[#5c554e]">
                 Open a page to edit the copy, email, and download link.
               </p>
-              <p className="mt-1 text-xs font-medium text-[#71717a]">
+              <p className="mt-1 text-xs font-medium text-[#746d64]">
                 {leadMagnets.length} / {MAX_LEAD_MAGNETS_PER_ACCOUNT} pages used
               </p>
             </div>
@@ -400,7 +400,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="border-b border-[#e4e4e7] bg-[#fafafa] text-xs font-black uppercase text-[#71717a]">
+              <thead className="border-b border-[#dfd8cf] bg-[#f7f5f1] text-xs font-black uppercase text-[#746d64]">
                 <tr>
                   <th className="px-5 py-3">Page</th>
                   <th className="px-5 py-3">URL</th>
@@ -409,12 +409,12 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                   <th className="w-32 px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#e4e4e7]">
+              <tbody className="divide-y divide-[#dfd8cf]">
                 {leadMagnets.length === 0 && !isCreating && (
                   <tr className="bg-white">
                     <td colSpan={5} className="px-5 py-10 text-center">
-                      <p className="font-black text-[#09090b]">No pages yet</p>
-                      <p className="mt-1 text-sm text-[#71717a]">Create a page when the resource is ready.</p>
+                      <p className="font-black text-[#111111]">No pages yet</p>
+                      <p className="mt-1 text-sm text-[#746d64]">Create a page when the resource is ready.</p>
                       <AceternityButton
                         className="mt-4 min-w-[152px]"
                         disabled={pageLimitReached || isOpening}
@@ -432,11 +432,11 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                   return (
                     <tr
                       key={leadMagnet.id}
-                      className="bg-white transition hover:bg-[#fafafa]"
+                      className="bg-white transition hover:bg-[#f7f5f1]"
                     >
                       <td className="max-w-[300px] px-5 py-4">
-                        <p className="truncate font-black text-[#09090b]">{leadMagnet.title}</p>
-                        <p className="truncate text-xs text-[#71717a]">{leadMagnet.subtitle}</p>
+                        <p className="truncate font-black text-[#111111]">{leadMagnet.title}</p>
+                        <p className="truncate text-xs text-[#746d64]">{leadMagnet.subtitle}</p>
                       </td>
                       <td className="max-w-[360px] px-5 py-4">
                         {leadMagnet.published ? (
@@ -450,7 +450,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                             {url}
                           </a>
                         ) : (
-                          <span className="block truncate font-mono text-xs text-[#52525b]" title={url}>
+                          <span className="block truncate font-mono text-xs text-[#5c554e]" title={url}>
                             {url}
                           </span>
                         )}
@@ -461,13 +461,13 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                             'rounded-lg border px-2 py-1 text-xs font-bold',
                             leadMagnet.published
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : 'border-[#e4e4e7] bg-[#f4f4f5] text-[#18181b]'
+                              : 'border-[#dfd8cf] bg-[#f7f5f1] text-[#1f1d1b]'
                           )}
                         >
                           {leadMagnet.published ? 'Published' : 'Draft'}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-[#52525b]">{formatDate(leadMagnet.updatedAt)}</td>
+                      <td className="px-5 py-4 text-[#5c554e]">{formatDate(leadMagnet.updatedAt)}</td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-2">
                           {leadMagnet.published && (

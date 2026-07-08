@@ -1,4 +1,5 @@
 const API_BASE = 'https://api.vercel.com';
+const VERCEL_FETCH_TIMEOUT_MS = 5_000;
 
 type VercelEnvelope = {
   error?: { code?: string; message?: string };
@@ -49,6 +50,25 @@ function withTeam(url: string, teamId?: string) {
   return `${url}${separator}teamId=${encodeURIComponent(teamId)}`;
 }
 
+async function vercelFetch(input: string | URL, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VERCEL_FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new VercelApiError(504, 'Vercel request timed out.', 'timeout');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function readEnvelope(response: Response) {
   const text = await response.text();
   if (!text) return null;
@@ -74,7 +94,7 @@ export async function attachDomain(host: string): Promise<VercelDomainStatus | n
   if (!config) return null;
   if (!host || !isValidHost(host)) return null;
 
-  const response = await fetch(
+  const response = await vercelFetch(
     withTeam(`${API_BASE}/v10/projects/${encodeURIComponent(config.projectId)}/domains`, config.teamId),
     {
       method: 'POST',
@@ -116,7 +136,7 @@ export async function removeDomain(host: string): Promise<boolean> {
   if (!config) return false;
   if (!host || !isValidHost(host)) return false;
 
-  const response = await fetch(
+  const response = await vercelFetch(
     withTeam(
       `${API_BASE}/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(host)}`,
       config.teamId
@@ -140,7 +160,7 @@ async function getDomainStatusInternal(host: string): Promise<VercelDomainStatus
   if (!config) return null;
   if (!host || !isValidHost(host)) return null;
 
-  const response = await fetch(
+  const response = await vercelFetch(
     withTeam(
       `${API_BASE}/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(host)}`,
       config.teamId
@@ -199,7 +219,7 @@ export async function getDomainConfig(host: string) {
   url.searchParams.set('projectIdOrName', config.projectId);
   if (config.teamId) url.searchParams.set('teamId', config.teamId);
 
-  const response = await fetch(url.toString(), {
+  const response = await vercelFetch(url.toString(), {
     method: 'GET',
     headers: { Authorization: `Bearer ${config.token}` },
     cache: 'no-store',

@@ -11,6 +11,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { EmailDeliveryError, sendLeadMagnetEmail } from '@/lib/resend';
+import { startLeadMagnetFollowUpSequence } from '@/lib/follow-up-sequences';
 import { log } from '@/lib/logger';
 
 const ROUTE = '/api/submit';
@@ -129,6 +130,22 @@ export async function POST(request: NextRequest) {
       name,
       email,
     });
+
+    try {
+      await startLeadMagnetFollowUpSequence({
+        account: result.account,
+        magnet: result.leadMagnet,
+        email,
+        name,
+      });
+    } catch (followUpError) {
+      log.warn('Follow-up sequence start failed (non-fatal)', {
+        route: ROUTE,
+        method: 'POST',
+        accountId,
+        extra: { leadMagnetId, error: followUpError },
+      });
+    }
 
     log.info('Submission accepted', {
       route: ROUTE,

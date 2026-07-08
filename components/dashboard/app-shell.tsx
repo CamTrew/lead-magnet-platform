@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import {
+  CircleHelp,
   FileText,
   LayoutDashboard,
   Loader2,
@@ -17,8 +18,11 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { MagnetsLogo, MagnetsLogoMark } from '@/components/magnets-logo-mark';
 import { cn } from '@/lib/utils';
+
+const HELP_LOOM_EMBED_URL =
+  'https://www.loom.com/embed/adc4c43d43884842998acc42127497ca?hide_owner=true&hide_share=true&hide_title=true&hideEmbedTopBar=true';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Configure', requiresSetup: false },
@@ -103,9 +107,42 @@ function SidebarLink({
   );
 }
 
+function SidebarButton({
+  collapsed,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  collapsed?: boolean;
+  icon: typeof LayoutDashboard;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={collapsed ? label : undefined}
+      className={cn(
+        'flex h-9 w-full items-center rounded-md text-sm text-ink-600 transition hover:bg-ink-50 hover:text-ink-900',
+        collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span
+        aria-hidden={collapsed}
+        className={cn('overflow-hidden whitespace-nowrap', collapsed && 'w-0 opacity-0')}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
 function SidebarContent({
   collapsed,
   onCollapseToggle,
+  onHelpClick,
   onLogout,
   onNavigate,
   isLoggingOut,
@@ -117,6 +154,7 @@ function SidebarContent({
   collapsed?: boolean;
   onCollapseToggle?: () => void;
   isLoggingOut?: boolean;
+  onHelpClick: () => void;
   onLogout: () => void;
   onNavigate?: () => void;
   publishingDomainReady: boolean;
@@ -130,34 +168,25 @@ function SidebarContent({
     <div className="flex h-full flex-col">
       <div
         className={cn(
-          'flex h-14 items-center border-b border-ink-200',
+          'flex h-14 items-center border-b border-ink-200 bg-brand-soft',
           collapsed ? 'justify-center px-2' : 'gap-2.5 px-3'
         )}
       >
         {collapsed ? (
           <button
             aria-label="Open sidebar"
-            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition hover:bg-ink-50 lg:flex"
+            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md transition hover:bg-white lg:flex"
             onClick={onCollapseToggle}
-            title={`Open sidebar. ${userName || userEmail}`}
+            title="Open sidebar"
             type="button"
           >
-            <span className="text-[10px] font-semibold text-ink-700">
-              {userInitials(userName, userEmail)}
-            </span>
+            <MagnetsLogoMark className="h-8 w-8" />
           </button>
         ) : (
           <>
-            <span
-              aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-xs font-semibold text-ink-700"
-            >
-              {userInitials(userName, userEmail)}
-            </span>
-            <div className="min-w-0 overflow-hidden">
-              <p className="truncate text-sm font-medium text-ink-900">{userName || 'Welcome'}</p>
-              <p className="truncate text-xs text-ink-500">{userEmail}</p>
-            </div>
+            <Link href="/dashboard" aria-label="Magnets dashboard">
+              <MagnetsLogo markClassName="h-8 w-8" textClassName="text-xl" />
+            </Link>
             {onCollapseToggle && (
               <button
                 aria-label="Close sidebar"
@@ -205,6 +234,35 @@ function SidebarContent({
       </nav>
 
       <div className="border-t border-ink-200 p-2">
+        <div className="mb-2">
+          <SidebarButton
+            collapsed={collapsed}
+            icon={CircleHelp}
+            label="Help"
+            onClick={onHelpClick}
+          />
+        </div>
+        <div
+          className={cn(
+            'mb-2 flex min-h-11 items-center rounded-md bg-brand-soft text-ink-900',
+            collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
+          )}
+          title={collapsed ? `${userName || 'Welcome'} - ${userEmail}` : undefined}
+        >
+          <span
+            aria-hidden
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-950 text-[10px] font-black text-white"
+          >
+            {userInitials(userName, userEmail)}
+          </span>
+          <span
+            aria-hidden={collapsed}
+            className={cn('min-w-0 overflow-hidden', collapsed && 'w-0 opacity-0')}
+          >
+            <span className="block truncate text-xs font-bold text-ink-950">{userName || 'Welcome'}</span>
+            <span className="block truncate text-[11px] text-ink-500">{userEmail}</span>
+          </span>
+        </div>
         <button
           type="button"
           onClick={onLogout}
@@ -248,6 +306,7 @@ export function DashboardLayoutShell({
   const router = useRouter();
   const [open, setOpen] = useState(sidebarOpenPreference);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const toggleSidebar = () => {
@@ -268,7 +327,7 @@ export function DashboardLayoutShell({
   };
 
   return (
-    <main className="min-h-screen bg-white text-ink-900">
+    <main className="min-h-screen bg-brand-soft text-ink-900">
       <div className="flex min-h-screen">
         <aside
           className={cn(
@@ -279,6 +338,7 @@ export function DashboardLayoutShell({
           <SidebarContent
             collapsed={!open}
             onCollapseToggle={toggleSidebar}
+            onHelpClick={() => setHelpOpen(true)}
             isLoggingOut={isLoggingOut}
             onLogout={handleLogout}
             publishingDomainReady={publishingDomainReady}
@@ -319,6 +379,10 @@ export function DashboardLayoutShell({
                 </div>
                 <SidebarContent
                   isLoggingOut={isLoggingOut}
+                  onHelpClick={() => {
+                    setHelpOpen(true);
+                    setMobileOpen(false);
+                  }}
                   onLogout={handleLogout}
                   onNavigate={() => setMobileOpen(false)}
                   publishingDomainReady={publishingDomainReady}
@@ -332,7 +396,7 @@ export function DashboardLayoutShell({
         </AnimatePresence>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-ink-200 bg-white/90 px-4 backdrop-blur sm:px-6 lg:hidden lg:px-8">
+          <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-ink-200 bg-brand-soft/90 px-4 backdrop-blur sm:px-6 lg:hidden lg:px-8">
             <button
               aria-label="Open navigation"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700"
@@ -342,14 +406,13 @@ export function DashboardLayoutShell({
               <Menu className="h-4 w-4" />
             </button>
             <Link href="/dashboard" className="flex items-center gap-2" aria-label="Magnets dashboard">
-              <MagnetsLogoMark className="h-6 w-6" iconClassName="h-3.5 w-3.5" />
-              <span className="text-sm font-semibold text-ink-900">Magnets</span>
+              <MagnetsLogo markClassName="h-7 w-7" textClassName="text-lg" />
             </Link>
           </header>
 
-          <div className="flex-1 bg-ink-50/40 px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+          <div className="flex-1 bg-brand-soft px-4 py-6 sm:px-6 lg:px-8">{children}</div>
 
-          <footer className="border-t border-ink-200 bg-white px-4 py-4 text-xs text-ink-500 sm:px-6 lg:px-8">
+          <footer className="border-t border-ink-200 bg-brand-soft px-4 py-4 text-xs text-ink-500 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>Magnets</span>
               <div className="flex gap-3">
@@ -360,6 +423,56 @@ export function DashboardLayoutShell({
           </footer>
         </div>
       </div>
+
+      <AnimatePresence>
+        {helpOpen && (
+          <motion.div
+            aria-labelledby="help-video-title"
+            aria-modal="true"
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/55 px-4 py-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="dialog"
+          >
+            <motion.div
+              className="w-full max-w-4xl overflow-hidden rounded-lg border border-ink-200 bg-white shadow-2xl"
+              initial={{ scale: 0.97, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.97, y: 12 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              <div className="flex items-center justify-between border-b border-ink-200 bg-brand-soft px-4 py-3">
+                <div>
+                  <h2 id="help-video-title" className="text-sm font-black text-ink-950">
+                    Help walkthrough
+                  </h2>
+                  <p className="mt-0.5 text-xs text-ink-500">A quick Loom guide for setting up Magnets.</p>
+                </div>
+                <button
+                  aria-label="Close help"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-500 transition hover:bg-white hover:text-ink-950"
+                  onClick={() => setHelpOpen(false)}
+                  type="button"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="aspect-video bg-ink-950">
+                <iframe
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  className="h-full w-full"
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  src={HELP_LOOM_EMBED_URL}
+                  title="Magnets help walkthrough"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
@@ -376,7 +489,7 @@ export function PageHeader({
   return (
     <div className="mx-auto mb-6 flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-950">{title}</h1>
+        <h1 className="text-2xl font-black text-ink-950">{title}</h1>
         <p className="mt-1 text-sm text-ink-500">{subtitle}</p>
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

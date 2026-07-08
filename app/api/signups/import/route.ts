@@ -20,6 +20,16 @@ const ROUTE = '/api/signups/import';
 const MAX_CSV_CHARS = 2_000_000; // ~2 MB of CSV text
 const MAX_ROWS_PER_IMPORT = 5000;
 const EMAIL_REGEX = /^[^\s@]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+const columnIndexSchema = z.preprocess(
+  (value) => {
+    if (typeof value === 'string' && value.trim() !== '') return Number(value);
+    return value;
+  },
+  z
+    .number({ invalid_type_error: 'Choose a valid CSV column.' })
+    .min(0, 'Choose a valid CSV column.')
+    .transform((value) => Math.floor(value))
+);
 
 const manualSchema = z.object({
   type: z.literal('manual'),
@@ -33,8 +43,8 @@ const csvSchema = z.object({
   leadMagnetId: z.string().uuid(),
   csv: z.string().min(1).max(MAX_CSV_CHARS, 'CSV is too large'),
   hasHeader: z.boolean().default(true),
-  emailColumn: z.number().int().nonnegative(),
-  nameColumn: z.number().int().nonnegative().nullable(),
+  emailColumn: columnIndexSchema,
+  nameColumn: columnIndexSchema.nullable(),
 });
 
 const bodySchema = z.discriminatedUnion('type', [manualSchema, csvSchema]);

@@ -1,0 +1,407 @@
+import assert from 'node:assert/strict';
+import {
+  stopAccountFollowUpSequencesForEmail,
+  stopLeadMagnetFollowUpSequence,
+  syncLeadMagnetFollowUpAutomation,
+} from '../lib/follow-up-sequences';
+import type { AccountSettings, LeadMagnet } from '../lib/types';
+
+type JsonRecord = Record<string, unknown>;
+
+type CapturedRequest = {
+  method: string;
+  pathname: string;
+  body: JsonRecord | null;
+};
+
+const requests: CapturedRequest[] = [];
+let templateCount = 0;
+let automationCount = 0;
+const originalFetch = globalThis.fetch;
+
+function jsonResponse(body: JsonRecord, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function requestUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function parseJsonBody(body: BodyInit | null | undefined) {
+  if (!body) return null;
+  if (typeof body !== 'string') {
+    throw new Error('Smoke test expected Resend requests to use JSON string bodies.');
+  }
+  return JSON.parse(body) as JsonRecord;
+}
+
+function findRequest(pathname: string, method: string) {
+  return requests.find((request) => request.pathname === pathname && request.method === method);
+}
+
+function findBody(pathname: string, method: string) {
+  const request = findRequest(pathname, method);
+  assert.ok(request, `Expected ${method} ${pathname} to be called.`);
+  assert.ok(request.body, `Expected ${method} ${pathname} to include a JSON body.`);
+  return request.body;
+}
+
+function expectRecordArray(value: unknown, label: string) {
+  assert.ok(Array.isArray(value), `${label} should be an array.`);
+  return value as JsonRecord[];
+}
+
+function resetRequests() {
+  requests.length = 0;
+}
+
+function eventSendBodies() {
+  return requests
+    .filter((request) => request.pathname === '/events/send' && request.method === 'POST')
+    .map((request) => request.body);
+}
+
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = new URL(requestUrl(input));
+  const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+  const body = parseJsonBody(init?.body);
+
+  requests.push({ method, pathname: url.pathname, body });
+
+  if (url.origin !== 'https://api.resend.com') {
+    return jsonResponse({ message: `Unexpected origin ${url.origin}` }, 500);
+  }
+
+  if (method === 'POST' && url.pathname === '/events') {
+    return jsonResponse({ id: `event_${requests.length}` });
+  }
+
+  if (method === 'POST' && url.pathname === '/templates') {
+    templateCount += 1;
+    return jsonResponse({ id: `tmpl_${templateCount}` });
+  }
+
+  if (method === 'PATCH' && /^\/templates\/[^/]+$/.test(url.pathname)) {
+    return jsonResponse({ id: decodeURIComponent(url.pathname.split('/')[2] || '') });
+  }
+
+  if (method === 'POST' && /^\/templates\/[^/]+\/publish$/.test(url.pathname)) {
+    return jsonResponse({ id: decodeURIComponent(url.pathname.split('/')[2] || '') });
+  }
+
+  if (method === 'POST' && url.pathname === '/automations') {
+    automationCount += 1;
+    return jsonResponse({ id: `auto_${automationCount}` });
+  }
+
+  if (method === 'PATCH' && /^\/automations\/[^/]+$/.test(url.pathname)) {
+    return jsonResponse({ id: decodeURIComponent(url.pathname.split('/')[2] || '') });
+  }
+
+  if (method === 'POST' && url.pathname === '/events/send') {
+    return jsonResponse({ id: `event_send_${requests.length}` });
+  }
+
+  return jsonResponse({ message: `Unexpected Resend request: ${method} ${url.pathname}` }, 500);
+}) as typeof fetch;
+
+const now = new Date('2026-07-08T10:00:00.000Z').toISOString();
+
+const account: AccountSettings = {
+  id: 'account_smoke',
+  ownerUserId: 'user_smoke',
+  subdomain: 'get',
+  domain: 'example.com',
+  logoUrl: '',
+  logoText: 'Smoke Test',
+  brand: {
+    primary: '#2b0fff',
+    accent: '#f8f5ff',
+    success: '#22c55e',
+    highlightIntensity: 100,
+  },
+  resendFromEmail: 'Smoke Test <hello@send.example.com>',
+  resendApiKey: 're_smoke_test',
+  beehiivApiKey: '',
+  beehiivPublicationId: '',
+  substackPublication: '',
+  resendReturnPath: 'send',
+  calendarWebhookEnabled: true,
+  calendarWebhookToken: 'calendar_smoke_token',
+  calendarProvider: 'calendly',
+  calendarApiKey: '',
+  calendarWebhookSecret: '',
+  calendarWebhookId: '',
+  calendarConnectedAt: now,
+  domainVerificationToken: 'verify_smoke',
+  domainVerifiedAt: now,
+  domainAttachedHost: 'get.example.com',
+  domainRecommendedCname: 'cname.vercel-dns.com',
+  onboardingCompletedAt: now,
+  onboarding: {
+    businessName: 'Smoke Test',
+    businessType: 'SaaS product',
+    magnetType: 'Checklist',
+    cadence: 'Weekly',
+  },
+  createdAt: now,
+  updatedAt: now,
+};
+
+const magnet: LeadMagnet = {
+  id: 'magnet_smoke',
+  accountId: account.id,
+  slug: 'smoke-test',
+  title: 'Smoke Test Magnet',
+  subtitle: 'Prove follow-ups without real APIs.',
+  description: 'A local-only test magnet.',
+  bullets: ['First result', 'Second result'],
+  bulletsHeading: 'You will learn:',
+  ctaText: 'Get the guide',
+  formHeading: 'Download now',
+  formSubtext: 'Get instant access.',
+  imageUrl: '',
+  downloadLink: 'https://example.com/download.pdf',
+  emailSubject: 'Here is your guide',
+  emailBody: 'Download it here: {download_link}',
+  emailPreview: 'Your guide is ready.',
+  followUpEnabled: true,
+  followUpStopOnBooking: true,
+  followUpEmails: [
+    {
+      id: 'email_1',
+      delayHours: 0,
+      subject: 'First follow-up for {name}',
+      preview: 'First preview',
+      body: 'Hi {name}, here is the link again:\n\n{download_link}',
+      resendTemplateId: '',
+    },
+    {
+      id: 'email_2',
+      delayHours: 24,
+      subject: 'Second follow-up',
+      preview: 'Second preview',
+      body: 'Still interested? Grab the resource here: {download_link}',
+      resendTemplateId: '',
+    },
+  ],
+  resendFollowUpAutomationId: '',
+  published: true,
+  createdAt: now,
+  updatedAt: now,
+};
+
+async function run() {
+  const synced = await syncLeadMagnetFollowUpAutomation(account, magnet);
+
+  assert.equal(synced.automationId, 'auto_1');
+  assert.deepEqual(
+    synced.emails.map((email) => email.resendTemplateId),
+    ['tmpl_1', 'tmpl_2']
+  );
+
+  const eventBodies = requests
+    .filter((request) => request.pathname === '/events' && request.method === 'POST')
+    .map((request) => request.body);
+
+  assert.deepEqual(eventBodies, [
+    { name: 'magnets.lead_magnet.magnet_smoke.signup' },
+    { name: 'magnets.lead_magnet.magnet_smoke.booked' },
+  ]);
+
+  const templateBody = findBody('/templates', 'POST');
+  assert.equal(templateBody.from, account.resendFromEmail);
+  assert.equal(templateBody.subject, 'First follow-up for {name}');
+  assert.equal(typeof templateBody.html, 'string');
+  assert.match(String(templateBody.html), /\{\{\{NAME\}\}\}/);
+  assert.match(String(templateBody.text), /\{\{\{DOWNLOAD_LINK\}\}\}/);
+
+  assert.ok(findRequest('/templates/tmpl_1/publish', 'POST'));
+  assert.ok(findRequest('/templates/tmpl_2/publish', 'POST'));
+
+  const automationBody = findBody('/automations', 'POST');
+  assert.equal(automationBody.status, 'enabled');
+  assert.equal(automationBody.name, 'Magnets follow-up: Smoke Test Magnet');
+
+  const steps = expectRecordArray(automationBody.steps, 'automation steps');
+  const connections = expectRecordArray(automationBody.connections, 'automation connections');
+
+  assert.equal(steps.filter((step) => step.type === 'send_email').length, 2);
+  assert.ok(
+    steps.some(
+      (step) =>
+        step.key === 'wait_2' &&
+        step.type === 'wait_for_event' &&
+        (step.config as JsonRecord | undefined)?.event_name === 'magnets.lead_magnet.magnet_smoke.booked' &&
+        (step.config as JsonRecord | undefined)?.timeout === '24 hours'
+    )
+  );
+  assert.ok(
+    connections.some(
+      (connection) =>
+        connection.from === 'wait_2' &&
+        connection.to === 'email_2' &&
+        connection.type === 'timeout'
+    )
+  );
+  assert.ok(
+    !connections.some((connection) => connection.type === 'event_received'),
+    'booking event should stop the branch rather than continue to the next email.'
+  );
+
+  resetRequests();
+  await syncLeadMagnetFollowUpAutomation(account, {
+    ...magnet,
+    followUpEnabled: false,
+    resendFollowUpAutomationId: 'auto_existing',
+  });
+
+  const disabledBody = findBody('/automations/auto_existing', 'PATCH');
+  assert.deepEqual(disabledBody, { status: 'disabled' });
+
+  resetRequests();
+  const manualStopCalls: JsonRecord[] = [];
+  const manualStopped = await stopLeadMagnetFollowUpSequence({
+    account,
+    leadMagnetId: magnet.id,
+    email: 'Lead@Example.com',
+    reason: 'manual',
+    store: {
+      createFollowUpRun: async () => ({ created: false, runId: null }),
+      markFollowUpRunFailed: async () => undefined,
+      hasActiveFollowUpRunForEmail: async (input) => {
+        assert.deepEqual(input, {
+          accountId: account.id,
+          leadMagnetId: magnet.id,
+          email: 'Lead@Example.com',
+        });
+        return true;
+      },
+      stopFollowUpRunForEmail: async (input) => {
+        manualStopCalls.push(input as unknown as JsonRecord);
+        return { stopped: true, runId: 'run_manual' };
+      },
+      listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+      stopFollowUpRunsForAccountEmail: async () => ({
+        stopped: false,
+        stoppedCount: 0,
+        leadMagnetIds: [],
+      }),
+    },
+  });
+
+  assert.deepEqual(manualStopped, { stopped: true });
+  assert.deepEqual(manualStopCalls, [
+    {
+      accountId: account.id,
+      leadMagnetId: magnet.id,
+      email: 'Lead@Example.com',
+      reason: 'manual',
+    },
+  ]);
+  assert.deepEqual(eventSendBodies(), [
+    {
+      event: 'magnets.lead_magnet.magnet_smoke.booked',
+      email: 'lead@example.com',
+      payload: {
+        reason: 'manual',
+        leadMagnetId: magnet.id,
+      },
+    },
+  ]);
+
+  resetRequests();
+  const accountStopCalls: JsonRecord[] = [];
+  const accountStopped = await stopAccountFollowUpSequencesForEmail({
+    account,
+    email: 'lead@example.com',
+    reason: 'booked',
+    store: {
+      createFollowUpRun: async () => ({ created: false, runId: null }),
+      markFollowUpRunFailed: async () => undefined,
+      hasActiveFollowUpRunForEmail: async () => false,
+      stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+      listActiveStopOnBookingFollowUpRunsForEmail: async (input) => {
+        assert.deepEqual(input, {
+          accountId: account.id,
+          email: 'lead@example.com',
+        });
+        return [magnet.id, 'magnet_second'];
+      },
+      stopFollowUpRunsForAccountEmail: async (input) => {
+        accountStopCalls.push(input as unknown as JsonRecord);
+        return {
+          stopped: true,
+          stoppedCount: 2,
+          leadMagnetIds: [magnet.id, 'magnet_second'],
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(accountStopped, { stopped: true, stoppedCount: 2 });
+  assert.deepEqual(accountStopCalls, [
+    {
+      accountId: account.id,
+      email: 'lead@example.com',
+      reason: 'booked',
+    },
+  ]);
+  assert.deepEqual(eventSendBodies(), [
+    {
+      event: 'magnets.lead_magnet.magnet_smoke.booked',
+      email: 'lead@example.com',
+      payload: {
+        reason: 'booked',
+        leadMagnetId: magnet.id,
+      },
+    },
+    {
+      event: 'magnets.lead_magnet.magnet_second.booked',
+      email: 'lead@example.com',
+      payload: {
+        reason: 'booked',
+        leadMagnetId: 'magnet_second',
+      },
+    },
+  ]);
+
+  resetRequests();
+  const inactiveStopped = await stopLeadMagnetFollowUpSequence({
+    account,
+    leadMagnetId: magnet.id,
+    email: 'lead@example.com',
+    reason: 'manual',
+    store: {
+      createFollowUpRun: async () => ({ created: false, runId: null }),
+      markFollowUpRunFailed: async () => undefined,
+      hasActiveFollowUpRunForEmail: async () => false,
+      stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+      listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+      stopFollowUpRunsForAccountEmail: async () => ({
+        stopped: false,
+        stoppedCount: 0,
+        leadMagnetIds: [],
+      }),
+    },
+  });
+
+  assert.deepEqual(inactiveStopped, { stopped: false });
+  assert.deepEqual(requests, []);
+
+  console.log('Follow-up smoke test passed: mocked Resend setup, automation graph, disable flow, manual cancel, and account-level booking cancel.');
+}
+
+run()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    globalThis.fetch = originalFetch;
+  });

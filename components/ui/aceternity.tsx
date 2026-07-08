@@ -16,9 +16,9 @@ export function aceternityButtonClassName({
   variant?: ButtonVariant;
 } = {}) {
   return cn(
-    'inline-flex items-center justify-center gap-2 rounded-md border text-sm font-medium transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-900 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+    'inline-flex items-center justify-center gap-2 rounded-md border text-sm font-medium transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
     variant === 'primary' &&
-      'border-ink-950 bg-ink-950 text-white hover:bg-ink-800 hover:border-ink-800',
+      'border-ink-950 bg-ink-950 text-white hover:border-brand-orange hover:bg-brand-orange hover:text-ink-950',
     variant === 'secondary' &&
       'border-ink-200 bg-white text-ink-900 hover:bg-ink-50',
     variant === 'danger' &&
@@ -55,6 +55,7 @@ export const AceternityInput = React.forwardRef<
     ref={ref}
     className={cn(
       'flex h-9 w-full rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-950 focus:ring-1 focus:ring-ink-950 disabled:cursor-not-allowed disabled:opacity-50',
+      'focus:border-brand-orange focus:ring-brand-orange',
       className
     )}
     {...props}
@@ -70,6 +71,7 @@ export const AceternityTextarea = React.forwardRef<
     ref={ref}
     className={cn(
       'min-h-28 w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm leading-6 text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-950 focus:ring-1 focus:ring-ink-950 disabled:cursor-not-allowed disabled:opacity-50',
+      'focus:border-brand-orange focus:ring-brand-orange',
       className
     )}
     {...props}

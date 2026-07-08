@@ -130,10 +130,10 @@ export function OnboardingGate({ userName }: { userName: string }) {
       >
         <div className="border-b border-ink-200 bg-ink-50 px-6 py-5">
           <div className="flex items-center gap-3">
-            <MagnetsLogoMark className="h-9 w-9" iconClassName="h-4 w-4" />
+            <MagnetsLogoMark className="h-9 w-9" />
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Welcome</p>
-              <h2 id="onboarding-title" className="text-lg font-semibold tracking-tight text-ink-950">
+              <p className="text-xs font-medium uppercase text-ink-500">Welcome</p>
+              <h2 id="onboarding-title" className="text-lg font-semibold text-ink-950">
                 {userName ? `Nice to meet you, ${userName.split(' ')[0]}.` : 'Welcome to Magnets.'}
               </h2>
             </div>

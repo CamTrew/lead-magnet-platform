@@ -40,6 +40,10 @@ function sampleMagnet(accountId: string): LeadMagnet {
     emailSubject: '',
     emailBody: '',
     emailPreview: '',
+    followUpEnabled: false,
+    followUpStopOnBooking: true,
+    followUpEmails: [],
+    resendFollowUpAutomationId: '',
     published: false,
     createdAt: now,
     updatedAt: now,
@@ -122,6 +126,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
           beehiivApiKey: draft.beehiivApiKey,
           beehiivPublicationId: draft.beehiivPublicationId,
           substackPublication: draft.substackPublication,
+          calendarWebhookEnabled: draft.calendarWebhookEnabled,
         }),
       });
 

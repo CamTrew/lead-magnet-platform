@@ -92,6 +92,27 @@
       "when": 1781681038977,
       "tag": "0012_public_page_lookup_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783430400000,
+      "tag": "0013_follow_up_sequences",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783468800000,
+      "tag": "0014_brand_default_palette",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783472400000,
+      "tag": "0015_account_calendar_integration",
+      "breakpoints": true
     }
   ]
 }

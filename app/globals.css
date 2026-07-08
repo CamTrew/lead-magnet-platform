@@ -9,25 +9,25 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background: 40 27% 96%;
+    --foreground: 0 0% 7%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 0 0% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 10% 3.9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 0 0% 7%;
+    --primary-foreground: 40 27% 96%;
+    --secondary: 35 31% 92%;
+    --secondary-foreground: 30 4% 14%;
+    --muted: 35 31% 92%;
+    --muted-foreground: 30 7% 43%;
+    --accent: 11 99% 60%;
+    --accent-foreground: 0 0% 7%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5% 64.9%;
+    --border: 32 18% 82%;
+    --input: 32 18% 82%;
+    --ring: 11 99% 60%;
     --radius: 0.5rem;
   }
 
@@ -35,7 +35,7 @@
     border-color: hsl(var(--border));
   }
   html {
-    background: #ffffff;
+    background: #f7f5f1;
   }
   body {
     background-color: hsl(var(--background));
@@ -44,31 +44,44 @@
     font-feature-settings: 'cv11', 'ss03';
   }
   ::selection {
-    background: #000;
-    color: #fff;
+    background: #fe504f;
+    color: #111111;
   }
 }
 
 @layer utilities {
+  .brand-soft-bg {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(247, 245, 241, 0)),
+      #f7f5f1;
+  }
+
+  .brand-dark-texture {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 22px),
+      linear-gradient(45deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 26px),
+      #111111;
+  }
+
   .vercel-grid-bg {
     background-image:
-      linear-gradient(rgba(0, 0, 0, 0.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+      linear-gradient(rgba(17, 17, 17, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(17, 17, 17, 0.045) 1px, transparent 1px);
     background-size: 56px 56px;
   }
 
   .vercel-dot-bg {
-    background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px);
+    background-image: radial-gradient(rgba(17, 17, 17, 0.08) 1px, transparent 1px);
     background-size: 18px 18px;
   }
 
   .vercel-noise {
-    background-image: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+    background-image: linear-gradient(180deg, #f7f5f1 0%, #ffffff 100%);
   }
 
   .inline-edit[data-empty]:before {
     content: attr(data-placeholder);
-    color: #a1a1aa;
+    color: #9d9488;
     pointer-events: none;
   }
 
@@ -78,13 +91,13 @@
 
   /* Keep these names for backwards compatibility with components I haven't rewritten yet */
   .premium-page-bg {
-    background: #ffffff;
+    background: #f7f5f1;
   }
 
   .premium-grid-bg {
     background-image:
-      linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+      linear-gradient(rgba(17, 17, 17, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(17, 17, 17, 0.04) 1px, transparent 1px);
     background-size: 56px 56px;
   }
 }

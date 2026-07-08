@@ -13,16 +13,19 @@ import type {
   AccountSettings,
   AccountSignup,
   BrandSettings,
+  CalendarProvider,
   DashboardPayload,
+  FollowUpEmail,
+  FollowUpStatus,
   LeadMagnet,
   PlatformUser,
   Submission,
 } from './types';
 
 const defaultBrand: BrandSettings = {
-  primary: '#8b76e8',
-  accent: '#d8c8ff',
-  success: '#22c55e',
+  primary: '#FE6F34',
+  accent: '#FDC957',
+  success: '#7FD4DD',
   highlightIntensity: 100,
 };
 
@@ -55,6 +58,13 @@ type AccountRow = {
   beehiiv_publication_id: string;
   substack_publication: string;
   resend_return_path: string;
+  calendar_webhook_enabled: boolean;
+  calendar_webhook_token: string;
+  calendar_provider: CalendarProvider | string;
+  calendar_api_key: string;
+  calendar_webhook_secret: string;
+  calendar_webhook_id: string;
+  calendar_connected_at: Date | null;
   domain_verification_token: string;
   domain_verified_at: Date | null;
   domain_attached_host: string;
@@ -90,6 +100,10 @@ type LeadMagnetRow = {
   email_subject: string;
   email_body: string;
   email_preview: string;
+  follow_up_enabled: boolean;
+  follow_up_stop_on_booking: boolean;
+  follow_up_emails: FollowUpEmail[] | string | null;
+  resend_follow_up_automation_id: string;
   published: boolean;
   created_at: Date;
   updated_at: Date;
@@ -110,6 +124,22 @@ type SubmissionRow = {
   name: string;
   email: string;
   created_at: Date;
+};
+
+type FollowUpRunRow = {
+  id: string;
+  account_id: string;
+  lead_magnet_id: string;
+  email: string;
+  name: string;
+  status: FollowUpStatus;
+  stop_reason: string;
+  sequence_fingerprint: string;
+  started_at: Date;
+  scheduled_end_at: Date | null;
+  stopped_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 };
 
 type UserWithCredentialRow = UserRow & {
@@ -140,6 +170,13 @@ type DashboardBaseRow = {
   account_beehiiv_publication_id: string;
   account_substack_publication: string;
   account_resend_return_path: string;
+  account_calendar_webhook_enabled: boolean;
+  account_calendar_webhook_token: string;
+  account_calendar_provider: CalendarProvider | string;
+  account_calendar_api_key: string;
+  account_calendar_webhook_secret: string;
+  account_calendar_webhook_id: string;
+  account_calendar_connected_at: Date | null;
   account_domain_verification_token: string;
   account_domain_verified_at: Date | null;
   account_domain_attached_host: string;
@@ -184,6 +221,10 @@ function parseBrand(value: AccountRow['brand']): BrandSettings {
   };
 }
 
+function normaliseCalendarProvider(value: unknown): CalendarProvider {
+  return value === 'calendly' || value === 'calcom' ? value : '';
+}
+
 function parseBullets(value: LeadMagnetRow['bullets']) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
@@ -193,6 +234,43 @@ function parseBullets(value: LeadMagnetRow['bullets']) {
   } catch {
     return [];
   }
+}
+
+function parseFollowUpEmails(value: LeadMagnetRow['follow_up_emails']): FollowUpEmail[] {
+  if (!value) return [];
+  let raw: unknown = value;
+
+  if (typeof value === 'string') {
+    try {
+      raw = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .slice(0, 10)
+    .map((item, index) => {
+      const source = typeof item === 'object' && item !== null ? item as Record<string, unknown> : {};
+      const id = typeof source.id === 'string' && source.id.trim()
+        ? source.id.trim().slice(0, 80)
+        : `email-${index + 1}`;
+      const delayHours = Number(source.delayHours);
+      return {
+        id,
+        delayHours: Number.isFinite(delayHours)
+          ? Math.min(720, Math.max(0, Math.round(delayHours)))
+          : 24,
+        subject: typeof source.subject === 'string' ? source.subject.slice(0, 180) : '',
+        preview: typeof source.preview === 'string' ? source.preview.slice(0, 240) : '',
+        body: typeof source.body === 'string' ? source.body.slice(0, 10000) : '',
+        resendTemplateId: typeof source.resendTemplateId === 'string'
+          ? source.resendTemplateId.slice(0, 200)
+          : '',
+      };
+    });
 }
 
 function isBlobStorageUrl(value: string) {
@@ -221,7 +299,10 @@ function mapUser(row: UserRow): PlatformUser {
   };
 }
 
-function mapAccount(row: AccountRow, options: { revealSecrets?: boolean } = {}): AccountSettings {
+function mapAccount(
+  row: AccountRow,
+  options: { revealSecrets?: boolean; revealCalendarWebhookToken?: boolean } = {}
+): AccountSettings {
   return {
     id: row.id,
     ownerUserId: row.owner_user_id,
@@ -240,6 +321,20 @@ function mapAccount(row: AccountRow, options: { revealSecrets?: boolean } = {}):
     beehiivPublicationId: row.beehiiv_publication_id,
     substackPublication: row.substack_publication,
     resendReturnPath: row.resend_return_path,
+    calendarWebhookEnabled: row.calendar_webhook_enabled,
+    calendarWebhookToken:
+      options.revealSecrets || options.revealCalendarWebhookToken
+        ? decryptSecret(row.calendar_webhook_token)
+        : '',
+    calendarProvider: normaliseCalendarProvider(row.calendar_provider),
+    calendarApiKey: options.revealSecrets
+      ? decryptSecret(row.calendar_api_key)
+      : redactSecret(row.calendar_api_key),
+    calendarWebhookSecret: options.revealSecrets
+      ? decryptSecret(row.calendar_webhook_secret)
+      : redactSecret(row.calendar_webhook_secret),
+    calendarWebhookId: row.calendar_webhook_id || '',
+    calendarConnectedAt: row.calendar_connected_at ? iso(row.calendar_connected_at) : null,
     domainVerificationToken: row.domain_verification_token,
     domainVerifiedAt: row.domain_verified_at ? iso(row.domain_verified_at) : null,
     domainAttachedHost: row.domain_attached_host,
@@ -274,6 +369,10 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     emailSubject: row.email_subject,
     emailBody: row.email_body,
     emailPreview: row.email_preview,
+    followUpEnabled: row.follow_up_enabled,
+    followUpStopOnBooking: row.follow_up_stop_on_booking,
+    followUpEmails: parseFollowUpEmails(row.follow_up_emails),
+    resendFollowUpAutomationId: row.resend_follow_up_automation_id,
     published: row.published,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -300,32 +399,42 @@ function mapDashboardBase(row: DashboardBaseRow) {
       created_at: row.user_created_at,
       updated_at: row.user_updated_at,
     }),
-    account: mapAccount({
-      id: row.account_id,
-      owner_user_id: row.account_owner_user_id,
-      subdomain: row.account_subdomain,
-      domain: row.account_domain,
-      logo_url: row.account_logo_url,
-      logo_text: row.account_logo_text,
-      brand: row.account_brand,
-      resend_from_email: row.account_resend_from_email,
-      resend_api_key: row.account_resend_api_key,
-      beehiiv_api_key: row.account_beehiiv_api_key,
-      beehiiv_publication_id: row.account_beehiiv_publication_id,
-      substack_publication: row.account_substack_publication,
-      resend_return_path: row.account_resend_return_path,
-      domain_verification_token: row.account_domain_verification_token,
-      domain_verified_at: row.account_domain_verified_at,
-      domain_attached_host: row.account_domain_attached_host,
-      domain_recommended_cname: row.account_domain_recommended_cname,
-      onboarding_completed_at: row.account_onboarding_completed_at,
-      onboarding_business_name: row.account_onboarding_business_name,
-      onboarding_business_type: row.account_onboarding_business_type,
-      onboarding_magnet_type: row.account_onboarding_magnet_type,
-      onboarding_cadence: row.account_onboarding_cadence,
-      created_at: row.account_created_at,
-      updated_at: row.account_updated_at,
-    }),
+    account: mapAccount(
+      {
+        id: row.account_id,
+        owner_user_id: row.account_owner_user_id,
+        subdomain: row.account_subdomain,
+        domain: row.account_domain,
+        logo_url: row.account_logo_url,
+        logo_text: row.account_logo_text,
+        brand: row.account_brand,
+        resend_from_email: row.account_resend_from_email,
+        resend_api_key: row.account_resend_api_key,
+        beehiiv_api_key: row.account_beehiiv_api_key,
+        beehiiv_publication_id: row.account_beehiiv_publication_id,
+        substack_publication: row.account_substack_publication,
+        resend_return_path: row.account_resend_return_path,
+        calendar_webhook_enabled: row.account_calendar_webhook_enabled,
+        calendar_webhook_token: row.account_calendar_webhook_token,
+        calendar_provider: row.account_calendar_provider,
+        calendar_api_key: row.account_calendar_api_key,
+        calendar_webhook_secret: row.account_calendar_webhook_secret,
+        calendar_webhook_id: row.account_calendar_webhook_id,
+        calendar_connected_at: row.account_calendar_connected_at,
+        domain_verification_token: row.account_domain_verification_token,
+        domain_verified_at: row.account_domain_verified_at,
+        domain_attached_host: row.account_domain_attached_host,
+        domain_recommended_cname: row.account_domain_recommended_cname,
+        onboarding_completed_at: row.account_onboarding_completed_at,
+        onboarding_business_name: row.account_onboarding_business_name,
+        onboarding_business_type: row.account_onboarding_business_type,
+        onboarding_magnet_type: row.account_onboarding_magnet_type,
+        onboarding_cadence: row.account_onboarding_cadence,
+        created_at: row.account_created_at,
+        updated_at: row.account_updated_at,
+      },
+      { revealCalendarWebhookToken: true }
+    ),
   };
 }
 
@@ -396,6 +505,13 @@ async function getDashboardBaseByUserId(userId: string) {
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
         a.resend_return_path as account_resend_return_path,
+        a.calendar_webhook_enabled as account_calendar_webhook_enabled,
+        a.calendar_webhook_token as account_calendar_webhook_token,
+        coalesce(to_jsonb(a)->>'calendar_provider', '') as account_calendar_provider,
+        coalesce(to_jsonb(a)->>'calendar_api_key', '') as account_calendar_api_key,
+        coalesce(to_jsonb(a)->>'calendar_webhook_secret', '') as account_calendar_webhook_secret,
+        coalesce(to_jsonb(a)->>'calendar_webhook_id', '') as account_calendar_webhook_id,
+        nullif(to_jsonb(a)->>'calendar_connected_at', '')::timestamptz as account_calendar_connected_at,
         a.domain_verification_token as account_domain_verification_token,
         a.domain_verified_at as account_domain_verified_at,
         a.domain_attached_host as account_domain_attached_host,
@@ -475,6 +591,13 @@ async function getDashboardBaseBySessionToken(token: string) {
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
         a.resend_return_path as account_resend_return_path,
+        a.calendar_webhook_enabled as account_calendar_webhook_enabled,
+        a.calendar_webhook_token as account_calendar_webhook_token,
+        coalesce(to_jsonb(a)->>'calendar_provider', '') as account_calendar_provider,
+        coalesce(to_jsonb(a)->>'calendar_api_key', '') as account_calendar_api_key,
+        coalesce(to_jsonb(a)->>'calendar_webhook_secret', '') as account_calendar_webhook_secret,
+        coalesce(to_jsonb(a)->>'calendar_webhook_id', '') as account_calendar_webhook_id,
+        nullif(to_jsonb(a)->>'calendar_connected_at', '')::timestamptz as account_calendar_connected_at,
         a.domain_verification_token as account_domain_verification_token,
         a.domain_verified_at as account_domain_verified_at,
         a.domain_attached_host as account_domain_attached_host,
@@ -911,6 +1034,11 @@ export async function updateAccount(
   const resendApiKey = isMaskedSecret(updates.resendApiKey)
     ? existingAccount.resend_api_key
     : encryptSecret(updates.resendApiKey);
+  const wantsCalendarWebhooks = Boolean(updates.calendarWebhookEnabled);
+  const calendarWebhookToken =
+    wantsCalendarWebhooks && !existingAccount.calendar_webhook_token
+      ? encryptSecret(randomBytes(24).toString('hex'))
+      : existingAccount.calendar_webhook_token;
 
   // Only the apex domain affects the ownership TXT (which lives at
   // magnets-verify.<apex>). Changing the subdomain does not invalidate the
@@ -969,10 +1097,13 @@ export async function updateAccount(
         beehiiv_publication_id = $10,
         substack_publication = $11,
         resend_return_path = $13,
+        calendar_webhook_enabled = $14,
+        calendar_webhook_token = $15,
         domain_verification_token = case when $12::boolean then '' else domain_verification_token end,
         domain_verified_at = case when $12::boolean then null else domain_verified_at end,
         domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end,
-        domain_attached_host = case when $12::boolean then '' else domain_attached_host end
+        domain_attached_host = case when $12::boolean then '' else domain_attached_host end,
+        updated_at = now()
       where id = $1
       returning *
     `,
@@ -990,10 +1121,115 @@ export async function updateAccount(
       updates.substackPublication,
       apexChanged,
       updates.resendReturnPath ?? '',
+      wantsCalendarWebhooks,
+      calendarWebhookToken,
     ]
   );
 
-  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+  return result.rows[0]
+    ? mapAccount(result.rows[0], { revealCalendarWebhookToken: true })
+    : null;
+}
+
+export async function getOrCreateCalendarWebhookToken(accountId: string) {
+  const existing = await query<{ calendar_webhook_token: string }>(
+    'select calendar_webhook_token from public.magnets_accounts where id = $1 limit 1',
+    [accountId]
+  );
+  const row = existing.rows[0];
+  if (!row) return null;
+
+  const currentToken = decryptSecret(row.calendar_webhook_token);
+  if (currentToken) return currentToken;
+
+  const token = randomBytes(24).toString('hex');
+  await query(
+    'update public.magnets_accounts set calendar_webhook_token = $2, updated_at = now() where id = $1',
+    [accountId, encryptSecret(token)]
+  );
+  return token;
+}
+
+export async function updateCalendarIntegration(
+  accountId: string,
+  updates: {
+    enabled: boolean;
+    provider: CalendarProvider;
+    apiKey?: string;
+    webhookSecret?: string;
+    webhookId?: string;
+    connectedAt?: Date | null;
+  }
+) {
+  const existing = await query<AccountRow>(
+    'select * from public.magnets_accounts where id = $1 limit 1',
+    [accountId]
+  );
+  const existingAccount = existing.rows[0];
+  if (!existingAccount) return null;
+
+  if (!updates.enabled) {
+    const result = await query<AccountRow>(
+      `
+        update public.magnets_accounts
+        set
+          calendar_webhook_enabled = false,
+          calendar_provider = '',
+          calendar_api_key = '',
+          calendar_webhook_secret = '',
+          calendar_webhook_id = '',
+          calendar_connected_at = null,
+          updated_at = now()
+        where id = $1
+        returning *
+      `,
+      [accountId]
+    );
+    return result.rows[0]
+      ? mapAccount(result.rows[0], { revealCalendarWebhookToken: true })
+      : null;
+  }
+
+  const provider = normaliseCalendarProvider(updates.provider);
+  const apiKey = isMaskedSecret(updates.apiKey)
+    ? existingAccount.calendar_api_key
+    : encryptSecret(updates.apiKey);
+  const webhookSecret = isMaskedSecret(updates.webhookSecret)
+    ? existingAccount.calendar_webhook_secret
+    : encryptSecret(updates.webhookSecret);
+  const calendarWebhookToken = existingAccount.calendar_webhook_token
+    ? existingAccount.calendar_webhook_token
+    : encryptSecret(randomBytes(24).toString('hex'));
+
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set
+        calendar_webhook_enabled = true,
+        calendar_webhook_token = $2,
+        calendar_provider = $3,
+        calendar_api_key = $4,
+        calendar_webhook_secret = $5,
+        calendar_webhook_id = $6,
+        calendar_connected_at = $7,
+        updated_at = now()
+      where id = $1
+      returning *
+    `,
+    [
+      accountId,
+      calendarWebhookToken,
+      provider,
+      apiKey,
+      webhookSecret,
+      updates.webhookId || '',
+      updates.connectedAt || null,
+    ]
+  );
+
+  return result.rows[0]
+    ? mapAccount(result.rows[0], { revealCalendarWebhookToken: true })
+    : null;
 }
 
 function slugifyTitle(title: string) {
@@ -1077,6 +1313,10 @@ export async function createLeadMagnet(
           email_subject,
           email_body,
           email_preview,
+          follow_up_enabled,
+          follow_up_stop_on_booking,
+          follow_up_emails,
+          resend_follow_up_automation_id,
           published
         )
         values (
@@ -1093,6 +1333,10 @@ export async function createLeadMagnet(
           $4,
           '',
           '',
+          '',
+          false,
+          true,
+          '[]'::jsonb,
           '',
           false
         )
@@ -1133,7 +1377,12 @@ export async function updateLeadMagnet(
         email_subject = $14,
         email_body = $15,
         email_preview = $16,
-        published = $17
+        follow_up_enabled = $17,
+        follow_up_stop_on_booking = $18,
+        follow_up_emails = $19::jsonb,
+        resend_follow_up_automation_id = $20,
+        published = $21,
+        updated_at = now()
       where account_id = $1
         and id = $2
       returning *
@@ -1155,6 +1404,10 @@ export async function updateLeadMagnet(
       updates.emailSubject,
       updates.emailBody,
       updates.emailPreview,
+      updates.followUpEnabled,
+      updates.followUpStopOnBooking,
+      JSON.stringify(updates.followUpEmails || []),
+      updates.resendFollowUpAutomationId,
       updates.published,
     ]
   );
@@ -1176,6 +1429,36 @@ export async function updateLeadMagnetImageUrl(
       returning *
     `,
     [accountId, leadMagnetId, imageUrl]
+  );
+
+  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
+export async function updateLeadMagnetFollowUpSync(
+  accountId: string,
+  leadMagnetId: string,
+  updates: {
+    followUpEmails: FollowUpEmail[];
+    resendFollowUpAutomationId: string;
+  }
+) {
+  const result = await query<LeadMagnetRow>(
+    `
+      update public.magnets_lead_magnets
+      set
+        follow_up_emails = $3::jsonb,
+        resend_follow_up_automation_id = $4,
+        updated_at = now()
+      where account_id = $1
+        and id = $2
+      returning *
+    `,
+    [
+      accountId,
+      leadMagnetId,
+      JSON.stringify(updates.followUpEmails),
+      updates.resendFollowUpAutomationId,
+    ]
   );
 
   return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
@@ -1364,22 +1647,30 @@ export async function findLeadMagnet(accountId: string, leadMagnetId: string) {
 type SignupRow = {
   email: string;
   name: string;
+  first_lead_magnet_id: string;
   first_lead_magnet_title: string;
   first_lead_magnet_slug: string;
   first_signup_at: Date;
   latest_signup_at: Date;
   signup_count: string;
+  follow_up_status: FollowUpStatus;
+  follow_up_stopped_at: Date | null;
+  follow_up_stop_reason: string;
 };
 
 function mapSignup(row: SignupRow): AccountSignup {
   return {
     email: row.email,
     name: row.name,
+    firstLeadMagnetId: row.first_lead_magnet_id,
     firstLeadMagnetTitle: row.first_lead_magnet_title,
     firstLeadMagnetSlug: row.first_lead_magnet_slug,
     firstSignupAt: iso(row.first_signup_at),
     latestSignupAt: iso(row.latest_signup_at),
     signupCount: Number(row.signup_count) || 0,
+    followUpStatus: row.follow_up_status,
+    followUpStoppedAt: row.follow_up_stopped_at ? iso(row.follow_up_stopped_at) : null,
+    followUpStopReason: row.follow_up_stop_reason,
   };
 }
 
@@ -1391,6 +1682,7 @@ export async function listAccountSignups(accountId: string): Promise<AccountSign
           s.email,
           s.name,
           s.created_at,
+          lm.id as lead_magnet_id,
           lm.title as lead_magnet_title,
           lm.slug as lead_magnet_slug,
           row_number() over (
@@ -1411,15 +1703,33 @@ export async function listAccountSignups(accountId: string): Promise<AccountSign
       select
         latest.email,
         latest.name,
+        first.lead_magnet_id as first_lead_magnet_id,
         first.lead_magnet_title as first_lead_magnet_title,
         first.lead_magnet_slug as first_lead_magnet_slug,
         first.first_signup_at,
         first.latest_signup_at,
-        first.signup_count::text as signup_count
+        first.signup_count::text as signup_count,
+        coalesce(
+          case
+            when run.id is null then 'none'
+            when run.status = 'active'
+              and run.scheduled_end_at is not null
+              and run.scheduled_end_at <= now()
+              then 'completed'
+            else run.status
+          end,
+          'none'
+        ) as follow_up_status,
+        run.stopped_at as follow_up_stopped_at,
+        coalesce(run.stop_reason, '') as follow_up_stop_reason
       from ranked first
       join ranked latest
         on lower(latest.email) = lower(first.email)
        and latest.latest_rank = 1
+      left join public.magnets_follow_up_runs run
+        on run.account_id = $1::uuid
+       and run.lead_magnet_id = first.lead_magnet_id
+       and run.email = lower(first.email)
       where first.first_rank = 1
       order by first.latest_signup_at desc
     `,
@@ -1457,6 +1767,183 @@ export async function recordSubmission(submission: Omit<Submission, 'id' | 'crea
   );
 
   return mapSubmission(result.rows[0]);
+}
+
+export function followUpSequenceFingerprint(leadMagnet: Pick<LeadMagnet, 'followUpEmails' | 'followUpStopOnBooking'>) {
+  return createHash('sha256')
+    .update(JSON.stringify({
+      stopOnBooking: leadMagnet.followUpStopOnBooking,
+      emails: leadMagnet.followUpEmails.map((email) => ({
+        delayHours: email.delayHours,
+        subject: email.subject,
+        preview: email.preview,
+        body: email.body,
+      })),
+    }))
+    .digest('hex');
+}
+
+export async function createFollowUpRun(input: {
+  accountId: string;
+  leadMagnetId: string;
+  email: string;
+  name: string;
+  sequenceFingerprint: string;
+  scheduledEndAt: Date | null;
+}) {
+  const result = await query<FollowUpRunRow>(
+    `
+      insert into public.magnets_follow_up_runs (
+        account_id,
+        lead_magnet_id,
+        email,
+        name,
+        sequence_fingerprint,
+        scheduled_end_at
+      )
+      values ($1, $2, $3, $4, $5, $6)
+      on conflict (lead_magnet_id, email) do nothing
+      returning *
+    `,
+    [
+      input.accountId,
+      input.leadMagnetId,
+      input.email.trim().toLowerCase(),
+      input.name.trim().slice(0, 120),
+      input.sequenceFingerprint,
+      input.scheduledEndAt,
+    ]
+  );
+
+  const row = result.rows[0];
+  return {
+    created: Boolean(row),
+    runId: row?.id || null,
+  };
+}
+
+export async function markFollowUpRunFailed(runId: string, reason: string) {
+  await query(
+    `
+      update public.magnets_follow_up_runs
+      set
+        status = 'failed',
+        stop_reason = $2,
+        stopped_at = now(),
+        updated_at = now()
+      where id = $1
+    `,
+    [runId, reason.slice(0, 200)]
+  );
+}
+
+export async function stopFollowUpRunForEmail(input: {
+  accountId: string;
+  leadMagnetId: string;
+  email: string;
+  reason: string;
+}) {
+  const result = await query<FollowUpRunRow>(
+    `
+      update public.magnets_follow_up_runs
+      set
+        status = 'stopped',
+        stop_reason = $4,
+        stopped_at = now(),
+        updated_at = now()
+      where account_id = $1::uuid
+        and lead_magnet_id = $2::uuid
+        and email = lower($3)
+        and status = 'active'
+      returning *
+    `,
+    [
+      input.accountId,
+      input.leadMagnetId,
+      input.email.trim(),
+      input.reason.slice(0, 80),
+    ]
+  );
+
+  return {
+    stopped: result.rows.length > 0,
+    runId: result.rows[0]?.id || null,
+  };
+}
+
+export async function listActiveStopOnBookingFollowUpRunsForEmail(input: {
+  accountId: string;
+  email: string;
+}) {
+  const result = await query<{ lead_magnet_id: string }>(
+    `
+      select run.lead_magnet_id
+      from public.magnets_follow_up_runs run
+      join public.magnets_lead_magnets lm
+        on lm.id = run.lead_magnet_id
+       and lm.account_id = run.account_id
+      where run.account_id = $1::uuid
+        and run.email = lower($2)
+        and run.status = 'active'
+        and lm.follow_up_stop_on_booking = true
+    `,
+    [input.accountId, input.email.trim()]
+  );
+
+  return result.rows.map((row) => row.lead_magnet_id);
+}
+
+export async function stopFollowUpRunsForAccountEmail(input: {
+  accountId: string;
+  email: string;
+  reason: string;
+}) {
+  const result = await query<FollowUpRunRow>(
+    `
+      update public.magnets_follow_up_runs run
+      set
+        status = 'stopped',
+        stop_reason = $3,
+        stopped_at = now(),
+        updated_at = now()
+      from public.magnets_lead_magnets lm
+      where run.account_id = $1::uuid
+        and run.lead_magnet_id = lm.id
+        and lm.account_id = $1::uuid
+        and lm.follow_up_stop_on_booking = true
+        and run.email = lower($2)
+        and run.status = 'active'
+      returning run.*
+    `,
+    [input.accountId, input.email.trim(), input.reason.slice(0, 80)]
+  );
+
+  return {
+    stopped: result.rows.length > 0,
+    stoppedCount: result.rows.length,
+    leadMagnetIds: result.rows.map((row) => row.lead_magnet_id),
+  };
+}
+
+export async function hasActiveFollowUpRunForEmail(input: {
+  accountId: string;
+  leadMagnetId: string;
+  email: string;
+}) {
+  const result = await query<{ id: string }>(
+    `
+      select id
+      from public.magnets_follow_up_runs
+      where account_id = $1::uuid
+        and lead_magnet_id = $2::uuid
+        and email = lower($3)
+        and status = 'active'
+      limit 1
+    `,
+    [input.accountId, input.leadMagnetId, input.email.trim()]
+  );
+
+  return result.rows.length > 0;
 }
 
 export async function leadMagnetBelongsToAccount(accountId: string, leadMagnetId: string) {

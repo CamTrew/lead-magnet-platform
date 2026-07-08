@@ -33,6 +33,17 @@ import {
 const ROUTE = '/api/account';
 
 const hexColorSchema = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
+const brandHighlightIntensitySchema = z.preprocess(
+  (value) => {
+    if (typeof value === 'string' && value.trim() !== '') return Number(value);
+    return value;
+  },
+  z
+    .number({ invalid_type_error: 'Choose a highlight intensity.' })
+    .min(MIN_BRAND_HIGHLIGHT_INTENSITY, 'Choose a highlight intensity.')
+    .max(MAX_BRAND_HIGHLIGHT_INTENSITY, 'Choose a highlight intensity.')
+    .transform((value) => Math.round(value))
+);
 const logoSchema = z
   .string()
   .min(1, 'Upload your logo')
@@ -70,11 +81,7 @@ const schema = z.object({
     primary: hexColorSchema,
     accent: hexColorSchema,
     success: hexColorSchema,
-    highlightIntensity: z
-      .number()
-      .int()
-      .min(MIN_BRAND_HIGHLIGHT_INTENSITY)
-      .max(MAX_BRAND_HIGHLIGHT_INTENSITY),
+    highlightIntensity: brandHighlightIntensitySchema,
   }),
   resendFromEmail: z
     .string()
@@ -99,6 +106,7 @@ const schema = z.object({
   beehiivApiKey: z.string().max(2000),
   beehiivPublicationId: z.string().trim().max(200),
   substackPublication: z.string().trim().max(200),
+  calendarWebhookEnabled: z.boolean(),
 }).strict();
 
 function isUniqueViolation(error: unknown) {
@@ -231,7 +239,10 @@ export async function PUT(request: NextRequest) {
     }
 
     if (err instanceof SecretConfigurationError) {
-      return NextResponse.json({ error: 'Secret encryption is not configured.' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Secure account storage is not configured. Contact support before saving settings.' },
+        { status: 500 }
+      );
     }
 
     if (isUniqueViolation(err)) {

@@ -11,16 +11,16 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { BrandSettings } from '../lib/types';
+import type { BrandSettings, FollowUpEmail } from '../lib/types';
 
 export const defaultBrand: BrandSettings = {
-  primary: '#8b76e8',
-  accent: '#d8c8ff',
-  success: '#22c55e',
+  primary: '#FE6F34',
+  accent: '#FDC957',
+  success: '#7FD4DD',
   highlightIntensity: 100,
 };
 
-const defaultBrandSql = sql`'{"primary":"#8b76e8","accent":"#d8c8ff","success":"#22c55e","highlightIntensity":100}'::jsonb`;
+const defaultBrandSql = sql`'{"primary":"#FE6F34","accent":"#FDC957","success":"#7FD4DD","highlightIntensity":100}'::jsonb`;
 
 export const accounts = pgTable(
   'magnets_accounts',
@@ -42,6 +42,13 @@ export const accounts = pgTable(
     // DNS for a clear label and store it so the records stay consistent across
     // reloads. Default chosen at runtime, not in SQL.
     resendReturnPath: text('resend_return_path').notNull().default(''),
+    calendarWebhookEnabled: boolean('calendar_webhook_enabled').notNull().default(false),
+    calendarWebhookToken: text('calendar_webhook_token').notNull().default(''),
+    calendarProvider: text('calendar_provider').notNull().default(''),
+    calendarApiKey: text('calendar_api_key').notNull().default(''),
+    calendarWebhookSecret: text('calendar_webhook_secret').notNull().default(''),
+    calendarWebhookId: text('calendar_webhook_id').notNull().default(''),
+    calendarConnectedAt: timestamp('calendar_connected_at', { withTimezone: true }),
     // The TXT-record proof token that customers paste into DNS to prove ownership
     // before we attach the domain to the Vercel project. Rotated when the domain
     // or subdomain changes — invalidates the existing verification.
@@ -107,6 +114,10 @@ export const leadMagnets = pgTable(
     emailSubject: text('email_subject').notNull().default(''),
     emailBody: text('email_body').notNull().default(''),
     emailPreview: text('email_preview').notNull().default(''),
+    followUpEnabled: boolean('follow_up_enabled').notNull().default(false),
+    followUpStopOnBooking: boolean('follow_up_stop_on_booking').notNull().default(true),
+    followUpEmails: jsonb('follow_up_emails').$type<FollowUpEmail[]>().notNull().default(sql`'[]'::jsonb`),
+    resendFollowUpAutomationId: text('resend_follow_up_automation_id').notNull().default(''),
     published: boolean('published').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -116,6 +127,34 @@ export const leadMagnets = pgTable(
     index('magnets_lead_magnets_account_updated_idx').on(table.accountId, table.updatedAt),
     index('magnets_lead_magnets_slug_idx').on(table.slug),
     index('magnets_lead_magnets_published_idx').on(table.published),
+  ]
+);
+
+export const followUpRuns = pgTable(
+  'magnets_follow_up_runs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    leadMagnetId: uuid('lead_magnet_id')
+      .notNull()
+      .references(() => leadMagnets.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    name: text('name').notNull().default(''),
+    status: text('status').notNull().default('active'),
+    stopReason: text('stop_reason').notNull().default(''),
+    sequenceFingerprint: text('sequence_fingerprint').notNull().default(''),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    scheduledEndAt: timestamp('scheduled_end_at', { withTimezone: true }),
+    stoppedAt: timestamp('stopped_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('magnets_follow_up_runs_magnet_email_unique').on(table.leadMagnetId, table.email),
+    index('magnets_follow_up_runs_account_status_idx').on(table.accountId, table.status),
+    index('magnets_follow_up_runs_account_email_idx').on(table.accountId, table.email),
   ]
 );
 
@@ -164,6 +203,7 @@ export const rateLimits = pgTable(
 export const accountsRelations = relations(accounts, ({ many }) => ({
   leadMagnets: many(leadMagnets),
   submissions: many(submissions),
+  followUpRuns: many(followUpRuns),
 }));
 
 export const leadMagnetsRelations = relations(leadMagnets, ({ one, many }) => ({
@@ -172,6 +212,7 @@ export const leadMagnetsRelations = relations(leadMagnets, ({ one, many }) => ({
     references: [accounts.id],
   }),
   submissions: many(submissions),
+  followUpRuns: many(followUpRuns),
 }));
 
 export const submissionsRelations = relations(submissions, ({ one }) => ({
@@ -181,6 +222,17 @@ export const submissionsRelations = relations(submissions, ({ one }) => ({
   }),
   leadMagnet: one(leadMagnets, {
     fields: [submissions.leadMagnetId],
+    references: [leadMagnets.id],
+  }),
+}));
+
+export const followUpRunsRelations = relations(followUpRuns, ({ one }) => ({
+  account: one(accounts, {
+    fields: [followUpRuns.accountId],
+    references: [accounts.id],
+  }),
+  leadMagnet: one(leadMagnets, {
+    fields: [followUpRuns.leadMagnetId],
     references: [leadMagnets.id],
   }),
 }));
