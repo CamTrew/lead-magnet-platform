@@ -174,13 +174,9 @@ export async function POST(
       signature &&
       !verifyCalComSignature(account.calendarWebhookSecret, bodyText, signature)
     ) {
-      log.warn('Calendar webhook signature did not match; continuing with token auth', {
-        route: ROUTE,
-        method: 'POST',
-        status: 202,
-        accountId,
-        extra: { provider: account.calendarProvider },
-      });
+      // Cal.com signatures are a useful extra check, but the high-entropy
+      // webhook URL token above is the hard auth gate. Continue silently so
+      // old/recreated Cal.com webhooks do not spam production logs.
     }
 
     let body: unknown = null;
