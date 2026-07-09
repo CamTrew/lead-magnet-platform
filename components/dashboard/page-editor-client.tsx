@@ -35,6 +35,7 @@ type Mode = 'page' | 'email' | 'sequence';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
+const MAX_FOLLOW_UP_DELAY_MINUTES = 30 * 24 * 60;
 const MAGNET_IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
 const MAGNET_IMAGE_TYPES = new Set(MAGNET_IMAGE_ACCEPT.split(','));
 
@@ -75,19 +76,19 @@ function newFollowUpEmail() {
 function followUpDelayMinutes(email: LeadMagnet['followUpEmails'][number]) {
   const delayMinutes = Number(email.delayMinutes);
   if (Number.isFinite(delayMinutes)) {
-    return Math.max(0, Math.min(30 * 24 * 60, Math.round(delayMinutes)));
+    return Math.max(0, Math.round(delayMinutes));
   }
 
   const delayHours = Number(email.delayHours);
   if (Number.isFinite(delayHours)) {
-    return Math.max(0, Math.min(30 * 24 * 60, Math.round(delayHours * 60)));
+    return Math.max(0, Math.round(delayHours * 60));
   }
 
   return 24 * 60;
 }
 
 function delayPatchFromMinutes(minutes: number) {
-  const delayMinutes = Math.max(0, Math.min(30 * 24 * 60, Math.round(minutes)));
+  const delayMinutes = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
   return {
     delayMinutes,
     delayHours: Math.round(delayMinutes / 60),
@@ -96,6 +97,17 @@ function delayPatchFromMinutes(minutes: number) {
 
 function followUpDelayUnit(minutes: number) {
   return minutes > 0 && minutes % 60 === 0 ? 'hours' : 'minutes';
+}
+
+function validateFollowUpDelays(leadMagnet: LeadMagnet) {
+  for (let index = 0; index < leadMagnet.followUpEmails.length; index += 1) {
+    const delayMinutes = followUpDelayMinutes(leadMagnet.followUpEmails[index]);
+    if (delayMinutes > MAX_FOLLOW_UP_DELAY_MINUTES) {
+      return `Email ${index + 1} delay must be 30 days or less.`;
+    }
+  }
+
+  return '';
 }
 
 async function recordUploadedMagnetImage(leadMagnetId: string, imageUrl: string) {
@@ -209,7 +221,6 @@ export function PageEditorClient({
 
   async function saveLeadMagnet(overrides: Partial<LeadMagnet> = {}) {
     if (saveState === 'saving' || isUploadingImage) return;
-    setSaveState('saving');
     setError('');
 
     // Merge any caller overrides into the payload AND into local state. The
@@ -217,6 +228,14 @@ export function PageEditorClient({
     // same request — without it the toggle just patched state and waited
     // for a separate Save click, which read as "publish doesn't do anything".
     const payload = { ...leadMagnet, ...overrides };
+    const delayError = validateFollowUpDelays(payload);
+    if (delayError) {
+      setError(delayError);
+      setSaveState('error');
+      return;
+    }
+
+    setSaveState('saving');
     if (Object.keys(overrides).length > 0) {
       setLeadMagnet(payload);
     }
@@ -1035,6 +1054,7 @@ function SequenceCanvas({
   leadMagnet: LeadMagnet;
   onPatch: (updates: Partial<LeadMagnet>) => void;
 }) {
+  const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
   const resendConfigured = Boolean(
     account.resendApiKey &&
     account.resendFromEmail &&
@@ -1053,6 +1073,19 @@ function SequenceCanvas({
       emailIndex === index ? { ...email, ...updates } : email
     );
     onPatch({ followUpEmails: next });
+  }
+
+  function updateDelayDraft(emailId: string, value: string) {
+    setDelayDrafts((current) => ({ ...current, [emailId]: value }));
+  }
+
+  function clearDelayDraft(emailId: string) {
+    setDelayDrafts((current) => {
+      if (!(emailId in current)) return current;
+      const next = { ...current };
+      delete next[emailId];
+      return next;
+    });
   }
 
   function addEmail() {
@@ -1153,6 +1186,7 @@ function SequenceCanvas({
             const delayMinutes = followUpDelayMinutes(email);
             const delayUnit = followUpDelayUnit(delayMinutes);
             const delayValue = delayUnit === 'hours' ? delayMinutes / 60 : delayMinutes;
+            const delayInputValue = delayDrafts[email.id] ?? String(delayValue);
 
             return (
               <div key={email.id} className="rounded-lg border border-ink-200 bg-white">
@@ -1184,26 +1218,32 @@ function SequenceCanvas({
                     </span>
                     <div className="flex max-w-sm items-center gap-2">
                       <AceternityInput
-                        min={0}
-                        max={delayUnit === 'hours' ? 720 : 30 * 24 * 60}
+                        inputMode="numeric"
                         onChange={(event) => {
-                          const value = Math.max(0, Number(event.target.value) || 0);
+                          const rawValue = event.target.value.trim();
+                          if (!/^\d*$/.test(rawValue)) return;
+                          updateDelayDraft(email.id, rawValue);
+                          const value = rawValue === '' ? 0 : Number(rawValue);
                           updateEmail(
                             index,
                             delayPatchFromMinutes(delayUnit === 'hours' ? value * 60 : value)
                           );
                         }}
-                        type="number"
-                        value={delayValue}
+                        onBlur={() => clearDelayDraft(email.id)}
+                        pattern="[0-9]*"
+                        type="text"
+                        value={delayInputValue}
                       />
                       <select
                         aria-label={`Delay unit for email ${index + 1}`}
                         className="h-11 rounded-lg border border-ink-200 bg-white px-3 text-sm font-medium text-ink-800 outline-none transition focus:border-ink-500 focus:ring-2 focus:ring-ink-100"
                         onChange={(event) => {
                           const nextUnit = event.target.value === 'minutes' ? 'minutes' : 'hours';
+                          const value = delayInputValue === '' ? 0 : Number(delayInputValue);
+                          clearDelayDraft(email.id);
                           updateEmail(
                             index,
-                            delayPatchFromMinutes(nextUnit === 'hours' ? delayValue * 60 : delayValue)
+                            delayPatchFromMinutes(nextUnit === 'hours' ? value * 60 : value)
                           );
                         }}
                         value={delayUnit}
