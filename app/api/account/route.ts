@@ -8,10 +8,19 @@ import {
   normaliseSubdomain,
   parseSenderEmail,
 } from '@/lib/dns-records';
-import { updateAccount } from '@/lib/platform-store';
+import {
+  clearDomainAttached,
+  recordDomainAttached,
+  updateAccount,
+} from '@/lib/platform-store';
 import { SecretConfigurationError } from '@/lib/secrets';
-import { clearDomainAttached } from '@/lib/platform-store';
-import { removeDomain } from '@/lib/vercel';
+import {
+  attachDomain,
+  getDomainConfig,
+  isVercelConfigured,
+  removeDomain,
+  VercelApiError,
+} from '@/lib/vercel';
 import {
   clearRateLimits,
   enforceRateLimits,
@@ -128,6 +137,26 @@ function buildHost(subdomain: string, domain: string): string {
   return `${subdomain.toLowerCase()}.${domain.toLowerCase()}`;
 }
 
+function friendlyAttachError(error: unknown) {
+  if (error instanceof VercelApiError) {
+    if (error.status === 409 && (error.code === 'domain_already_in_use' || error.code === 'not_available')) {
+      return 'Saved, but that subdomain is in use by another account. Pick a different subdomain or contact support.';
+    }
+    if (error.status === 403 || error.code === 'forbidden') {
+      return 'Saved, but we could not connect that subdomain. Contact support if the issue persists.';
+    }
+    if (error.code === 'timeout') {
+      return 'Saved, but Vercel took too long to connect that subdomain. Try Check again in a minute.';
+    }
+  }
+
+  if (isUniqueViolation(error)) {
+    return 'Saved, but that subdomain is already connected to another account.';
+  }
+
+  return 'Saved, but we could not connect that subdomain right now. Try again in a minute.';
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const payload = await requireDashboardPayload();
@@ -156,7 +185,7 @@ export async function PUT(request: NextRequest) {
 
     const previousHost = buildHost(payload.account.subdomain, payload.account.domain);
     const previousAttachedHost = payload.account.domainAttachedHost;
-    const account = await updateAccount(payload.account.id, parsed.data);
+    let account = await updateAccount(payload.account.id, parsed.data);
 
     if (!account) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
@@ -201,10 +230,12 @@ export async function PUT(request: NextRequest) {
     }
 
     // If the publishing host changed AND we previously attached one, detach the
-    // old host. We do not auto-attach the new one — that requires explicit
-    // ownership verification via /api/domain/verify-ownership first.
+    // old host. Once ownership is already verified, we immediately try to attach
+    // the new host so the user does not need a separate "connect" step.
     let detached = false;
     let detachError: string | null = null;
+    let attached = false;
+    let attachError: string | null = null;
     const shouldDetach =
       previousAttachedHost &&
       previousAttachedHost !== currentHost;
@@ -212,6 +243,11 @@ export async function PUT(request: NextRequest) {
       try {
         detached = await removeDomain(previousAttachedHost);
         await clearDomainAttached(payload.account.id);
+        account = {
+          ...account,
+          domainAttachedHost: '',
+          domainRecommendedCname: '',
+        };
       } catch (detachErr) {
         detachError = (detachErr as Error).message;
         log.error('Detach failed during account save', {
@@ -221,6 +257,58 @@ export async function PUT(request: NextRequest) {
           accountId: payload.account.id,
           extra: { error: detachErr },
         });
+      }
+    }
+
+    const shouldAttach =
+      currentHost &&
+      Boolean(account.domainVerifiedAt) &&
+      account.domainAttachedHost !== currentHost;
+
+    if (shouldAttach) {
+      if (!isVercelConfigured()) {
+        attachError = 'Saved, but the publishing host is not configured on the server.';
+      } else {
+        try {
+          await attachDomain(currentHost);
+
+          let recommendedCname = '';
+          try {
+            const config = await getDomainConfig(currentHost);
+            recommendedCname = config?.recommendedCname || '';
+          } catch (configErr) {
+            log.warn('Could not fetch domain config during account save', {
+              route: ROUTE,
+              method: 'PUT',
+              userId: payload.user.id,
+              accountId: payload.account.id,
+              extra: { host: currentHost, error: configErr },
+            });
+          }
+
+          const updated = await recordDomainAttached(payload.account.id, currentHost, recommendedCname);
+          if (updated) {
+            account = {
+              ...account,
+              domainAttachedHost: updated.domainAttachedHost,
+              domainRecommendedCname: updated.domainRecommendedCname,
+              updatedAt: updated.updatedAt,
+            };
+            attached = true;
+          }
+        } catch (attachErr) {
+          attachError = friendlyAttachError(attachErr);
+          log.warn('Auto attach failed during account save', {
+            route: ROUTE,
+            method: 'PUT',
+            userId: payload.user.id,
+            accountId: payload.account.id,
+            extra: {
+              host: currentHost,
+              error: attachErr,
+            },
+          });
+        }
       }
     }
 
@@ -236,10 +324,11 @@ export async function PUT(request: NextRequest) {
         previousHost,
         currentHost,
         detached,
+        attached,
       },
     });
 
-    return NextResponse.json({ account, detached, detachError });
+    return NextResponse.json({ account, detached, detachError, attached, attachError });
   } catch (err) {
     if (err instanceof RateLimitError) {
       return rateLimitResponse(err);

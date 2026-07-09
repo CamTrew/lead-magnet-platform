@@ -535,7 +535,11 @@ export function DashboardClient({
         throw new Error(data?.error || 'Configuration could not be saved');
       }
 
-      const data = (await response.json()) as { account: AccountSettings };
+      const data = (await response.json()) as {
+        account: AccountSettings;
+        attachError?: string | null;
+        detachError?: string | null;
+      };
       setAccount(data.account);
       dirty.current[section] = false;
       // After a successful save we re-lock the previously-unlocked fields,
@@ -546,6 +550,9 @@ export function DashboardClient({
       }
       if (section === 'delivery') setUnlockResendKey(false);
       setSaveState(section, 'saved');
+      if (section === 'publishing' && (data.attachError || data.detachError)) {
+        setError(data.attachError || data.detachError || '');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setSaveState(section, 'error');
