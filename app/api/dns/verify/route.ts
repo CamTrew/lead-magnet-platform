@@ -42,6 +42,13 @@ type ResendDnsRecord = {
   value: string;
 };
 
+type ResendDomainSetup = {
+  domainId: string;
+  domainName: string;
+  domainStatus: string;
+  records: DnsRecordDefinition[];
+};
+
 const schema = z.object({
   section: z.enum(['publishing', 'delivery']),
   domain: z.string().optional(),
@@ -117,12 +124,12 @@ function normaliseDomainForResend(value: string) {
     .replace(/\.+$/, '');
 }
 
-async function getResendEmailDnsRecords(
+async function getResendEmailDnsSetup(
   domain: string,
   resendApiKey: string,
   returnPath: string | null,
   rootDomain: string
-) {
+): Promise<ResendDomainSetup> {
   if (!resendApiKey) {
     throw new Error('Add your Resend API key in Delivery before checking sending DNS.');
   }
@@ -139,6 +146,7 @@ async function getResendEmailDnsRecords(
   const known = existingDomains.data.data.map((item) => ({
     id: item.id,
     name: item.name,
+    status: item.status,
     normalised: normaliseDomainForResend(item.name),
   }));
   // Match priority: exact host first; otherwise pick any Resend domain that
@@ -195,9 +203,25 @@ async function getResendEmailDnsRecords(
   // send.send.headcount.so / resend._domainkey.send.headcount.so. So the
   // right anchor for stitching is the apex (`headcount.so`), not the Resend
   // domain.
-  return domainResult.data.records.map((record, index) =>
-    mapResendRecord(record as ResendDnsRecord, root, index)
-  );
+  return {
+    domainId: domainResult.data.id,
+    domainName: domainResult.data.name,
+    domainStatus: domainResult.data.status,
+    records: domainResult.data.records.map((record, index) =>
+      mapResendRecord(record as ResendDnsRecord, root, index)
+    ),
+  };
+}
+
+async function requestResendDomainVerification(resendApiKey: string, domainId: string) {
+  const resend = new Resend(resendApiKey);
+  const result = await resend.domains.verify(domainId);
+
+  if (result.error) {
+    throw new Error(result.error.message || 'Resend could not verify the domain yet.');
+  }
+
+  return result.data;
 }
 
 /**
@@ -319,6 +343,8 @@ export async function POST(request: NextRequest) {
     }
 
     let records: DnsRecordDefinition[];
+    let resendSetup: ResendDomainSetup | null = null;
+    let resendApiKeyForVerification = '';
 
     if (parsed.data.section === 'publishing') {
       // The publishing flow now lives in /api/domain/* (ownership TXT + attach +
@@ -371,12 +397,14 @@ export async function POST(request: NextRequest) {
           ? accountWithSecrets.resendReturnPath
           : null;
       try {
-        records = await getResendEmailDnsRecords(
+        resendSetup = await getResendEmailDnsSetup(
           senderDomain,
           accountWithSecrets.resendApiKey,
           returnPath,
           rootDomain
         );
+        resendApiKeyForVerification = accountWithSecrets.resendApiKey;
+        records = resendSetup.records;
       } catch (error) {
         const rawMessage = error instanceof Error
           ? error.message
@@ -402,6 +430,46 @@ export async function POST(request: NextRequest) {
       : checkedRecords.some((record) => record.status === 'error')
         ? 'error'
         : 'missing';
+    let providerVerification:
+      | { status: 'verified' | 'requested' | 'error'; message: string }
+      | null = null;
+
+    if (parsed.data.section === 'delivery' && status === 'verified' && resendSetup) {
+      if (resendSetup.domainStatus === 'verified') {
+        providerVerification = {
+          status: 'verified',
+          message: 'Resend has verified this sending domain.',
+        };
+      } else {
+        try {
+          await requestResendDomainVerification(resendApiKeyForVerification, resendSetup.domainId);
+          providerVerification = {
+            status: 'requested',
+            message: 'Resend verification has started. Check again in a minute if sending is not enabled yet.',
+          };
+        } catch (error) {
+          const rawMessage = error instanceof Error
+            ? error.message
+            : 'Resend could not verify the domain yet.';
+          providerVerification = {
+            status: 'error',
+            message: scrubResendErrorMessage(rawMessage),
+          };
+          log.warn('Resend domain verify request failed', {
+            route: ROUTE_NAME,
+            method: 'POST',
+            status: 502,
+            userId,
+            accountId,
+            extra: {
+              domainName: resendSetup.domainName,
+              domainStatus: resendSetup.domainStatus,
+              error: redactForLog(error),
+            },
+          });
+        }
+      }
+    }
 
     log.info('DNS verified', {
       route: ROUTE_NAME,
@@ -416,6 +484,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       checkedAt: new Date().toISOString(),
       records: checkedRecords,
+      providerVerification,
       section: parsed.data.section,
       status,
     });

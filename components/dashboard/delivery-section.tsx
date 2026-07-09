@@ -40,6 +40,10 @@ type DnsRecordCheck = DnsRecord & {
 type DnsVerifyResponse = {
   checkedAt: string;
   records: DnsRecordCheck[];
+  providerVerification?: {
+    status: 'verified' | 'requested' | 'error';
+    message: string;
+  } | null;
   section: 'delivery';
   status: 'verified' | 'missing' | 'error';
   error?: string;
@@ -574,12 +578,14 @@ function SendingDnsChecker({
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState('');
   const [autoChecked, setAutoChecked] = useState(false);
+  const [providerVerification, setProviderVerification] = useState<DnsVerifyResponse['providerVerification']>(null);
 
   const check = useCallback(async () => {
     if (checking) return;
     setChecking(true);
     setError('');
     setCooldown('');
+    setProviderVerification(null);
     try {
       const response = await fetch('/api/dns/verify', {
         method: 'POST',
@@ -602,6 +608,7 @@ function SendingDnsChecker({
         setError(data?.error || 'DNS check failed.');
         return;
       }
+      setProviderVerification(data.providerVerification || null);
       // Strip DMARC if the user already has their own.
       const filtered = apexHasDmarc
         ? data.records.filter((r) => !r.id.toLowerCase().includes('dmarc'))
@@ -623,8 +630,9 @@ function SendingDnsChecker({
   // Tell the parent whenever the overall verdict flips so it can collapse
   // Step 3 once everything resolves.
   useEffect(() => {
-    onVerifiedChange(overall === 'verified');
-  }, [overall, onVerifiedChange]);
+    const providerReady = !providerVerification || providerVerification.status === 'verified';
+    onVerifiedChange(overall === 'verified' && providerReady);
+  }, [overall, onVerifiedChange, providerVerification]);
 
   // Auto-check on mount so the user sees the verified state without having
   // to click. Only runs once per mount; the user clicks the button to recheck.
@@ -663,6 +671,21 @@ function SendingDnsChecker({
         {cooldown && <span className="text-xs text-ink-500">{cooldown}</span>}
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>
+
+      {providerVerification && (
+        <p
+          className={cn(
+            'rounded-md border px-3 py-2 text-xs leading-5',
+            providerVerification.status === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : providerVerification.status === 'verified'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-blue-200 bg-blue-50 text-blue-800'
+          )}
+        >
+          {providerVerification.message}
+        </p>
+      )}
 
       {records.length > 0 && (
         <>
