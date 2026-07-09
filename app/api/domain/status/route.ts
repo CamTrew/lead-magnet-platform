@@ -19,6 +19,81 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const ROUTE = '/api/domain/status';
+const PUBLIC_HOST_PROBE_TIMEOUT_MS = 4_000;
+
+type LiveStatus = {
+  verified: boolean;
+  misconfigured: boolean;
+  configured?: boolean;
+  issue?: 'deployment_not_found' | 'check_failed';
+};
+
+async function fetchHostHead(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PUBLIC_HOST_PROBE_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      cache: 'no-store',
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function probePublicHost(host: string): Promise<LiveStatus | null> {
+  if (!host) return null;
+
+  try {
+    const httpsResponse = await fetchHostHead(`https://${host}`);
+    const httpsVercelError = httpsResponse.headers.get('x-vercel-error')?.toLowerCase();
+    if (httpsVercelError === 'deployment_not_found') {
+      return {
+        verified: false,
+        misconfigured: true,
+        configured: false,
+        issue: 'deployment_not_found',
+      };
+    }
+    if (httpsResponse.headers.get('server')?.toLowerCase().includes('vercel')) {
+      return {
+        verified: true,
+        misconfigured: false,
+        configured: true,
+      };
+    }
+  } catch {
+    // If HTTPS is not provisioned yet, fall back to plain HTTP. Vercel still
+    // tells us whether the host is attached to a deployment there.
+  }
+
+  try {
+    const httpResponse = await fetchHostHead(`http://${host}`);
+    const httpVercelError = httpResponse.headers.get('x-vercel-error')?.toLowerCase();
+    if (httpVercelError === 'deployment_not_found') {
+      return {
+        verified: false,
+        misconfigured: true,
+        configured: false,
+        issue: 'deployment_not_found',
+      };
+    }
+    if (httpResponse.headers.get('server')?.toLowerCase().includes('vercel')) {
+      return {
+        verified: false,
+        misconfigured: false,
+        configured: true,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   let userId: string | undefined;
@@ -62,7 +137,7 @@ export async function GET(request: NextRequest) {
 
     // If we believe the domain is attached, ask the host whether it's actually
     // serving traffic. That flips us from attached-pending to live.
-    let liveStatus: { verified: boolean; misconfigured: boolean } | null = null;
+    let liveStatus: LiveStatus | null = null;
     if (stage === 'attached-pending' && isVercelConfigured() && account.domainAttachedHost) {
       try {
         const status = await getDomainStatus(account.domainAttachedHost);
@@ -72,9 +147,15 @@ export async function GET(request: NextRequest) {
         liveStatus = {
           verified: Boolean(status?.verified),
           misconfigured: false,
+          configured: status?.configured,
         };
       } catch (err) {
         if (err instanceof VercelApiError) {
+          liveStatus = {
+            verified: false,
+            misconfigured: false,
+            issue: 'check_failed',
+          };
           log.warn('Status poll failed', {
             route: ROUTE,
             method: 'GET',
@@ -85,6 +166,18 @@ export async function GET(request: NextRequest) {
         } else {
           throw err;
         }
+      }
+    }
+
+    if (stage === 'attached-pending' && account.domainAttachedHost) {
+      const publicStatus = await probePublicHost(account.domainAttachedHost);
+      if (publicStatus?.verified) {
+        stage = 'live';
+        liveStatus = publicStatus;
+      } else if (publicStatus?.issue === 'deployment_not_found') {
+        liveStatus = publicStatus;
+      } else if (!liveStatus && publicStatus) {
+        liveStatus = publicStatus;
       }
     }
 

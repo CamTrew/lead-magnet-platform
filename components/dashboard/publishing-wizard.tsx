@@ -27,7 +27,12 @@ type StatusResponse = {
   host: string;
   verificationRecord: DnsRecord | null;
   cnameRecord: DnsRecord | null;
-  liveStatus: { verified: boolean; misconfigured: boolean } | null;
+  liveStatus: {
+    verified: boolean;
+    misconfigured: boolean;
+    configured?: boolean;
+    issue?: 'deployment_not_found' | 'check_failed';
+  } | null;
   attachedHost: string;
   verifiedAt: string | null;
 };
@@ -189,6 +194,9 @@ export function PublishingWizard({
   const stage = status.stage;
   const ownershipDone = stage === 'verified' || stage === 'attached-pending' || stage === 'live';
   const routingDone = stage === 'live';
+  const needsReconnect =
+    stage === 'attached-pending' &&
+    (status.liveStatus?.issue === 'deployment_not_found' || status.liveStatus?.configured === false);
 
   return (
     <div className="space-y-3">
@@ -271,8 +279,23 @@ export function PublishingWizard({
                 }}
               >
                 {routingDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-                {routingDone ? 'Live and serving' : 'Waiting for DNS to propagate'}
+                {routingDone
+                  ? 'Live and serving'
+                  : needsReconnect
+                    ? 'DNS is set, but the subdomain is not connected'
+                    : 'Waiting for DNS to propagate'}
               </p>
+              {needsReconnect && (
+                <AceternityButton
+                  disabled={attaching}
+                  onClick={attach}
+                  size="sm"
+                  type="button"
+                >
+                  {attaching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Reconnect subdomain
+                </AceternityButton>
+              )}
               {!routingDone && (
                 <AceternityButton
                   disabled={checkingRouting}
@@ -285,6 +308,7 @@ export function PublishingWizard({
                   Check again
                 </AceternityButton>
               )}
+              {attachError && <span className="text-xs text-red-700">{attachError}</span>}
             </div>
           </>
         )}

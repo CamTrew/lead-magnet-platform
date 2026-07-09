@@ -24,7 +24,7 @@ export type DomainStage =
   | 'no-domain'           // domain field empty
   | 'unverified'          // domain set, ownership TXT not yet observed
   | 'verified'            // ownership proven, not yet attached to Vercel
-  | 'attached-pending'    // attached to Vercel, CNAME not resolving yet
+  | 'attached-pending'    // attached or believed attached, but not serving yet
   | 'live';               // Vercel reports the domain as verified
 
 export type CalendarProvider = '' | 'calendly' | 'calcom';
