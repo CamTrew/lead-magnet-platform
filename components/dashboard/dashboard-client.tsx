@@ -458,6 +458,7 @@ export function DashboardClient({
     delivery: 'idle',
     publishing: 'idle',
   });
+  const [publishingStatusVersion, setPublishingStatusVersion] = useState(0);
   const [error, setError] = useState('');
   // Once a value is committed (root domain attached, Resend key saved, etc.),
   // we hide the input behind a LockedField. Setting one of these to true
@@ -539,7 +540,10 @@ export function DashboardClient({
       dirty.current[section] = false;
       // After a successful save we re-lock the previously-unlocked fields,
       // so the user has to click Edit again to make further changes.
-      if (section === 'publishing') setUnlockDomain(false);
+      if (section === 'publishing') {
+        setUnlockDomain(false);
+        setPublishingStatusVersion((version) => version + 1);
+      }
       if (section === 'delivery') setUnlockResendKey(false);
       setSaveState(section, 'saved');
     } catch (err) {
@@ -690,7 +694,10 @@ export function DashboardClient({
                 </Field>
               </div>
 
-              <PublishingWizard hasDomain={Boolean(configuredDomain)} />
+              <PublishingWizard
+                hasDomain={Boolean(configuredDomain)}
+                refreshKey={publishingStatusVersion}
+              />
 
               <SaveStatus state={sectionState.publishing} />
             </div>

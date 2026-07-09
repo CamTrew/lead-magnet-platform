@@ -1062,6 +1062,12 @@ export async function updateAccount(
   // users who already pasted the TXT into their DNS.
   const apexChanged =
     updates.domain !== undefined && updates.domain !== existingAccount.domain;
+  const targetDomain = updates.domain ?? existingAccount.domain;
+  const domainVerificationToken = targetDomain
+    ? apexChanged || !existingAccount.domain_verification_token
+      ? `magnets-verify-${randomBytes(16).toString('hex')}`
+      : existingAccount.domain_verification_token
+    : '';
 
   // Safety net: if the caller saved a new return-path or domain but didn't
   // re-stitch resendFromEmail, the stored sender will still carry the old
@@ -1069,7 +1075,6 @@ export async function updateAccount(
   // local@suffix combination.
   let resendFromEmail = updates.resendFromEmail ?? '';
   const targetReturnPath = updates.resendReturnPath ?? '';
-  const targetDomain = updates.domain ?? existingAccount.domain;
   if (resendFromEmail && targetReturnPath && targetDomain) {
     const expectedSuffix = `${targetReturnPath}.${targetDomain}`.toLowerCase();
     const bracket = resendFromEmail.match(/^(.*?)\s*<([^@<>\s]+)@([^<>\s]+)>\s*$/);
@@ -1114,7 +1119,7 @@ export async function updateAccount(
         resend_return_path = $13,
         calendar_webhook_enabled = $14,
         calendar_webhook_token = $15,
-        domain_verification_token = case when $12::boolean then '' else domain_verification_token end,
+        domain_verification_token = $16,
         domain_verified_at = case when $12::boolean then null else domain_verified_at end,
         domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end,
         domain_attached_host = case when $12::boolean then '' else domain_attached_host end,
@@ -1138,6 +1143,7 @@ export async function updateAccount(
       updates.resendReturnPath ?? '',
       wantsCalendarWebhooks,
       calendarWebhookToken,
+      domainVerificationToken,
     ]
   );
 

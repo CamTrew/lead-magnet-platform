@@ -32,7 +32,13 @@ type StatusResponse = {
   verifiedAt: string | null;
 };
 
-export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
+export function PublishingWizard({
+  hasDomain,
+  refreshKey = 0,
+}: {
+  hasDomain: boolean;
+  refreshKey?: number;
+}) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
@@ -80,7 +86,7 @@ export function PublishingWizard({ hasDomain }: { hasDomain: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refresh, refreshKey]);
 
   // Poll while we're waiting for DNS propagation.
   useEffect(() => {
