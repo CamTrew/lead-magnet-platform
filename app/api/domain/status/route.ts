@@ -8,6 +8,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import {
+  getDomainConfig,
   getDomainStatus,
   isVercelConfigured,
   VercelApiError,
@@ -25,7 +26,7 @@ type LiveStatus = {
   verified: boolean;
   misconfigured: boolean;
   configured?: boolean;
-  issue?: 'deployment_not_found' | 'check_failed';
+  issue?: 'deployment_not_found' | 'check_failed' | 'invalid_dns';
 };
 
 type DnsRecord = {
@@ -173,18 +174,74 @@ export async function GET(request: NextRequest) {
     // serving traffic. That flips us from attached-pending to live.
     let liveStatus: LiveStatus | null = null;
     let platformVerificationRecords: DnsRecord[] = [];
+    let recommendedCname = account.domainRecommendedCname;
     if (stage === 'attached-pending' && isVercelConfigured() && account.domainAttachedHost) {
       try {
-        const status = await getDomainStatus(account.domainAttachedHost);
-        if (status?.verified) {
-          stage = 'live';
+        const [statusResult, configResult] = await Promise.allSettled([
+          getDomainStatus(account.domainAttachedHost),
+          getDomainConfig(account.domainAttachedHost),
+        ]);
+
+        if (statusResult.status === 'fulfilled') {
+          const status = statusResult.value;
+          platformVerificationRecords = vercelVerificationRecords(status?.verification || [], domain);
+          liveStatus = {
+            verified: Boolean(status?.verified),
+            misconfigured: false,
+            configured: status?.configured,
+          };
+        } else if (statusResult.reason instanceof VercelApiError) {
+          liveStatus = {
+            verified: false,
+            misconfigured: false,
+            issue: 'check_failed',
+          };
+          log.warn('Status poll failed', {
+            route: ROUTE,
+            method: 'GET',
+            userId,
+            accountId,
+            extra: { code: statusResult.reason.code, status: statusResult.reason.status },
+          });
+        } else {
+          throw statusResult.reason;
         }
-        platformVerificationRecords = vercelVerificationRecords(status?.verification || [], domain);
-        liveStatus = {
-          verified: Boolean(status?.verified),
-          misconfigured: false,
-          configured: status?.configured,
-        };
+
+        if (configResult.status === 'fulfilled') {
+          const config = configResult.value;
+          recommendedCname = config?.recommendedCname || recommendedCname;
+
+          if (config?.misconfigured) {
+            liveStatus = {
+              ...(liveStatus || { verified: false }),
+              verified: false,
+              misconfigured: true,
+              configured: false,
+              issue: 'invalid_dns',
+            };
+          } else if (config?.configuredBy) {
+            liveStatus = {
+              ...(liveStatus || { verified: false }),
+              misconfigured: false,
+              configured: true,
+            };
+          }
+        } else if (configResult.reason instanceof VercelApiError) {
+          liveStatus = liveStatus || {
+            verified: false,
+            misconfigured: false,
+            issue: 'check_failed',
+          };
+          log.warn('Config poll failed', {
+            route: ROUTE,
+            method: 'GET',
+            userId,
+            accountId,
+            extra: { code: configResult.reason.code, status: configResult.reason.status },
+          });
+        } else {
+          throw configResult.reason;
+        }
       } catch (err) {
         if (err instanceof VercelApiError) {
           liveStatus = {
@@ -205,7 +262,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (stage === 'attached-pending' && account.domainAttachedHost) {
+    if (stage === 'attached-pending' && account.domainAttachedHost && liveStatus?.issue !== 'invalid_dns') {
       const publicStatus = await probePublicHost(account.domainAttachedHost);
       if (publicStatus?.verified) {
         stage = 'live';
@@ -231,11 +288,11 @@ export async function GET(request: NextRequest) {
             fullName: `magnets-verify.${domain}`,
           }
         : null,
-      cnameRecord: account.domainAttachedHost && account.domainRecommendedCname
+      cnameRecord: account.domainAttachedHost && recommendedCname
         ? {
             type: 'CNAME',
             name: subdomain,
-            value: account.domainRecommendedCname,
+            value: recommendedCname,
             fullName: account.domainAttachedHost,
           }
         : null,

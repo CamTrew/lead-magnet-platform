@@ -33,7 +33,7 @@ type StatusResponse = {
     verified: boolean;
     misconfigured: boolean;
     configured?: boolean;
-    issue?: 'deployment_not_found' | 'check_failed';
+    issue?: 'deployment_not_found' | 'check_failed' | 'invalid_dns';
   } | null;
   attachedHost: string;
   verifiedAt: string | null;
@@ -198,8 +198,13 @@ export function PublishingWizard({
   const routingDone = stage === 'live';
   const platformVerificationRecords = status.platformVerificationRecords || [];
   const needsPlatformVerification = platformVerificationRecords.length > 0 && !routingDone;
+  const needsCnameUpdate =
+    !needsPlatformVerification &&
+    stage === 'attached-pending' &&
+    (status.liveStatus?.issue === 'invalid_dns' || status.liveStatus?.misconfigured);
   const needsReconnect =
     !needsPlatformVerification &&
+    !needsCnameUpdate &&
     stage === 'attached-pending' &&
     (status.liveStatus?.issue === 'deployment_not_found' || status.liveStatus?.configured === false);
 
@@ -288,6 +293,8 @@ export function PublishingWizard({
                   ? 'Live and serving'
                   : needsPlatformVerification
                     ? 'Vercel needs one more verification record'
+                    : needsCnameUpdate
+                      ? 'Update this CNAME in your DNS provider'
                     : needsReconnect
                       ? 'DNS is set, but the subdomain is not connected'
                       : 'Waiting for DNS to propagate'}
