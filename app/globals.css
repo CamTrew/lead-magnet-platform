@@ -43,10 +43,6 @@
     text-rendering: optimizeLegibility;
     font-feature-settings: 'cv11', 'ss03';
   }
-  ::selection {
-    background: #fe504f;
-    color: #111111;
-  }
 }
 
 @layer utilities {
