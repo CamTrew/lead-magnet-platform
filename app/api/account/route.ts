@@ -123,6 +123,18 @@ const schema = z.object({
       path: ['logoText'],
     });
   }
+
+  if (
+    value.resendReturnPath &&
+    value.subdomain &&
+    value.resendReturnPath === value.subdomain
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Use a different sending subdomain than your page subdomain. Try send.',
+      path: ['resendReturnPath'],
+    });
+  }
 });
 
 function isUniqueViolation(error: unknown) {

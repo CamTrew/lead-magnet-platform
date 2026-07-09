@@ -54,10 +54,15 @@ export async function POST(request: NextRequest) {
       result.account.subdomain && result.account.domain
         ? `${result.account.subdomain}.${result.account.domain}`.toLowerCase()
         : '';
+    const expectedSenderHost =
+      result.account.resendReturnPath && result.account.domain
+        ? `${result.account.resendReturnPath}.${result.account.domain}`.toLowerCase()
+        : '';
     const senderReady =
       Boolean(result.account.resendApiKey) &&
       Boolean(result.account.domainVerifiedAt) &&
       result.account.domainAttachedHost.toLowerCase() === expectedAttachedHost &&
+      expectedSenderHost !== expectedAttachedHost &&
       Boolean(result.account.resendFromEmail) &&
       Boolean(result.account.resendReturnPath) &&
       senderMatchesAccountDomain(result.account);

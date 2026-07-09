@@ -18,6 +18,10 @@ export type SetupItem = {
   done: boolean;
 };
 
+function hasDedicatedSendingSubdomain(account: AccountSettings) {
+  return Boolean(account.resendReturnPath) && account.resendReturnPath !== account.subdomain;
+}
+
 /**
  * Decide whether the account has completed enough setup to use the rest of the
  * dashboard. We require:
@@ -76,14 +80,14 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
     {
       key: 'returnPath',
       label: 'Pick a sending subdomain',
-      detail: 'In Delivery, click "Find a clear subdomain" and save.',
-      done: Boolean(account.resendReturnPath),
+      detail: 'Use a dedicated sending subdomain, such as "send".',
+      done: hasDedicatedSendingSubdomain(account),
     },
     {
       key: 'sender',
       label: 'Set your sender address',
       detail: 'In Delivery, pick the local part of your "from" email.',
-      done: Boolean(account.resendFromEmail) && senderMatchesAccountDomain(account),
+      done: hasDedicatedSendingSubdomain(account) && Boolean(account.resendFromEmail) && senderMatchesAccountDomain(account),
     },
   ];
 }
