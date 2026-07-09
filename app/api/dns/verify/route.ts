@@ -342,19 +342,6 @@ export async function POST(request: NextRequest) {
       if (!accountWithSecrets) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
-      const publishingHost =
-        accountWithSecrets.subdomain && accountWithSecrets.domain
-          ? `${accountWithSecrets.subdomain}.${accountWithSecrets.domain}`.toLowerCase()
-          : '';
-      if (sender.domain.toLowerCase() === publishingHost) {
-        return NextResponse.json(
-          {
-            error:
-              'Use a different sending subdomain than your page subdomain. A page CNAME cannot also hold email DNS records.',
-          },
-          { status: 400 }
-        );
-      }
       if (
         !senderMatchesAccountDomain({
           domain: accountWithSecrets.domain,

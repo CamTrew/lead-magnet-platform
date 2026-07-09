@@ -48,7 +48,6 @@ type DnsVerifyResponse = {
 export type DeliveryAccount = {
   domain: string;
   domainAttachedHost: string;
-  subdomain: string;
   resendApiKey: string;
   resendFromEmail: string;
   resendReturnPath: string;
@@ -90,9 +89,8 @@ export function DeliverySection({
   // re-probe on every render.
   const [apexHasDmarc, setApexHasDmarc] = useState(false);
 
-  const returnPathConflictsWithPage = sendingSubdomainConflictsWithPage(account);
-  const subdomainLocked = Boolean(account.resendReturnPath) && !returnPathConflictsWithPage && !unlockSubdomain;
-  const senderLocked = subdomainLocked && Boolean(account.resendFromEmail);
+  const subdomainLocked = Boolean(account.resendReturnPath) && !unlockSubdomain;
+  const senderLocked = Boolean(account.resendFromEmail);
   const dnsLocked = dnsVerified && !unlockDns;
 
   // Once a save completes, re-lock everything.
@@ -115,11 +113,9 @@ export function DeliverySection({
         done={subdomainLocked}
         index={1}
         subtitle={
-          returnPathConflictsWithPage
-            ? 'Your sending subdomain is also your page subdomain. Pick a different one so email DNS can work.'
-            : subdomainLocked
-              ? `Your sending records will be under ${account.resendReturnPath}.${account.domain}.`
-              : 'Pick a dedicated subdomain for email records, such as "send". It cannot be the same as your page subdomain.'
+          subdomainLocked
+            ? `Your sending records will be under ${account.resendReturnPath}.${account.domain}.`
+            : 'Pick a subdomain to put the sending records under, so they don\'t collide with anything you already have.'
         }
         title="Pick your sending subdomain"
       >
@@ -141,11 +137,9 @@ export function DeliverySection({
         done={senderLocked}
         index={2}
         subtitle={
-          subdomainLocked
-            ? senderLocked
-              ? `Subscribers see ${displayFromAddress(account)} in their inbox.`
-              : 'Pick the local part. The domain part stays locked to the subdomain you chose above.'
-            : 'Pick a valid sending subdomain first.'
+          senderLocked
+            ? `Subscribers see ${displayFromAddress(account)} in their inbox.`
+            : 'Pick the local part. The domain part stays locked to the subdomain you chose above.'
         }
         title="Set your sender address"
       >
@@ -265,23 +259,6 @@ function Step({
   );
 }
 
-function publishingSubdomainLabel(account: DeliveryAccount) {
-  const root = account.domain.trim().toLowerCase();
-  if (!root) return account.subdomain.trim().toLowerCase();
-
-  const attachedHost = account.domainAttachedHost.trim().toLowerCase();
-  if (attachedHost.endsWith(`.${root}`)) {
-    return attachedHost.slice(0, -(root.length + 1));
-  }
-
-  return account.subdomain.trim().toLowerCase();
-}
-
-function sendingSubdomainConflictsWithPage(account: DeliveryAccount) {
-  const reserved = publishingSubdomainLabel(account);
-  return Boolean(reserved && account.resendReturnPath && account.resendReturnPath === reserved);
-}
-
 function SubdomainPicker({
   account,
   dmarcWarning,
@@ -301,24 +278,16 @@ function SubdomainPicker({
   onLock: () => void;
   onPatch: DeliveryPatch;
 }) {
-  const reservedLabel = publishingSubdomainLabel(account);
   // When the user picks a subdomain we must also re-stitch the stored
   // resendFromEmail so its suffix matches. Otherwise the locked sender
   // display keeps showing the previously composed `local@oldsub.domain`
   // string even after the subdomain has changed.
   const setReturnPath = (label: string) => {
-    const cleanLabel = label.trim().toLowerCase();
-    if (!cleanLabel) return;
-    if (reservedLabel && cleanLabel === reservedLabel) {
-      setError(`Use a different sending subdomain than ${reservedLabel}. That one serves your public pages.`);
-      return;
-    }
-
-    const updates: Partial<DeliveryAccount> = { resendReturnPath: cleanLabel };
+    const updates: Partial<DeliveryAccount> = { resendReturnPath: label };
     if (account.resendFromEmail && account.domain) {
       const parsed = parseStoredFrom(account.resendFromEmail);
       if (parsed.localPart) {
-        const newSuffix = `${cleanLabel}.${account.domain}`;
+        const newSuffix = `${label}.${account.domain}`;
         const address = `${parsed.localPart}@${newSuffix}`;
         updates.resendFromEmail = parsed.displayName
           ? `${parsed.displayName} <${address}>`
@@ -396,12 +365,6 @@ function SubdomainPicker({
       onConfirmEdit={onConfirmEdit}
     >
       <div className="space-y-3">
-        {sendingSubdomainConflictsWithPage(account) && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {account.resendReturnPath}.{account.domain} is already used for your lead magnet pages. Choose a
-            dedicated sending subdomain, such as send.{account.domain}.
-          </p>
-        )}
         {!suggestion ? (
           <div className="flex flex-wrap items-center gap-2">
             <AceternityButton onClick={suggest} disabled={suggesting} variant="secondary">
@@ -416,19 +379,14 @@ function SubdomainPicker({
               Suggested subdomains for <span className="font-mono">{account.domain}</span>:
             </p>
             <div className="grid gap-1.5">
-              {suggestion.candidates.map((candidate) => {
-                const reserved = Boolean(reservedLabel && candidate.label === reservedLabel);
-                return (
-                  <CandidateRow
-                    candidate={candidate}
-                    disabled={reserved}
-                    disabledReason={reserved ? 'Used by your lead magnet pages' : undefined}
-                    key={candidate.label}
-                    onPick={() => setReturnPath(candidate.label)}
-                    selected={candidate.label === account.resendReturnPath}
-                  />
-                );
-              })}
+              {suggestion.candidates.map((candidate) => (
+                <CandidateRow
+                  candidate={candidate}
+                  key={candidate.label}
+                  onPick={() => setReturnPath(candidate.label)}
+                  selected={candidate.label === account.resendReturnPath}
+                />
+              ))}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-t border-ink-200 pt-3">
@@ -436,7 +394,7 @@ function SubdomainPicker({
               <AceternityInput
                 className="h-8 w-32 px-2 text-sm"
                 onChange={(event) => setCustomLabel(event.target.value.toLowerCase())}
-                placeholder="send"
+                placeholder="lead"
                 value={customLabel}
               />
               <AceternityButton
@@ -472,27 +430,21 @@ function SubdomainPicker({
 
 function CandidateRow({
   candidate,
-  disabled,
-  disabledReason,
   onPick,
   selected,
 }: {
   candidate: SubdomainStatus;
-  disabled?: boolean;
-  disabledReason?: string;
   onPick: () => void;
   selected: boolean;
 }) {
-  const clear = candidate.clear && !disabled;
+  const clear = candidate.clear;
   return (
     <button
       className={cn(
         'flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm transition',
         selected ? 'border-ink-950 bg-ink-50' : 'border-ink-200 bg-white hover:bg-ink-50',
-        !clear && 'opacity-80',
-        disabled && 'cursor-not-allowed'
+        !clear && 'opacity-80'
       )}
-      disabled={disabled}
       onClick={onPick}
       type="button"
     >
@@ -504,9 +456,9 @@ function CandidateRow({
             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
             : 'border-amber-200 bg-amber-50 text-amber-800'
         )}
-        title={clear ? 'Nothing else lives here' : disabledReason || candidate.collisions.join(', ')}
+        title={clear ? 'Nothing else lives here' : candidate.collisions.join(', ')}
       >
-        {clear ? 'Clear' : disabledReason ? 'Reserved' : 'In use'}
+        {clear ? 'Clear' : 'In use'}
       </span>
     </button>
   );

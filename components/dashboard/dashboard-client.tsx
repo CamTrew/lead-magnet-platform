@@ -761,7 +761,6 @@ export function DashboardClient({
                 account={{
                   domain: account.domain,
                   domainAttachedHost: account.domainAttachedHost,
-                  subdomain: account.subdomain,
                   resendApiKey: account.resendApiKey,
                   resendFromEmail: account.resendFromEmail,
                   resendReturnPath: account.resendReturnPath,

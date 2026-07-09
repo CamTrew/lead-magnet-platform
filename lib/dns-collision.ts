@@ -9,11 +9,12 @@ export type SubdomainStatus = {
 };
 
 /**
- * Preference order for the sender-DNS subdomain. Keep this separate from the
- * lead-magnet page subdomain: a host that CNAMEs to Vercel cannot also carry
- * Resend's MX/TXT/DKIM records.
+ * Preference order for the sender-DNS subdomain. `lead` first because it's
+ * branded and unlikely to collide with anything someone already has. `magnets`
+ * second as a branded fallback. The rest are neutral and progressively less
+ * common as conflicts.
  */
-const DEFAULT_CANDIDATES = ['send', 'mail', 'e', 'news', 'marketing', 'updates'] as const;
+const DEFAULT_CANDIDATES = ['lead', 'magnets', 'mail', 'e', 'news', 'marketing'] as const;
 
 type ResolverFn = (host: string) => Promise<unknown>;
 
