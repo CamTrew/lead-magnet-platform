@@ -120,7 +120,16 @@ const followUpEmailSchema = z.object({
 });
 
 const schema = z.object({
-  slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/),
+  slug: z
+    .string()
+    .trim()
+    .min(1, 'Page path is required.')
+    .max(80, 'Page path must be 80 characters or less.')
+    .transform((value) => value.toLowerCase())
+    .refine(
+      (value) => /^[a-z0-9-]+$/.test(value),
+      'Page path can only contain letters, numbers, and hyphens.'
+    ),
   title: z.string().trim().min(1).max(160),
   subtitle: z.string().max(240),
   description: z.string().max(5000),
