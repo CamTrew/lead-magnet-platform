@@ -710,7 +710,7 @@ export function DashboardClient({
                 label={
                   <LabelHelp
                     label="Sending key"
-                    help="Create a free Resend account at resend.com, then go to API Keys and create one with full access. The key is used to send the resource email from your sender domain."
+                    help="Create a Resend API key with Full access. Sending access can deliver the first resource email, but follow-up sequences need Full access to create Resend events, templates, and automations."
                   />
                 }
                 hint="The key is encrypted at rest and never shown back to you in plaintext."

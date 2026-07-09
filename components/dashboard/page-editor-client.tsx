@@ -1045,7 +1045,7 @@ function SequenceCanvas({
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <p className="font-semibold">Finish Resend setup first.</p>
             <p className="mt-1 text-xs leading-5">
-              Follow-up sequences need your sending key, sender address, and sending domain before they can be enabled.
+              Follow-up sequences need a Full access Resend API key, sender address, and sending domain before they can be enabled.
             </p>
           </div>
         )}
@@ -1056,6 +1056,9 @@ function SequenceCanvas({
               <p className="text-sm font-semibold text-ink-950">Follow-up sequence</p>
               <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
                 Send extra emails after the lead magnet email. Delays are counted from the previous email or from signup for the first one.
+              </p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-ink-500">
+                Requires a Full access Resend API key so Magnets can create the events, templates, and automation for this sequence.
               </p>
             </div>
             <button

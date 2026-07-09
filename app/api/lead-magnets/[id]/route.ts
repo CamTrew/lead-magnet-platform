@@ -201,7 +201,8 @@ function friendlyFollowUpSyncMessage(error: FollowUpSequenceError) {
     message === 'Connect Resend before enabling a follow-up sequence.' ||
     message === 'Set your sender address before enabling a follow-up sequence.' ||
     message === 'Finish sender domain verification before enabling a follow-up sequence.' ||
-    message === 'Add at least one follow-up email before enabling the sequence.'
+    message === 'Add at least one follow-up email before enabling the sequence.' ||
+    message.startsWith('Your Resend API key needs Full access')
   ) {
     return message;
   }

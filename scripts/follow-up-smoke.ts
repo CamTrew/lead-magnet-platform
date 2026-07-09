@@ -4,6 +4,7 @@ import {
   isCalendarBookingEvent,
 } from '../lib/calendar-webhook-payload';
 import {
+  FollowUpSequenceError,
   startLeadMagnetFollowUpSequence,
   stopAccountFollowUpSequencesForEmail,
   stopLeadMagnetFollowUpSequence,
@@ -22,6 +23,7 @@ type CapturedRequest = {
 const requests: CapturedRequest[] = [];
 let templateCount = 0;
 let automationCount = 0;
+let forbiddenPath = '';
 const originalFetch = globalThis.fetch;
 
 function jsonResponse(body: JsonRecord, status = 200) {
@@ -86,6 +88,10 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 
   if (url.origin !== 'https://api.resend.com') {
     return jsonResponse({ message: `Unexpected origin ${url.origin}` }, 500);
+  }
+
+  if (forbiddenPath && url.pathname === forbiddenPath) {
+    return jsonResponse({ message: 'API key does not have permission to access this resource.' }, 403);
   }
 
   if (method === 'POST' && url.pathname === '/events') {
@@ -252,7 +258,7 @@ async function run() {
   assert.ok(findRequest('/templates/tmpl_2/publish', 'POST'));
 
   const automationBody = findBody('/automations', 'POST');
-  assert.equal(automationBody.status, 'enabled');
+  assert.equal(automationBody.status, 'disabled');
   assert.equal(automationBody.name, 'Magnets follow-up: Smoke Test Magnet');
   assert.deepEqual(findBody('/automations/auto_1', 'PATCH'), { status: 'enabled' });
 
@@ -469,7 +475,22 @@ async function run() {
   assert.deepEqual(inactiveStopped, { stopped: false });
   assert.deepEqual(requests, []);
 
-  console.log('Follow-up smoke test passed: mocked Resend setup, automation graph, disable flow, manual cancel, and account-level booking cancel.');
+  resetRequests();
+  forbiddenPath = '/events';
+  try {
+    await assert.rejects(
+      () => syncLeadMagnetFollowUpAutomation(account, magnet),
+      (error) => {
+        assert.ok(error instanceof FollowUpSequenceError);
+        assert.match(error.message, /Full access/);
+        return true;
+      }
+    );
+  } finally {
+    forbiddenPath = '';
+  }
+
+  console.log('Follow-up smoke test passed: mocked Resend setup, automation graph, permission failure, disable flow, manual cancel, and account-level booking cancel.');
 }
 
 run()

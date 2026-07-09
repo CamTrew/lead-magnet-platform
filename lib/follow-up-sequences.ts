@@ -25,8 +25,10 @@ const TEMPLATE_VARIABLES = [
 type ResendObject = {
   id?: string;
   object?: string;
-  error?: { message?: string };
+  error?: { code?: string; message?: string; name?: string } | string;
+  code?: string;
   message?: string;
+  name?: string;
 };
 
 type FollowUpRunStore = {
@@ -113,6 +115,48 @@ function templatePayload(account: AccountSettings, magnet: LeadMagnet, email: Fo
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function extractResendErrorMessage(data: unknown, status: number) {
+  if (!isRecord(data)) {
+    return `Resend returned ${status}`;
+  }
+
+  const parts: string[] = [];
+  const error = data.error;
+
+  if (typeof error === 'string') {
+    parts.push(error);
+  } else if (isRecord(error)) {
+    parts.push(stringValue(error.message), stringValue(error.code), stringValue(error.name));
+  }
+
+  parts.push(stringValue(data.message), stringValue(data.code), stringValue(data.name));
+
+  const message = parts.filter(Boolean).join(' ');
+  return message || `Resend returned ${status}`;
+}
+
+function needsFullAccessHelp(path: string, status: number, message: string) {
+  const writesAutomationResources = /^\/(automations|templates|events)(\/|$)/.test(path);
+  return (
+    writesAutomationResources &&
+    (status === 401 ||
+      status === 403 ||
+      /permission|forbidden|unauthori[sz]ed|not authorized|restricted|access/i.test(message))
+  );
+}
+
+function resendFullAccessMessage() {
+  return 'Your Resend API key needs Full access to create follow-up sequences. In Resend, create a Full access API key, paste it in Configure, then save this sequence again.';
+}
+
 async function resendRequest<T extends ResendObject>(
   apiKey: string,
   path: string,
@@ -126,17 +170,26 @@ async function resendRequest<T extends ResendObject>(
       ...(init.headers || {}),
     },
   });
-  const data = (await response.json().catch(() => ({}))) as T;
+  const raw = await response.text();
+  let data: unknown = {};
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { message: raw };
+    }
+  }
 
   if (!response.ok) {
-    const message =
-      data.error?.message ||
-      data.message ||
-      `Resend returned ${response.status}`;
+    const message = extractResendErrorMessage(data, response.status);
+    if (needsFullAccessHelp(path, response.status, message)) {
+      throw new FollowUpSequenceError(resendFullAccessMessage());
+    }
     throw new FollowUpSequenceError(scrubResendErrorMessage(message));
   }
 
-  return data;
+  return data as T;
 }
 
 async function createEvent(apiKey: string, name: string) {
@@ -251,7 +304,6 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
 
   return {
     name: `Magnets follow-up: ${magnet.title.slice(0, 90) || magnet.id}`,
-    status: 'enabled',
     steps,
     connections,
   };
@@ -277,7 +329,7 @@ async function upsertAutomation(
 
   const created = await resendRequest(apiKey, '/automations', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, status: 'disabled' }),
   });
   if (!created.id) {
     throw new FollowUpSequenceError('Resend did not return an automation ID.');
