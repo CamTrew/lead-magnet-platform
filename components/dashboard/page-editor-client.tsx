@@ -63,12 +63,39 @@ function magnetImageProxyUrl(leadMagnetId: string) {
 function newFollowUpEmail() {
   return {
     id: `email-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    delayMinutes: 24 * 60,
     delayHours: 24,
     subject: '',
     preview: '',
     body: '',
     resendTemplateId: '',
   };
+}
+
+function followUpDelayMinutes(email: LeadMagnet['followUpEmails'][number]) {
+  const delayMinutes = Number(email.delayMinutes);
+  if (Number.isFinite(delayMinutes)) {
+    return Math.max(0, Math.min(30 * 24 * 60, Math.round(delayMinutes)));
+  }
+
+  const delayHours = Number(email.delayHours);
+  if (Number.isFinite(delayHours)) {
+    return Math.max(0, Math.min(30 * 24 * 60, Math.round(delayHours * 60)));
+  }
+
+  return 24 * 60;
+}
+
+function delayPatchFromMinutes(minutes: number) {
+  const delayMinutes = Math.max(0, Math.min(30 * 24 * 60, Math.round(minutes)));
+  return {
+    delayMinutes,
+    delayHours: Math.round(delayMinutes / 60),
+  };
+}
+
+function followUpDelayUnit(minutes: number) {
+  return minutes > 0 && minutes % 60 === 0 ? 'hours' : 'minutes';
 }
 
 async function recordUploadedMagnetImage(leadMagnetId: string, imageUrl: string) {
@@ -1122,80 +1149,102 @@ function SequenceCanvas({
             </div>
           )}
 
-          {leadMagnet.followUpEmails.map((email, index) => (
-            <div key={email.id} className="rounded-lg border border-ink-200 bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 bg-ink-50 px-5 py-3">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-ink-700" />
-                  <p className="text-sm font-semibold text-ink-950">Email {index + 1}</p>
-                </div>
-                <button
-                  aria-label={`Remove email ${index + 1}`}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 transition hover:bg-red-50"
-                  onClick={() =>
-                    onPatch({
-                      followUpEmails: leadMagnet.followUpEmails.filter((_, emailIndex) => emailIndex !== index),
-                    })
-                  }
-                  type="button"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Remove
-                </button>
-              </div>
+          {leadMagnet.followUpEmails.map((email, index) => {
+            const delayMinutes = followUpDelayMinutes(email);
+            const delayUnit = followUpDelayUnit(delayMinutes);
+            const delayValue = delayUnit === 'hours' ? delayMinutes / 60 : delayMinutes;
 
-              <div className="space-y-4 p-5">
-                <label className="block">
-                  <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
-                    <Clock className="h-3.5 w-3.5" />
-                    Delay from previous email
-                  </span>
-                  <div className="flex max-w-xs items-center gap-2">
-                    <AceternityInput
-                      min={0}
-                      max={720}
-                      onChange={(event) =>
-                        updateEmail(index, {
-                          delayHours: Math.max(0, Math.min(720, Number(event.target.value) || 0)),
-                        })
-                      }
-                      type="number"
-                      value={email.delayHours}
-                    />
-                    <span className="text-sm text-ink-500">hours</span>
+            return (
+              <div key={email.id} className="rounded-lg border border-ink-200 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 bg-ink-50 px-5 py-3">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-ink-700" />
+                    <p className="text-sm font-semibold text-ink-950">Email {index + 1}</p>
                   </div>
-                </label>
+                  <button
+                    aria-label={`Remove email ${index + 1}`}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                    onClick={() =>
+                      onPatch({
+                        followUpEmails: leadMagnet.followUpEmails.filter((_, emailIndex) => emailIndex !== index),
+                      })
+                    }
+                    type="button"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                </div>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Subject</span>
-                  <AceternityInput
-                    onChange={(event) => updateEmail(index, { subject: event.target.value })}
-                    placeholder="Quick follow-up"
-                    value={email.subject}
-                  />
-                </label>
+                <div className="space-y-4 p-5">
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
+                      <Clock className="h-3.5 w-3.5" />
+                      Delay from previous email
+                    </span>
+                    <div className="flex max-w-sm items-center gap-2">
+                      <AceternityInput
+                        min={0}
+                        max={delayUnit === 'hours' ? 720 : 30 * 24 * 60}
+                        onChange={(event) => {
+                          const value = Math.max(0, Number(event.target.value) || 0);
+                          updateEmail(
+                            index,
+                            delayPatchFromMinutes(delayUnit === 'hours' ? value * 60 : value)
+                          );
+                        }}
+                        type="number"
+                        value={delayValue}
+                      />
+                      <select
+                        aria-label={`Delay unit for email ${index + 1}`}
+                        className="h-11 rounded-lg border border-ink-200 bg-white px-3 text-sm font-medium text-ink-800 outline-none transition focus:border-ink-500 focus:ring-2 focus:ring-ink-100"
+                        onChange={(event) => {
+                          const nextUnit = event.target.value === 'minutes' ? 'minutes' : 'hours';
+                          updateEmail(
+                            index,
+                            delayPatchFromMinutes(nextUnit === 'hours' ? delayValue * 60 : delayValue)
+                          );
+                        }}
+                        value={delayUnit}
+                      >
+                        <option value="minutes">minutes</option>
+                        <option value="hours">hours</option>
+                      </select>
+                    </div>
+                  </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Preview text</span>
-                  <AceternityInput
-                    onChange={(event) => updateEmail(index, { preview: event.target.value })}
-                    placeholder="Short inbox teaser"
-                    value={email.preview}
-                  />
-                </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Subject</span>
+                    <AceternityInput
+                      onChange={(event) => updateEmail(index, { subject: event.target.value })}
+                      placeholder="Quick follow-up"
+                      value={email.subject}
+                    />
+                  </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Body</span>
-                  <AceternityTextarea
-                    className="min-h-44"
-                    onChange={(event) => updateEmail(index, { body: event.target.value })}
-                    placeholder="Write the follow-up email..."
-                    value={email.body}
-                  />
-                </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Preview text</span>
+                    <AceternityInput
+                      onChange={(event) => updateEmail(index, { preview: event.target.value })}
+                      placeholder="Short inbox teaser"
+                      value={email.preview}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Body</span>
+                    <AceternityTextarea
+                      className="min-h-44"
+                      onChange={(event) => updateEmail(index, { body: event.target.value })}
+                      placeholder="Write the follow-up email..."
+                      value={email.body}
+                    />
+                  </label>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="flex justify-end">

@@ -62,6 +62,7 @@ export interface AccountSettings {
 
 export interface FollowUpEmail {
   id: string;
+  delayMinutes: number;
   delayHours: number;
   subject: string;
   preview: string;

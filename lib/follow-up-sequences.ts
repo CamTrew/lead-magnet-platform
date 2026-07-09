@@ -18,6 +18,7 @@ import {
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
+const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const TEMPLATE_VARIABLES = [
   { key: 'NAME', type: 'string' },
   { key: 'DOWNLOAD_LINK', type: 'string' },
@@ -75,22 +76,47 @@ function eventName(kind: 'signup' | 'booked', leadMagnetId: string) {
   return `magnets.lead_magnet.${leadMagnetId}.${kind}`;
 }
 
-function durationFromHours(hours: number) {
-  const clean = Math.max(0, Math.min(720, Math.round(hours)));
-  if (clean <= 0) return '0 hours';
-  if (clean === 1) return '1 hour';
-  return `${clean} hours`;
+function normaliseDelayMinutes(email: Pick<FollowUpEmail, 'delayHours'> & Partial<Pick<FollowUpEmail, 'delayMinutes'>>) {
+  const delayMinutes = Number(email.delayMinutes);
+  if (Number.isFinite(delayMinutes)) {
+    return Math.max(0, Math.min(MAX_DELAY_MINUTES, Math.round(delayMinutes)));
+  }
+
+  const delayHours = Number(email.delayHours);
+  if (Number.isFinite(delayHours)) {
+    return Math.max(0, Math.min(MAX_DELAY_MINUTES, Math.round(delayHours * 60)));
+  }
+
+  return 24 * 60;
+}
+
+function durationFromMinutes(minutes: number) {
+  const clean = Math.max(0, Math.min(MAX_DELAY_MINUTES, Math.round(minutes)));
+  if (clean <= 0) return '0 minutes';
+  if (clean % (24 * 60) === 0) {
+    const days = clean / (24 * 60);
+    return days === 1 ? '1 day' : `${days} days`;
+  }
+  if (clean % 60 === 0) {
+    const hours = clean / 60;
+    return hours === 1 ? '1 hour' : `${hours} hours`;
+  }
+  return clean === 1 ? '1 minute' : `${clean} minutes`;
 }
 
 function normaliseFollowUpEmails(emails: FollowUpEmail[]) {
-  return emails.slice(0, 10).map((email, index) => ({
-    id: email.id || `email-${index + 1}`,
-    delayHours: Math.max(0, Math.min(720, Math.round(Number(email.delayHours) || 0))),
-    subject: email.subject.trim(),
-    preview: cleanPreviewText(email.preview),
-    body: cleanEmailText(email.body),
-    resendTemplateId: email.resendTemplateId || '',
-  }));
+  return emails.slice(0, 10).map((email, index) => {
+    const delayMinutes = normaliseDelayMinutes(email);
+    return {
+      id: email.id || `email-${index + 1}`,
+      delayMinutes,
+      delayHours: Math.round(delayMinutes / 60),
+      subject: email.subject.trim(),
+      preview: cleanPreviewText(email.preview),
+      body: cleanEmailText(email.body),
+      resendTemplateId: email.resendTemplateId || '',
+    };
+  });
 }
 
 function hasSyncableFollowUpEmails(magnet: LeadMagnet) {
@@ -276,11 +302,11 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
 
   emails.forEach((email, index) => {
     const emailKey = `email_${index + 1}`;
-    const delayHours = Math.max(0, Math.min(720, Math.round(email.delayHours)));
+    const delayMinutes = normaliseDelayMinutes(email);
 
-    if (delayHours > 0) {
+    if (delayMinutes > 0) {
       const waitKey = `wait_${index + 1}`;
-      const duration = durationFromHours(delayHours);
+      const duration = durationFromMinutes(delayMinutes);
 
       if (magnet.followUpStopOnBooking) {
         steps.push({
@@ -468,11 +494,11 @@ async function syncAndPersistFollowUpAutomation(
 }
 
 export function followUpSequenceEndDate(magnet: Pick<LeadMagnet, 'followUpEmails'>) {
-  const totalHours = normaliseFollowUpEmails(magnet.followUpEmails)
-    .reduce((total, email) => total + email.delayHours, 0);
+  const totalMinutes = normaliseFollowUpEmails(magnet.followUpEmails)
+    .reduce((total, email) => total + email.delayMinutes, 0);
 
-  if (totalHours <= 0) return new Date();
-  return new Date(Date.now() + totalHours * 60 * 60 * 1000);
+  if (totalMinutes <= 0) return new Date();
+  return new Date(Date.now() + totalMinutes * 60 * 1000);
 }
 
 export async function startLeadMagnetFollowUpSequence({

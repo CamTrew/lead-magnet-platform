@@ -90,14 +90,34 @@ const delayHoursSchema = z.preprocess(
     .transform((value) => Math.round(value))
 );
 
+const delayMinutesSchema = z.preprocess(
+  (value) => {
+    if (typeof value === 'string' && value.trim() !== '') return Number(value);
+    return value;
+  },
+  z
+    .number({ invalid_type_error: 'Enter a valid delay.' })
+    .min(0, 'Delay must be 0 minutes or more.')
+    .max(30 * 24 * 60, 'Delay must be 30 days or less.')
+    .transform((value) => Math.round(value))
+);
+
 const followUpEmailSchema = z.object({
   id: z.string().trim().min(1).max(80),
-  delayHours: delayHoursSchema,
+  delayHours: delayHoursSchema.optional(),
+  delayMinutes: delayMinutesSchema.optional(),
   subject: z.string().trim().max(180),
   preview: z.string().max(240),
   body: z.string().max(10000),
   resendTemplateId: z.string().max(200),
-}).strict();
+}).strict().transform((email) => {
+  const delayMinutes = email.delayMinutes ?? Math.round((email.delayHours ?? 24) * 60);
+  return {
+    ...email,
+    delayMinutes,
+    delayHours: Math.round(delayMinutes / 60),
+  };
+});
 
 const schema = z.object({
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/),

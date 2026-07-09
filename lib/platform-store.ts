@@ -225,6 +225,22 @@ function normaliseCalendarProvider(value: unknown): CalendarProvider {
   return value === 'calendly' || value === 'calcom' ? value : '';
 }
 
+const maxFollowUpDelayMinutes = 30 * 24 * 60;
+
+function normaliseFollowUpDelayMinutes(value: unknown, fallbackHours: unknown) {
+  const delayMinutes = Number(value);
+  if (Number.isFinite(delayMinutes)) {
+    return Math.min(maxFollowUpDelayMinutes, Math.max(0, Math.round(delayMinutes)));
+  }
+
+  const delayHours = Number(fallbackHours);
+  if (Number.isFinite(delayHours)) {
+    return Math.min(maxFollowUpDelayMinutes, Math.max(0, Math.round(delayHours * 60)));
+  }
+
+  return 24 * 60;
+}
+
 function parseBullets(value: LeadMagnetRow['bullets']) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
@@ -257,12 +273,11 @@ function parseFollowUpEmails(value: LeadMagnetRow['follow_up_emails']): FollowUp
       const id = typeof source.id === 'string' && source.id.trim()
         ? source.id.trim().slice(0, 80)
         : `email-${index + 1}`;
-      const delayHours = Number(source.delayHours);
+      const delayMinutes = normaliseFollowUpDelayMinutes(source.delayMinutes, source.delayHours);
       return {
         id,
-        delayHours: Number.isFinite(delayHours)
-          ? Math.min(720, Math.max(0, Math.round(delayHours)))
-          : 24,
+        delayMinutes,
+        delayHours: Math.round(delayMinutes / 60),
         subject: typeof source.subject === 'string' ? source.subject.slice(0, 180) : '',
         preview: typeof source.preview === 'string' ? source.preview.slice(0, 240) : '',
         body: typeof source.body === 'string' ? source.body.slice(0, 10000) : '',
@@ -1774,6 +1789,7 @@ export function followUpSequenceFingerprint(leadMagnet: Pick<LeadMagnet, 'follow
     .update(JSON.stringify({
       stopOnBooking: leadMagnet.followUpStopOnBooking,
       emails: leadMagnet.followUpEmails.map((email) => ({
+        delayMinutes: email.delayMinutes,
         delayHours: email.delayHours,
         subject: email.subject,
         preview: email.preview,

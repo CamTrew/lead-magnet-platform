@@ -192,6 +192,7 @@ const magnet: LeadMagnet = {
   followUpEmails: [
     {
       id: 'email_1',
+      delayMinutes: 0,
       delayHours: 0,
       subject: 'First follow-up for {name}',
       preview: 'First preview',
@@ -200,7 +201,8 @@ const magnet: LeadMagnet = {
     },
     {
       id: 'email_2',
-      delayHours: 24,
+      delayMinutes: 5,
+      delayHours: 0,
       subject: 'Second follow-up',
       preview: 'Second preview',
       body: 'Still interested? Grab the resource here: {download_link}',
@@ -272,7 +274,7 @@ async function run() {
         step.key === 'wait_2' &&
         step.type === 'wait_for_event' &&
         (step.config as JsonRecord | undefined)?.event_name === 'magnets.lead_magnet.magnet_smoke.booked' &&
-        (step.config as JsonRecord | undefined)?.timeout === '24 hours'
+        (step.config as JsonRecord | undefined)?.timeout === '5 minutes'
     )
   );
   assert.ok(
