@@ -1828,7 +1828,8 @@ export async function createFollowUpRun(input: {
         stopped_at = null,
         started_at = now(),
         updated_at = now()
-      where public.magnets_follow_up_runs.status = 'failed'
+      where public.magnets_follow_up_runs.status <> 'active'
+         or public.magnets_follow_up_runs.scheduled_end_at <= now()
       returning *
     `,
     [
