@@ -16,10 +16,11 @@ import type { DomainStage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type DnsRecord = {
-  type: 'TXT' | 'CNAME';
+  type: string;
   name: string;
   value: string;
   fullName?: string;
+  reason?: string;
 };
 
 type StatusResponse = {
@@ -27,6 +28,7 @@ type StatusResponse = {
   host: string;
   verificationRecord: DnsRecord | null;
   cnameRecord: DnsRecord | null;
+  platformVerificationRecords: DnsRecord[];
   liveStatus: {
     verified: boolean;
     misconfigured: boolean;
@@ -194,7 +196,10 @@ export function PublishingWizard({
   const stage = status.stage;
   const ownershipDone = stage === 'verified' || stage === 'attached-pending' || stage === 'live';
   const routingDone = stage === 'live';
+  const platformVerificationRecords = status.platformVerificationRecords || [];
+  const needsPlatformVerification = platformVerificationRecords.length > 0 && !routingDone;
   const needsReconnect =
+    !needsPlatformVerification &&
     stage === 'attached-pending' &&
     (status.liveStatus?.issue === 'deployment_not_found' || status.liveStatus?.configured === false);
 
@@ -281,9 +286,11 @@ export function PublishingWizard({
                 {routingDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
                 {routingDone
                   ? 'Live and serving'
-                  : needsReconnect
-                    ? 'DNS is set, but the subdomain is not connected'
-                    : 'Waiting for DNS to propagate'}
+                  : needsPlatformVerification
+                    ? 'Vercel needs one more verification record'
+                    : needsReconnect
+                      ? 'DNS is set, but the subdomain is not connected'
+                      : 'Waiting for DNS to propagate'}
               </p>
               {needsReconnect && (
                 <AceternityButton
@@ -310,6 +317,21 @@ export function PublishingWizard({
               )}
               {attachError && <span className="text-xs text-red-700">{attachError}</span>}
             </div>
+            {needsPlatformVerification && (
+              <div className="mt-4 space-y-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <div>
+                  <p className="text-xs font-semibold text-amber-900">Vercel verification needed</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    Add the record below at your DNS provider, then click Check again.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {platformVerificationRecords.map((record) => (
+                    <RecordRow key={`${record.type}:${record.fullName || record.name}:${record.value}`} record={record} />
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
 

@@ -28,6 +28,40 @@ type LiveStatus = {
   issue?: 'deployment_not_found' | 'check_failed';
 };
 
+type DnsRecord = {
+  type: string;
+  name: string;
+  value: string;
+  fullName?: string;
+  reason?: string;
+};
+
+function dnsProviderName(fullName: string, rootDomain: string) {
+  const normalizedFullName = fullName.trim().replace(/\.$/, '');
+  const normalizedRoot = rootDomain.trim().replace(/\.$/, '');
+  if (!normalizedFullName || !normalizedRoot) return normalizedFullName;
+  if (normalizedFullName === normalizedRoot) return '@';
+  if (normalizedFullName.endsWith(`.${normalizedRoot}`)) {
+    return normalizedFullName.slice(0, -normalizedRoot.length - 1);
+  }
+  return normalizedFullName;
+}
+
+function vercelVerificationRecords(
+  records: Array<{ type: string; domain: string; value: string; reason?: string }>,
+  rootDomain: string
+): DnsRecord[] {
+  return records
+    .filter((record) => record.type && record.domain && record.value)
+    .map((record) => ({
+      type: record.type.toUpperCase(),
+      name: dnsProviderName(record.domain, rootDomain),
+      value: record.value,
+      fullName: record.domain,
+      reason: record.reason,
+    }));
+}
+
 async function fetchHostHead(url: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PUBLIC_HOST_PROBE_TIMEOUT_MS);
@@ -138,12 +172,14 @@ export async function GET(request: NextRequest) {
     // If we believe the domain is attached, ask the host whether it's actually
     // serving traffic. That flips us from attached-pending to live.
     let liveStatus: LiveStatus | null = null;
+    let platformVerificationRecords: DnsRecord[] = [];
     if (stage === 'attached-pending' && isVercelConfigured() && account.domainAttachedHost) {
       try {
         const status = await getDomainStatus(account.domainAttachedHost);
         if (status?.verified) {
           stage = 'live';
         }
+        platformVerificationRecords = vercelVerificationRecords(status?.verification || [], domain);
         liveStatus = {
           verified: Boolean(status?.verified),
           misconfigured: false,
@@ -204,6 +240,7 @@ export async function GET(request: NextRequest) {
           }
         : null,
       liveStatus,
+      platformVerificationRecords,
       attachedHost: account.domainAttachedHost,
       verifiedAt: account.domainVerifiedAt,
     });
