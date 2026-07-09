@@ -67,6 +67,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewMagnet = initialData.leadMagnets[0] ?? sampleMagnet(initialData.account.id);
   const saving = saveState === 'saving';
+  const hasBrandIdentity = Boolean(draft.logoUrl || draft.logoText.trim());
 
   function patch(updates: Partial<AccountSettings>) {
     setError('');
@@ -102,8 +103,8 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
   async function save() {
     if (saving) return;
-    if (!draft.logoUrl) {
-      setError('Upload your logo.');
+    if (!hasBrandIdentity) {
+      setError('Add a business name or upload a logo.');
       return;
     }
 
@@ -214,7 +215,9 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
                   </button>
                 )}
               </div>
-              <p className="mt-2 text-xs leading-5 text-ink-500">Required. PNG, JPG, WebP, or GIF. 1 MB max.</p>
+              <p className="mt-2 text-xs leading-5 text-ink-500">
+                Optional when you use a business name. PNG, JPG, WebP, or GIF. 1 MB max.
+              </p>
             </div>
 
             <div className="max-w-[280px]">
@@ -238,7 +241,7 @@ export function BrandClient({ initialData }: { initialData: DashboardPayload }) 
 
             <div className="flex items-center justify-between gap-3 border-t border-ink-200 pt-4">
               <SaveStatus state={saveState} />
-              <AceternityButton disabled={saving || !draft.logoUrl} onClick={save} type="button">
+              <AceternityButton disabled={saving || !hasBrandIdentity} onClick={save} type="button">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {saving ? 'Saving' : 'Save brand'}
               </AceternityButton>

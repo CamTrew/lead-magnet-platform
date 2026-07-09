@@ -63,9 +63,9 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
     },
     {
       key: 'logo',
-      label: 'Upload your logo',
-      detail: 'Open Brand after your domain is connected.',
-      done: Boolean(account.logoUrl),
+      label: 'Add brand identity',
+      detail: 'Open Brand and add a business name or logo.',
+      done: Boolean(account.logoUrl || account.logoText.trim()),
     },
     {
       key: 'resendKey',

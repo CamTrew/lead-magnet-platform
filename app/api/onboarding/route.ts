@@ -41,7 +41,6 @@ const CADENCES = ['Weekly', 'Bi-weekly', 'Monthly', 'Quarterly', 'Ad-hoc'] as co
 
 const logoSchema = z
   .string()
-  .min(1, 'Upload your logo')
   .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
   .superRefine((value, ctx) => {
     const result = validateLogoDataUrl(value);
@@ -56,7 +55,15 @@ const schema = z.object({
   businessType: z.enum(BUSINESS_TYPES),
   magnetType: z.enum(MAGNET_TYPES),
   cadence: z.enum(CADENCES),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (!value.logoUrl && !value.businessName.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Add a business name or upload a logo.',
+      path: ['businessName'],
+    });
+  }
+});
 
 export async function POST(request: NextRequest) {
   let userId: string | undefined;

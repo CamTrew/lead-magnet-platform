@@ -50,6 +50,7 @@ export function OnboardingGate({ userName }: { userName: string }) {
   const [cadence, setCadence] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const hasBrandIdentity = Boolean(logoUrl || businessName.trim());
 
   // Prevent body scroll while the modal is open.
   useEffect(() => {
@@ -61,7 +62,7 @@ export function OnboardingGate({ userName }: { userName: string }) {
   }, []);
 
   const valid =
-    logoUrl.length > 0 &&
+    hasBrandIdentity &&
     BUSINESS_TYPES.includes(businessType as (typeof BUSINESS_TYPES)[number]) &&
     MAGNET_TYPES.includes(magnetType as (typeof MAGNET_TYPES)[number]) &&
     CADENCES.includes(cadence as (typeof CADENCES)[number]);
@@ -139,24 +140,24 @@ export function OnboardingGate({ userName }: { userName: string }) {
             </div>
           </div>
           <p className="mt-3 text-sm leading-6 text-ink-600">
-            Add your brand basics before we open the dashboard. Your logo appears on every magnet; business name is optional.
+            Add your brand basics before we open the dashboard. Use a logo, a business name, or both.
           </p>
         </div>
 
         <div className="grid gap-4 px-6 py-6">
-          <Field label="Business name (optional)">
+          <Field label="Business name">
             <AceternityInput
               autoFocus
               disabled={busy}
               maxLength={80}
               onChange={(event) => setBusinessName(event.target.value)}
-              placeholder="Optional if your logo stands alone"
+              placeholder="Required unless your logo stands alone"
               value={businessName}
             />
           </Field>
 
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-ink-700">Upload your logo</span>
+            <span className="mb-1.5 block text-xs font-medium text-ink-700">Logo image</span>
             <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-ink-50 p-3">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-ink-200 bg-white text-ink-500">
                 {logoUrl ? (
@@ -179,7 +180,6 @@ export function OnboardingGate({ userName }: { userName: string }) {
                   className="py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-900"
                   disabled={busy}
                   onChange={handleLogoFile}
-                  required={!logoUrl}
                   type="file"
                 />
               </div>
@@ -235,7 +235,7 @@ export function OnboardingGate({ userName }: { userName: string }) {
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-ink-200 bg-white px-6 py-4">
-          <p className="text-xs text-ink-500">All required. Takes 15 seconds.</p>
+          <p className="text-xs text-ink-500">Business name or logo required. Takes 15 seconds.</p>
           <AceternityButton disabled={!valid || busy} type="submit">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             Continue

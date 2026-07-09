@@ -46,7 +46,6 @@ const brandHighlightIntensitySchema = z.preprocess(
 );
 const logoSchema = z
   .string()
-  .min(1, 'Upload your logo')
   .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
   .superRefine((value, ctx) => {
     const result = validateLogoDataUrl(value);
@@ -107,7 +106,15 @@ const schema = z.object({
   beehiivPublicationId: z.string().trim().max(200),
   substackPublication: z.string().trim().max(200),
   calendarWebhookEnabled: z.boolean(),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (!value.logoUrl && !value.logoText.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Add a business name or upload a logo.',
+      path: ['logoText'],
+    });
+  }
+});
 
 function isUniqueViolation(error: unknown) {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
