@@ -43,6 +43,7 @@ export function PublishingWizard({
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  const [checkingRouting, setCheckingRouting] = useState(false);
   const [verifyMessage, setVerifyMessage] = useState<string>('');
   const [verifyError, setVerifyError] = useState<string>('');
   const [verifyFound, setVerifyFound] = useState<string[]>([]);
@@ -125,6 +126,14 @@ export function PublishingWizard({
     } finally {
       setVerifying(false);
     }
+  }
+
+  async function checkRouting() {
+    if (checkingRouting) return;
+    setCheckingRouting(true);
+    setAttachError('');
+    await refresh();
+    setCheckingRouting(false);
   }
 
   async function attach() {
@@ -253,16 +262,30 @@ export function PublishingWizard({
         {(stage === 'attached-pending' || stage === 'live') && status.cnameRecord && (
           <>
             <RecordRow record={status.cnameRecord} />
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium"
-              style={{
-                borderColor: routingDone ? '#a7f3d0' : '#fde68a',
-                background: routingDone ? '#ecfdf5' : '#fffbeb',
-                color: routingDone ? '#047857' : '#92400e',
-              }}
-            >
-              {routingDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-              {routingDone ? 'Live and serving' : 'Waiting for DNS to propagate'}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <p className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium"
+                style={{
+                  borderColor: routingDone ? '#a7f3d0' : '#fde68a',
+                  background: routingDone ? '#ecfdf5' : '#fffbeb',
+                  color: routingDone ? '#047857' : '#92400e',
+                }}
+              >
+                {routingDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                {routingDone ? 'Live and serving' : 'Waiting for DNS to propagate'}
+              </p>
+              {!routingDone && (
+                <AceternityButton
+                  disabled={checkingRouting}
+                  onClick={checkRouting}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {checkingRouting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  Check again
+                </AceternityButton>
+              )}
+            </div>
           </>
         )}
 
