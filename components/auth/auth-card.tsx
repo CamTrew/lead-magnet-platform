@@ -3,8 +3,8 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2 } from 'lucide-react';
-import { MagnetsLogo } from '@/components/magnets-logo-mark';
+import { Loader2 } from 'lucide-react';
+import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
 import { AceternityButton, AceternityInput } from '@/components/ui/aceternity';
 
 type AuthMode = 'login' | 'register';
@@ -113,17 +113,9 @@ export function AuthCard({
 
   return (
     <main className="brand-soft-bg relative flex min-h-screen items-center justify-center px-4 py-10 text-ink-900">
-      <Link
-        className="absolute left-4 top-4 inline-flex h-9 items-center gap-1.5 rounded-full border border-ink-200 bg-white/75 px-3 text-xs font-bold text-ink-700 transition hover:bg-white hover:text-ink-950 sm:left-6 sm:top-6"
-        href="/"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Home
-      </Link>
-
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-4">
-          <MagnetsLogo markClassName="h-12 w-12" textClassName="text-3xl" />
+          <MagnetsLogoMark className="h-12 w-12" />
           <div className="text-center">
             <h1 className="text-2xl font-black text-ink-950">{activeCopy.title}</h1>
             <p className="mt-1.5 text-sm text-ink-600">{activeCopy.description}</p>
