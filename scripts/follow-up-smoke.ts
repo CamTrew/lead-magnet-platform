@@ -314,6 +314,15 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
+      updateLeadMagnetFollowUpSync: async (accountId, leadMagnetId, updates) => {
+        assert.equal(accountId, account.id);
+        assert.equal(leadMagnetId, magnet.id);
+        return {
+          ...magnet,
+          followUpEmails: updates.followUpEmails,
+          resendFollowUpAutomationId: updates.resendFollowUpAutomationId,
+        };
+      },
     },
   });
 
@@ -373,6 +382,7 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
+      updateLeadMagnetFollowUpSync: async () => null,
     },
   });
 
@@ -422,6 +432,7 @@ async function run() {
           leadMagnetIds: [magnet.id, 'magnet_second'],
         };
       },
+      updateLeadMagnetFollowUpSync: async () => null,
     },
   });
 
@@ -469,11 +480,55 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
+      updateLeadMagnetFollowUpSync: async () => null,
     },
   });
 
   assert.deepEqual(inactiveStopped, { stopped: false });
   assert.deepEqual(requests, []);
+
+  resetRequests();
+  let savedRepair: JsonRecord | null = null;
+  const repairMagnet: LeadMagnet = {
+    ...magnet,
+    resendFollowUpAutomationId: '',
+    followUpEmails: magnet.followUpEmails.map((email) => ({ ...email, resendTemplateId: '' })),
+  };
+  const duplicateAfterRepair = await startLeadMagnetFollowUpSequence({
+    account,
+    magnet: repairMagnet,
+    email: 'repeat@example.com',
+    name: 'Repeat',
+    store: {
+      createFollowUpRun: async () => ({ created: false, runId: null }),
+      markFollowUpRunFailed: async () => undefined,
+      hasActiveFollowUpRunForEmail: async () => false,
+      stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+      listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+      stopFollowUpRunsForAccountEmail: async () => ({
+        stopped: false,
+        stoppedCount: 0,
+        leadMagnetIds: [],
+      }),
+      updateLeadMagnetFollowUpSync: async (accountId, leadMagnetId, updates) => {
+        assert.equal(accountId, account.id);
+        assert.equal(leadMagnetId, magnet.id);
+        savedRepair = updates as unknown as JsonRecord;
+        return {
+          ...repairMagnet,
+          followUpEmails: updates.followUpEmails,
+          resendFollowUpAutomationId: updates.resendFollowUpAutomationId,
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(duplicateAfterRepair, { started: false, reason: 'duplicate' });
+  const savedRepairSnapshot = savedRepair as JsonRecord | null;
+  assert.ok(savedRepairSnapshot, 'Missing automation should be repaired before duplicate suppression.');
+  assert.equal(savedRepairSnapshot.resendFollowUpAutomationId, 'auto_2');
+  assert.ok(findRequest('/automations', 'POST'));
+  assert.deepEqual(eventSendBodies(), []);
 
   resetRequests();
   forbiddenPath = '/events';
@@ -490,7 +545,7 @@ async function run() {
     forbiddenPath = '';
   }
 
-  console.log('Follow-up smoke test passed: mocked Resend setup, automation graph, permission failure, disable flow, manual cancel, and account-level booking cancel.');
+  console.log('Follow-up smoke test passed: mocked Resend setup, automation graph, missing automation repair, permission failure, disable flow, manual cancel, and account-level booking cancel.');
 }
 
 run()

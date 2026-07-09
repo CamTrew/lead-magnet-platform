@@ -7,6 +7,7 @@ import {
   markFollowUpRunFailed as markFollowUpRunFailedInStore,
   stopFollowUpRunsForAccountEmail as stopFollowUpRunsForAccountEmailInStore,
   stopFollowUpRunForEmail as stopFollowUpRunForEmailInStore,
+  updateLeadMagnetFollowUpSync as updateLeadMagnetFollowUpSyncInStore,
 } from './platform-store';
 import {
   cleanEmailText,
@@ -38,6 +39,7 @@ type FollowUpRunStore = {
   markFollowUpRunFailed: typeof markFollowUpRunFailedInStore;
   stopFollowUpRunForEmail: typeof stopFollowUpRunForEmailInStore;
   stopFollowUpRunsForAccountEmail: typeof stopFollowUpRunsForAccountEmailInStore;
+  updateLeadMagnetFollowUpSync: typeof updateLeadMagnetFollowUpSyncInStore;
 };
 
 const defaultFollowUpRunStore: FollowUpRunStore = {
@@ -47,6 +49,7 @@ const defaultFollowUpRunStore: FollowUpRunStore = {
   markFollowUpRunFailed: markFollowUpRunFailedInStore,
   stopFollowUpRunForEmail: stopFollowUpRunForEmailInStore,
   stopFollowUpRunsForAccountEmail: stopFollowUpRunsForAccountEmailInStore,
+  updateLeadMagnetFollowUpSync: updateLeadMagnetFollowUpSyncInStore,
 };
 
 export class FollowUpSequenceError extends Error {
@@ -88,6 +91,23 @@ function normaliseFollowUpEmails(emails: FollowUpEmail[]) {
     body: cleanEmailText(email.body),
     resendTemplateId: email.resendTemplateId || '',
   }));
+}
+
+function hasSyncableFollowUpEmails(magnet: LeadMagnet) {
+  return normaliseFollowUpEmails(magnet.followUpEmails)
+    .some((email) => email.subject && email.body);
+}
+
+function needsInitialFollowUpSync(magnet: LeadMagnet) {
+  if (!magnet.followUpEnabled || !hasSyncableFollowUpEmails(magnet)) return false;
+  if (!magnet.resendFollowUpAutomationId) return true;
+  return normaliseFollowUpEmails(magnet.followUpEmails)
+    .filter((email) => email.subject && email.body)
+    .some((email) => !email.resendTemplateId);
+}
+
+function followUpEmailsChanged(a: FollowUpEmail[], b: FollowUpEmail[]) {
+  return JSON.stringify(a) !== JSON.stringify(b);
 }
 
 function replaceTemplateVariables(value: string) {
@@ -351,20 +371,6 @@ async function enableAutomation(apiKey: string, automationId: string) {
   });
 }
 
-async function refreshAutomationGraph(account: AccountSettings, magnet: LeadMagnet) {
-  if (!magnet.followUpEnabled || !magnet.resendFollowUpAutomationId) return;
-
-  const emails = normaliseFollowUpEmails(magnet.followUpEmails)
-    .filter((email) => email.subject && email.body && email.resendTemplateId);
-  if (emails.length === 0) return;
-
-  await upsertAutomation(
-    account.resendApiKey,
-    magnet.resendFollowUpAutomationId,
-    buildAutomationGraph(account, magnet, emails)
-  );
-}
-
 async function sendEvent(
   account: AccountSettings,
   leadMagnetId: string,
@@ -434,6 +440,33 @@ export async function syncLeadMagnetFollowUpAutomation(
   };
 }
 
+async function syncAndPersistFollowUpAutomation(
+  account: AccountSettings,
+  magnet: LeadMagnet,
+  store: FollowUpRunStore
+) {
+  const synced = await syncLeadMagnetFollowUpAutomation(account, magnet);
+  const automationId = synced.automationId || magnet.resendFollowUpAutomationId;
+  const changed =
+    automationId !== magnet.resendFollowUpAutomationId ||
+    followUpEmailsChanged(synced.emails, magnet.followUpEmails);
+
+  if (!changed) {
+    return magnet;
+  }
+
+  const updated = await store.updateLeadMagnetFollowUpSync(account.id, magnet.id, {
+    followUpEmails: synced.emails,
+    resendFollowUpAutomationId: automationId,
+  });
+
+  return updated || {
+    ...magnet,
+    followUpEmails: synced.emails,
+    resendFollowUpAutomationId: automationId,
+  };
+}
+
 export function followUpSequenceEndDate(magnet: Pick<LeadMagnet, 'followUpEmails'>) {
   const totalHours = normaliseFollowUpEmails(magnet.followUpEmails)
     .reduce((total, email) => total + email.delayHours, 0);
@@ -455,17 +488,26 @@ export async function startLeadMagnetFollowUpSequence({
   name: string;
   store?: FollowUpRunStore;
 }) {
-  if (!magnet.followUpEnabled || !magnet.resendFollowUpAutomationId || magnet.followUpEmails.length === 0) {
+  if (!magnet.followUpEnabled || !hasSyncableFollowUpEmails(magnet)) {
+    return { started: false, reason: 'not_configured' as const };
+  }
+
+  let syncedMagnet = magnet;
+  if (needsInitialFollowUpSync(syncedMagnet)) {
+    syncedMagnet = await syncAndPersistFollowUpAutomation(account, syncedMagnet, store);
+  }
+
+  if (!syncedMagnet.resendFollowUpAutomationId) {
     return { started: false, reason: 'not_configured' as const };
   }
 
   const run = await store.createFollowUpRun({
     accountId: account.id,
-    leadMagnetId: magnet.id,
+    leadMagnetId: syncedMagnet.id,
     email,
     name,
-    sequenceFingerprint: followUpSequenceFingerprint(magnet),
-    scheduledEndAt: followUpSequenceEndDate(magnet),
+    sequenceFingerprint: followUpSequenceFingerprint(syncedMagnet),
+    scheduledEndAt: followUpSequenceEndDate(syncedMagnet),
   });
 
   if (!run.created) {
@@ -473,13 +515,12 @@ export async function startLeadMagnetFollowUpSequence({
   }
 
   try {
-    await refreshAutomationGraph(account, magnet);
-    await enableAutomation(account.resendApiKey, magnet.resendFollowUpAutomationId);
-    await sendEvent(account, magnet.id, 'signup', email, {
+    syncedMagnet = await syncAndPersistFollowUpAutomation(account, syncedMagnet, store);
+    await sendEvent(account, syncedMagnet.id, 'signup', email, {
       name: name.trim() || 'there',
-      downloadLink: magnet.downloadLink.trim(),
-      leadMagnetId: magnet.id,
-      leadMagnetTitle: magnet.title,
+      downloadLink: syncedMagnet.downloadLink.trim(),
+      leadMagnetId: syncedMagnet.id,
+      leadMagnetTitle: syncedMagnet.title,
     });
   } catch (error) {
     if (run.runId) {
