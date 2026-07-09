@@ -19,7 +19,7 @@ import {
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
 import {
-  logoValidationMessage,
+  type LogoValidationError,
   MAX_MAGNET_IMAGE_BYTES,
   MAX_MAGNET_IMAGE_DATA_URL_LENGTH,
   validateLogoDataUrl,
@@ -44,21 +44,46 @@ function isLeadMagnetImageProxyUrl(value: string) {
   return /^\/magnet-images\/[0-9a-f-]{36}(\?.*)?$/i.test(value);
 }
 
+function isRemoteImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return false;
+    return !url.pathname.toLowerCase().endsWith('.svg');
+  } catch {
+    return false;
+  }
+}
+
+function imageValidationMessage(reason: LogoValidationError) {
+  if (reason === 'empty') return 'The image file is empty.';
+  if (reason === 'too_large') return 'Image must be 10 MB or smaller.';
+  if (reason === 'bad_format') return 'Re-upload the image. We could not read the file you provided.';
+  if (reason === 'mime_not_allowed') return 'Image must be a PNG, JPG, WebP, or GIF. SVG is not supported.';
+  return 'That file does not look like the image type it claims to be.';
+}
+
 const imageSchema = z
   .string()
   .max(MAX_MAGNET_IMAGE_DATA_URL_LENGTH, 'Image is too large')
   .superRefine((value, ctx) => {
-    if (!value || isVercelBlobImageUrl(value) || isLeadMagnetImageProxyUrl(value)) return;
+    if (
+      !value ||
+      isVercelBlobImageUrl(value) ||
+      isLeadMagnetImageProxyUrl(value) ||
+      isRemoteImageUrl(value)
+    ) {
+      return;
+    }
 
     const result = validateLogoDataUrl(value, {
       maxBytes: MAX_MAGNET_IMAGE_BYTES,
       maxLength: MAX_MAGNET_IMAGE_DATA_URL_LENGTH,
     });
     if (!result.ok) {
-      const message = result.reason === 'too_large'
-        ? 'Image must be 10 MB or smaller.'
-        : logoValidationMessage(result.reason).replace(/^The logo|^Logo/, 'Image');
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: imageValidationMessage(result.reason),
+      });
     }
   });
 
