@@ -210,20 +210,13 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
       const duration = durationFromHours(delayHours);
 
       if (magnet.followUpStopOnBooking) {
-        const bookedKey = `booked_${index + 1}`;
         steps.push({
           key: waitKey,
           type: 'wait_for_event',
           config: { event_name: bookedEvent, timeout: duration },
         });
-        steps.push({
-          key: bookedKey,
-          type: 'delay',
-          config: { duration: '1 minute' },
-        });
         connections.push({ from: previousKey, to: waitKey, type: 'default' });
         connections.push({ from: waitKey, to: emailKey, type: 'timeout' });
-        connections.push({ from: waitKey, to: bookedKey, type: 'event_received' });
       } else {
         steps.push({
           key: waitKey,

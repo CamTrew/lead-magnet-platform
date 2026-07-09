@@ -270,14 +270,6 @@ async function run() {
     )
   );
   assert.ok(
-    steps.some(
-      (step) =>
-        step.key === 'booked_2' &&
-        step.type === 'delay' &&
-        (step.config as JsonRecord | undefined)?.duration === '1 minute'
-    )
-  );
-  assert.ok(
     connections.some(
       (connection) =>
         connection.from === 'wait_2' &&
@@ -286,13 +278,8 @@ async function run() {
     )
   );
   assert.ok(
-    connections.some(
-      (connection) =>
-        connection.from === 'wait_2' &&
-        connection.to === 'booked_2' &&
-        connection.type === 'event_received'
-    ),
-    'booking event should take an explicit branch that never reaches the next email.'
+    !connections.some((connection) => connection.type === 'event_received'),
+    'booking events intentionally have no connection to the next email.'
   );
 
   resetRequests();

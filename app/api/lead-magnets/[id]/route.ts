@@ -206,7 +206,9 @@ function friendlyFollowUpSyncMessage(error: FollowUpSequenceError) {
     return message;
   }
 
-  return 'Resend could not save this follow-up sequence. Check your Resend connection and try again.';
+  return message
+    ? `Resend could not save this follow-up sequence: ${message}`
+    : 'Resend could not save this follow-up sequence. Check your Resend connection and try again.';
 }
 
 export async function PUT(
