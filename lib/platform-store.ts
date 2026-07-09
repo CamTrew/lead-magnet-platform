@@ -1802,7 +1802,17 @@ export async function createFollowUpRun(input: {
         scheduled_end_at
       )
       values ($1, $2, $3, $4, $5, $6)
-      on conflict (lead_magnet_id, email) do nothing
+      on conflict (lead_magnet_id, email) do update
+      set
+        name = excluded.name,
+        status = 'active',
+        stop_reason = '',
+        sequence_fingerprint = excluded.sequence_fingerprint,
+        scheduled_end_at = excluded.scheduled_end_at,
+        stopped_at = null,
+        started_at = now(),
+        updated_at = now()
+      where public.magnets_follow_up_runs.status = 'failed'
       returning *
     `,
     [

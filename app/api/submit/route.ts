@@ -102,6 +102,38 @@ export async function POST(request: NextRequest) {
       throw sendError;
     }
 
+    await recordSubmission({
+      accountId,
+      leadMagnetId,
+      name,
+      email,
+    });
+
+    try {
+      const followUp = await startLeadMagnetFollowUpSequence({
+        account: result.account,
+        magnet: result.leadMagnet,
+        email,
+        name,
+      });
+      if (!followUp.started) {
+        log.info('Follow-up sequence not started', {
+          route: ROUTE,
+          method: 'POST',
+          status: 200,
+          accountId,
+          extra: { leadMagnetId, reason: followUp.reason },
+        });
+      }
+    } catch (followUpError) {
+      log.warn('Follow-up sequence start failed (non-fatal)', {
+        route: ROUTE,
+        method: 'POST',
+        accountId,
+        extra: { leadMagnetId, error: followUpError },
+      });
+    }
+
     try {
       await addToBeehiiv(result.account, email, name);
     } catch (beehiivError) {
@@ -121,29 +153,6 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         accountId,
         extra: { leadMagnetId, error: substackError },
-      });
-    }
-
-    await recordSubmission({
-      accountId,
-      leadMagnetId,
-      name,
-      email,
-    });
-
-    try {
-      await startLeadMagnetFollowUpSequence({
-        account: result.account,
-        magnet: result.leadMagnet,
-        email,
-        name,
-      });
-    } catch (followUpError) {
-      log.warn('Follow-up sequence start failed (non-fatal)', {
-        route: ROUTE,
-        method: 'POST',
-        accountId,
-        extra: { leadMagnetId, error: followUpError },
       });
     }
 
