@@ -156,12 +156,7 @@ function resendName(label: string, magnet: Pick<LeadMagnet, 'id' | 'slug' | 'tit
 
 function templatePayload(account: AccountSettings, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
   const body = replaceTemplateVariables(email.body);
-  const downloadLink = magnet.downloadLink.trim();
-  const text = cleanEmailText(
-    downloadLink && !body.includes('{{{DOWNLOAD_LINK}}}') && !body.includes(downloadLink)
-      ? [body, '{{{DOWNLOAD_LINK}}}'].filter(Boolean).join('\n\n')
-      : body
-  );
+  const text = cleanEmailText(body);
 
   return {
     name: resendName('Magnets follow-up email', magnet, String(index + 1)),

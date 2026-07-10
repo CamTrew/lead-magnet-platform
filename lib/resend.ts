@@ -112,11 +112,7 @@ export async function sendLeadMagnetEmail({
       .replace(/{name}/g, name)
       .replace(/{download_link}/g, downloadLink)
   );
-  const text = cleanEmailText(
-    downloadLink && !body.includes(downloadLink)
-      ? [body, downloadLink].filter(Boolean).join('\n\n')
-      : body
-  );
+  const text = cleanEmailText(body);
   const previewText = cleanPreviewText(magnet.emailPreview);
 
   let result;
