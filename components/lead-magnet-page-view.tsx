@@ -1,8 +1,10 @@
 /* eslint-disable @next/next/no-img-element */
 import type { CSSProperties } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
+import { optimiseLeadMagnetImageUrl } from '@/lib/lead-magnet-images';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 type BrandCss = CSSProperties & Record<`--${string}`, string>;
@@ -236,13 +238,19 @@ function MediaAndCapture({
 }
 
 function MagnetImage({ magnet }: { magnet: LeadMagnet }) {
+  const imageUrl = optimiseLeadMagnetImageUrl(magnet.imageUrl);
+
   return (
     <div className="group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50">
-      <div className="aspect-[16/10] w-full">
-        <img
+      <div className="relative aspect-[16/10] w-full">
+        <Image
           alt={magnet.title}
           className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-          src={magnet.imageUrl}
+          fill
+          priority
+          quality={82}
+          sizes="(min-width: 1024px) 520px, calc(100vw - 48px)"
+          src={imageUrl}
         />
       </div>
     </div>

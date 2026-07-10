@@ -11,6 +11,7 @@ import {
   leadMagnetMetadataSnippet,
 } from '@/components/lead-magnet-page-view';
 import { isPlatformHost, leadMagnetMetadataIcons } from '@/lib/favicon';
+import { optimiseLeadMagnetImageUrl } from '@/lib/lead-magnet-images';
 import { absoluteMetadataUrl, leadMagnetSiteName } from '@/lib/lead-magnet-metadata';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,7 @@ export async function generateMetadata({
   const canonical = baseUrl ? `${baseUrl}/${leadMagnet.slug}` : undefined;
   const siteName = leadMagnetSiteName(account, host);
   const imageUrl = leadMagnet.imageUrl
-    ? absoluteMetadataUrl(leadMagnet.imageUrl, baseUrl)
+    ? absoluteMetadataUrl(optimiseLeadMagnetImageUrl(leadMagnet.imageUrl), baseUrl)
     : undefined;
   const descriptionSource =
     leadMagnet.subtitle.trim() ||
