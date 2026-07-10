@@ -1,10 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 import type { CSSProperties } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
-import { optimiseLeadMagnetImageUrl } from '@/lib/lead-magnet-images';
+import {
+  leadMagnetImageSrcSet,
+  optimiseLeadMagnetImageUrl,
+} from '@/lib/lead-magnet-images';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 type BrandCss = CSSProperties & Record<`--${string}`, string>;
@@ -42,6 +44,7 @@ const pageBackground = [
   'linear-gradient(to right, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
   'linear-gradient(to bottom, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
 ].join(', ');
+const leadMagnetImageSizes = '(min-width: 1024px) 520px, calc(100vw - 48px)';
 
 /**
  * Public page layout. Keep this in sync with the editor preview in
@@ -69,12 +72,23 @@ export function LeadMagnetPageView({
     backgroundImage: pageBackground,
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
+  const imageUrl = magnet.imageUrl ? optimiseLeadMagnetImageUrl(magnet.imageUrl) : '';
+  const imageSrcSet = magnet.imageUrl ? leadMagnetImageSrcSet(magnet.imageUrl) : undefined;
 
   return (
     <div
       className="relative flex min-h-screen flex-col bg-white text-zinc-900"
       style={brandStyle}
     >
+      {imageUrl && (
+        <link
+          rel="preload"
+          as="image"
+          href={imageUrl}
+          imageSrcSet={imageSrcSet}
+          imageSizes={leadMagnetImageSizes}
+        />
+      )}
       <header className="relative z-10">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
           <Link href={homeHref} className="inline-flex min-h-10 max-w-full items-center justify-center gap-2 transition-transform hover:scale-[1.01]">
@@ -237,18 +251,27 @@ function MediaAndCapture({
 
 function MagnetImage({ magnet }: { magnet: LeadMagnet }) {
   const imageUrl = optimiseLeadMagnetImageUrl(magnet.imageUrl);
+  const imageSrcSet = leadMagnetImageSrcSet(magnet.imageUrl);
 
   return (
-    <div className="group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50">
+    <div
+      className="group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50"
+      style={{
+        backgroundImage: 'linear-gradient(135deg, #f3f6fb 0%, #ffffff 55%, #eef4fb 100%)',
+      }}
+    >
       <div className="relative aspect-[16/10] w-full">
-        <Image
+        <img
           alt={magnet.title}
           className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-          fill
-          priority
-          quality={82}
-          sizes="(min-width: 1024px) 520px, calc(100vw - 48px)"
+          decoding="async"
+          fetchPriority="high"
+          height={750}
+          loading="eager"
+          sizes={leadMagnetImageSizes}
           src={imageUrl}
+          srcSet={imageSrcSet}
+          width={1200}
         />
       </div>
     </div>

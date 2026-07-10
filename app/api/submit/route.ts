@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addToBeehiiv } from '@/lib/beehiiv';
 import { senderMatchesAccountDomain } from '@/lib/dns-records';
@@ -13,6 +13,7 @@ import {
 import { EmailDeliveryError, sendLeadMagnetEmail } from '@/lib/resend';
 import { startLeadMagnetFollowUpSequence } from '@/lib/follow-up-sequences';
 import { log } from '@/lib/logger';
+import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 const ROUTE = '/api/submit';
 
@@ -23,6 +24,65 @@ const schema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254),
 }).strict();
+
+async function runPostSubmissionWork({
+  account,
+  email,
+  leadMagnet,
+  name,
+}: {
+  account: AccountSettings;
+  leadMagnet: LeadMagnet;
+  name: string;
+  email: string;
+}) {
+  try {
+    const followUp = await startLeadMagnetFollowUpSequence({
+      account,
+      magnet: leadMagnet,
+      email,
+      name,
+    });
+    if (!followUp.started) {
+      log.info('Follow-up sequence not started', {
+        route: ROUTE,
+        method: 'POST',
+        status: 200,
+        accountId: account.id,
+        extra: { leadMagnetId: leadMagnet.id, reason: followUp.reason },
+      });
+    }
+  } catch (followUpError) {
+    log.warn('Follow-up sequence start failed (non-fatal)', {
+      route: ROUTE,
+      method: 'POST',
+      accountId: account.id,
+      extra: { leadMagnetId: leadMagnet.id, error: followUpError },
+    });
+  }
+
+  try {
+    await addToBeehiiv(account, email, name);
+  } catch (beehiivError) {
+    log.warn('Beehiiv subscribe failed (non-fatal)', {
+      route: ROUTE,
+      method: 'POST',
+      accountId: account.id,
+      extra: { leadMagnetId: leadMagnet.id, error: beehiivError },
+    });
+  }
+
+  try {
+    await addToSubstack(account, email);
+  } catch (substackError) {
+    log.warn('Substack subscribe failed (non-fatal)', {
+      route: ROUTE,
+      method: 'POST',
+      accountId: account.id,
+      extra: { leadMagnetId: leadMagnet.id, error: substackError },
+    });
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,52 +169,14 @@ export async function POST(request: NextRequest) {
       email,
     });
 
-    try {
-      const followUp = await startLeadMagnetFollowUpSequence({
+    after(() =>
+      runPostSubmissionWork({
         account: result.account,
-        magnet: result.leadMagnet,
+        leadMagnet: result.leadMagnet,
         email,
         name,
-      });
-      if (!followUp.started) {
-        log.info('Follow-up sequence not started', {
-          route: ROUTE,
-          method: 'POST',
-          status: 200,
-          accountId,
-          extra: { leadMagnetId, reason: followUp.reason },
-        });
-      }
-    } catch (followUpError) {
-      log.warn('Follow-up sequence start failed (non-fatal)', {
-        route: ROUTE,
-        method: 'POST',
-        accountId,
-        extra: { leadMagnetId, error: followUpError },
-      });
-    }
-
-    try {
-      await addToBeehiiv(result.account, email, name);
-    } catch (beehiivError) {
-      log.warn('Beehiiv subscribe failed (non-fatal)', {
-        route: ROUTE,
-        method: 'POST',
-        accountId,
-        extra: { leadMagnetId, error: beehiivError },
-      });
-    }
-
-    try {
-      await addToSubstack(result.account, email);
-    } catch (substackError) {
-      log.warn('Substack subscribe failed (non-fatal)', {
-        route: ROUTE,
-        method: 'POST',
-        accountId,
-        extra: { leadMagnetId, error: substackError },
-      });
-    }
+      })
+    );
 
     log.info('Submission accepted', {
       route: ROUTE,
