@@ -91,8 +91,8 @@ export function LeadMagnetPageView({
               boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${tone(0.08)}`,
             }}
           >
-            <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-14">
-              <section className="min-w-0 lg:pt-1">
+            <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-x-14">
+              <section className="min-w-0 lg:col-start-1 lg:row-start-1 lg:pt-1">
                 <h1 className="mb-6 max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-[58px] lg:leading-[1.05]">
                   {magnet.title}
                 </h1>
@@ -102,11 +102,13 @@ export function LeadMagnetPageView({
                     {magnet.subtitle}
                   </p>
                 )}
+              </section>
 
-                <div className="mb-10 lg:hidden">
-                  <MediaAndCapture account={account} magnet={magnet} />
-                </div>
+              <aside className="mb-10 min-w-0 lg:sticky lg:top-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mb-0">
+                <MediaAndCapture account={account} magnet={magnet} />
+              </aside>
 
+              <section className="min-w-0 lg:col-start-1 lg:row-start-2">
                 {magnet.description && (
                   <div className="mb-11 max-w-2xl space-y-5 text-[15px] leading-relaxed text-gray-600">
                     {magnet.description
@@ -154,10 +156,6 @@ export function LeadMagnetPageView({
                   </div>
                 )}
               </section>
-
-              <aside className="hidden lg:sticky lg:top-10 lg:block">
-                <MediaAndCapture account={account} magnet={magnet} />
-              </aside>
             </div>
           </div>
         </div>

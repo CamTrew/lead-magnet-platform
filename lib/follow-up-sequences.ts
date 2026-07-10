@@ -19,6 +19,7 @@ import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
+const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
   { key: 'NAME', type: 'string' },
   { key: 'DOWNLOAD_LINK', type: 'string' },
@@ -142,6 +143,17 @@ function replaceTemplateVariables(value: string) {
     .replace(/{download_link}/g, '{{{DOWNLOAD_LINK}}}');
 }
 
+function resendName(label: string, magnet: Pick<LeadMagnet, 'id' | 'slug' | 'title'>, detail?: string) {
+  const name = (magnet.title || magnet.slug || magnet.id).replace(/\s+/g, ' ').trim();
+  const full = [label, detail, name].filter(Boolean).join(': ');
+
+  if (full.length <= RESEND_NAME_MAX_LENGTH) return full;
+
+  const suffix = ` ${magnet.id.slice(0, 8)}`;
+  const maxPrefixLength = RESEND_NAME_MAX_LENGTH - suffix.length;
+  return `${full.slice(0, maxPrefixLength).trimEnd()}${suffix}`;
+}
+
 function templatePayload(account: AccountSettings, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
   const body = replaceTemplateVariables(email.body);
   const downloadLink = magnet.downloadLink.trim();
@@ -152,7 +164,7 @@ function templatePayload(account: AccountSettings, magnet: LeadMagnet, email: Fo
   );
 
   return {
-    name: `Magnets ${magnet.title.slice(0, 48) || magnet.id} follow-up ${index + 1}`,
+    name: resendName('Magnets follow-up email', magnet, String(index + 1)),
     from: account.resendFromEmail,
     subject: email.subject,
     text,
@@ -349,7 +361,7 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
   });
 
   return {
-    name: `Magnets follow-up: ${magnet.title.slice(0, 90) || magnet.id}`,
+    name: resendName('Magnets follow-up', magnet),
     steps,
     connections,
   };
