@@ -453,7 +453,8 @@ export function DashboardClient({
   setupChecklist?: SetupItem[];
   showRedirectNotice?: boolean;
 }) {
-  const [account, setAccount] = useState<AccountSettings>(initialData.account);
+  const initialAccount = initialData.account;
+  const [account, setAccount] = useState<AccountSettings>(initialAccount);
   const [sectionState, setSectionState] = useState<Record<SaveSection, SaveState>>({
     delivery: 'idle',
     publishing: 'idle',
@@ -474,6 +475,17 @@ export function DashboardClient({
   // close over a stale `account` from the render that registered it.
   const accountRef = useRef(account);
   accountRef.current = account;
+
+  useEffect(() => {
+    accountRef.current = initialAccount;
+    setAccount(initialAccount);
+    dirty.current = { delivery: false, publishing: false };
+    setSectionState({ delivery: 'idle', publishing: 'idle' });
+    setPublishingStatusVersion((version) => version + 1);
+    setError('');
+    setUnlockDomain(false);
+    setUnlockResendKey(false);
+  }, [initialAccount]);
 
   function setSaveState(section: SaveSection, state: SaveState) {
     setSectionState((current) => ({ ...current, [section]: state }));

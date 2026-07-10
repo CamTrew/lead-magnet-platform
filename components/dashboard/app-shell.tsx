@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CircleHelp,
@@ -303,7 +303,6 @@ export function DashboardLayoutShell({
   userName: string;
   userEmail: string;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(sidebarOpenPreference);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -323,7 +322,7 @@ export function DashboardLayoutShell({
     setIsLoggingOut(true);
     window.dispatchEvent(new Event('magnets:navigation-start'));
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    window.location.assign('/login');
   };
 
   return (

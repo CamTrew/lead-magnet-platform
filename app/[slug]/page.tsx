@@ -18,16 +18,21 @@ export const dynamic = 'force-dynamic';
 const getPublishedLeadMagnet = cache(findPublishedLeadMagnet);
 const getAccountByAttachedHost = cache(findAccountByAttachedHost);
 
+function normaliseSlug(slug: string) {
+  return slug.toLowerCase();
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  const normalisedSlug = normaliseSlug(slug);
   const requestHeaders = await headers();
   const host = requestHeaders.get('host') || '';
 
-  const result = await getPublishedLeadMagnet(host, slug);
+  const result = await getPublishedLeadMagnet(host, normalisedSlug);
 
   if (!result) {
     return {
@@ -88,9 +93,15 @@ export default async function LeadMagnetPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const normalisedSlug = normaliseSlug(slug);
+
+  if (slug !== normalisedSlug) {
+    redirect(`/${normalisedSlug}`);
+  }
+
   const requestHeaders = await headers();
   const host = requestHeaders.get('host') || 'localhost:3000';
-  const result = await getPublishedLeadMagnet(host, slug);
+  const result = await getPublishedLeadMagnet(host, normalisedSlug);
 
   if (!result) {
     // Page is missing or unpublished. If we recognise the host (it's attached

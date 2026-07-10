@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const payload = await requireDashboardPayload();
   const setupComplete = isSetupComplete(payload.account);

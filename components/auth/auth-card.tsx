@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
 import { AceternityButton, AceternityInput } from '@/components/ui/aceternity';
@@ -47,7 +46,6 @@ export function AuthCard({
   mode: AuthMode;
   nextPath?: string;
 }) {
-  const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -102,7 +100,7 @@ export function AuthCard({
       const destination = mode === 'login'
         ? withLoginEntry(nextPath || '/dashboard')
         : '/dashboard';
-      router.push(destination);
+      window.location.assign(destination);
       return;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
