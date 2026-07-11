@@ -10,6 +10,8 @@ import {
   stopLeadMagnetFollowUpSequence,
   syncLeadMagnetFollowUpAutomation,
 } from '../lib/follow-up-sequences';
+import { verifyFollowUpStopToken } from '../lib/follow-up-opt-out';
+import { renderEmailTextFallback, renderPlainEmailHtml } from '../lib/resend';
 import type { AccountSettings, LeadMagnet } from '../lib/types';
 
 type JsonRecord = Record<string, unknown>;
@@ -196,7 +198,7 @@ const magnet: LeadMagnet = {
       delayHours: 0,
       subject: 'First follow-up for {name}',
       preview: 'First preview',
-      body: 'Hi {name}, here is the link again:\n\n{download_link}',
+      body: 'Hi {name}, here is the link again:\n\n![Audit preview](https://cdn.example.com/audit-preview.png)\n\n{download_link}',
       resendTemplateId: '',
     },
     {
@@ -254,7 +256,17 @@ async function run() {
   assert.equal(templateBody.subject, 'First follow-up for {name}');
   assert.equal(typeof templateBody.html, 'string');
   assert.match(String(templateBody.html), /\{\{\{NAME\}\}\}/);
+  assert.match(String(templateBody.html), /<img src="https:\/\/cdn\.example\.com\/audit-preview\.png"/);
+  assert.match(String(templateBody.html), /alt="Audit preview"/);
+  assert.match(String(templateBody.html), /Stop this sequence/);
+  assert.match(String(templateBody.html), /\{\{\{STOP_SEQUENCE_URL\}\}\}/);
   assert.match(String(templateBody.text), /\{\{\{DOWNLOAD_LINK\}\}\}/);
+  assert.match(String(templateBody.text), /Audit preview: https:\/\/cdn\.example\.com\/audit-preview\.png/);
+  assert.match(String(templateBody.text), /\{\{\{STOP_SEQUENCE_URL\}\}\}/);
+
+  const normalEmailBody = 'Here is the screenshot:\n\n![Screenshot](https://cdn.example.com/screenshot.jpg)\n\nDone.';
+  assert.match(renderPlainEmailHtml(normalEmailBody, 'Preview'), /<img src="https:\/\/cdn\.example\.com\/screenshot\.jpg"/);
+  assert.match(renderEmailTextFallback(normalEmailBody), /Screenshot: https:\/\/cdn\.example\.com\/screenshot\.jpg/);
 
   assert.ok(findRequest('/templates/tmpl_1/publish', 'POST'));
   assert.ok(findRequest('/templates/tmpl_2/publish', 'POST'));
@@ -289,6 +301,10 @@ async function run() {
     !connections.some((connection) => connection.type === 'event_received'),
     'booking events intentionally have no connection to the next email.'
   );
+  const sendEmailStep = steps.find((step) => step.type === 'send_email');
+  const templateVariables = (((sendEmailStep?.config as JsonRecord | undefined)?.template as JsonRecord | undefined)
+    ?.variables || {}) as JsonRecord;
+  assert.deepEqual(templateVariables.STOP_SEQUENCE_URL, { var: 'event.stopSequenceUrl' });
 
   resetRequests();
   const started = await startLeadMagnetFollowUpSequence({
@@ -333,7 +349,10 @@ async function run() {
   assert.equal(startAutomationPatches.length, 2);
   assert.ok(Array.isArray(startAutomationPatches[0]?.steps));
   assert.deepEqual(startAutomationPatches[1], { status: 'enabled' });
-  assert.deepEqual(eventSendBodies(), [
+  const startEvents = eventSendBodies();
+  const startPayload = (startEvents[0]?.payload || {}) as JsonRecord;
+  assert.equal(typeof startPayload.stopSequenceUrl, 'string');
+  assert.deepEqual(startEvents, [
     {
       event: 'magnets.lead_magnet.magnet_smoke.signup',
       email: 'lead@example.com',
@@ -342,9 +361,18 @@ async function run() {
         downloadLink: magnet.downloadLink,
         leadMagnetId: magnet.id,
         leadMagnetTitle: magnet.title,
+        stopSequenceUrl: startPayload.stopSequenceUrl,
       },
     },
   ]);
+  const stopUrl = String(startPayload.stopSequenceUrl || '');
+  assert.match(stopUrl, /^https:\/\/get\.example\.com\/sequence\/stop\?token=/);
+  const stopToken = new URL(stopUrl).searchParams.get('token') || '';
+  assert.deepEqual(verifyFollowUpStopToken(stopToken), {
+    accountId: account.id,
+    leadMagnetId: magnet.id,
+    email: 'lead@example.com',
+  });
 
   resetRequests();
   await syncLeadMagnetFollowUpAutomation(account, {

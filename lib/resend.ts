@@ -19,6 +19,73 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
+const emailImageLinePattern = /^!\[([^\]\n]{0,120})\]\((https?:\/\/[^\s)]+)\)$/;
+
+function parseEmailImageLine(line: string) {
+  const match = line.trim().match(emailImageLinePattern);
+  if (!match) return null;
+
+  const [, alt = '', rawUrl = ''] = match;
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    return {
+      alt: alt.trim() || 'Email image',
+      url: url.toString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function addEmailImageMarkdown(body: string, imageUrl: string, alt = 'Image') {
+  const block = `![${alt.replace(/[\]\n\r]/g, '').trim() || 'Image'}](${imageUrl})`;
+  return cleanEmailText([body.trimEnd(), block].filter(Boolean).join('\n\n'));
+}
+
+export function renderEmailTextFallback(text: string) {
+  return cleanEmailText(
+    text
+      .split('\n')
+      .map((line) => {
+        const image = parseEmailImageLine(line);
+        return image ? `${image.alt}: ${image.url}` : line;
+      })
+      .join('\n')
+  );
+}
+
+function renderEmailBodyHtml(text: string) {
+  const chunks: string[] = [];
+  const textBuffer: string[] = [];
+
+  const flushText = () => {
+    const textChunk = cleanEmailText(textBuffer.join('\n'));
+    textBuffer.length = 0;
+    if (!textChunk) return;
+
+    chunks.push(
+      `<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${escapeHtml(textChunk)}</div>`
+    );
+  };
+
+  for (const line of text.split('\n')) {
+    const image = parseEmailImageLine(line);
+    if (!image) {
+      textBuffer.push(line);
+      continue;
+    }
+
+    flushText();
+    chunks.push(
+      `<div style="margin:20px 0"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:0;border-radius:12px" /></div>`
+    );
+  }
+
+  flushText();
+  return chunks.join('');
+}
+
 export function cleanEmailText(value: string) {
   return value
     .replace(/\r\n?/g, '\n')
@@ -32,12 +99,12 @@ export function cleanPreviewText(value: string) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-export function renderPlainEmailHtml(text: string, previewText: string) {
+export function renderPlainEmailHtml(text: string, previewText: string, footerHtml = '') {
   const preheader = previewText
     ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;font-size:1px;line-height:1px">${escapeHtml(previewText)}</div>`
     : '';
 
-  return `${preheader}<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${escapeHtml(text)}</div>`;
+  return `${preheader}${renderEmailBodyHtml(text)}${footerHtml}`;
 }
 
 export function scrubResendErrorMessage(message: string) {
@@ -112,7 +179,7 @@ export async function sendLeadMagnetEmail({
       .replace(/{name}/g, name)
       .replace(/{download_link}/g, downloadLink)
   );
-  const text = cleanEmailText(body);
+  const text = renderEmailTextFallback(body);
   const previewText = cleanPreviewText(magnet.emailPreview);
 
   let result;
@@ -122,7 +189,7 @@ export async function sendLeadMagnetEmail({
       to,
       subject: magnet.emailSubject,
       text,
-      html: renderPlainEmailHtml(text, previewText),
+      html: renderPlainEmailHtml(body, previewText),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

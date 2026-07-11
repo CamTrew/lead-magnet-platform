@@ -20,7 +20,7 @@ function isPublicApi(pathname: string) {
   // Vercel Blob calls this route after a browser upload completes. The route
   // still requires a signed Blob callback or a dashboard session, depending on
   // the event type, so only this exact callback/token endpoint is public.
-  return /^\/api\/lead-magnets\/[0-9a-f-]{36}\/image$/i.test(pathname);
+  return /^\/api\/lead-magnets\/[0-9a-f-]{36}\/(?:image|email-image)$/i.test(pathname);
 }
 
 function applySecurityHeaders(response: NextResponse, request: NextRequest) {

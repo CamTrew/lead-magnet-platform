@@ -33,6 +33,9 @@ import { EditableHotspot, InlineParagraphs, InlineText } from '@/components/dash
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Mode = 'page' | 'email' | 'sequence';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
+type EmailImageTarget =
+  | { kind: 'resource' }
+  | { kind: 'follow-up'; emailId: string };
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
 const MAX_FOLLOW_UP_DELAY_MINUTES = 30 * 24 * 60;
@@ -55,6 +58,10 @@ function safeImageName(file: File) {
     .slice(0, 48) || 'image';
 
   return `${base}-${Date.now()}.${extensionForImage(file)}`;
+}
+
+function appendEmailImageMarkdown(body: string, imageUrl: string) {
+  return [body.trimEnd(), `![Image](${imageUrl})`].filter(Boolean).join('\n\n');
 }
 
 function magnetImageProxyUrl(leadMagnetId: string) {
@@ -188,10 +195,13 @@ export function PageEditorClient({
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isUploadingEmailImage, setIsUploadingEmailImage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [emailImageUploadTarget, setEmailImageUploadTarget] = useState<EmailImageTarget | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const emailImageInputRef = useRef<HTMLInputElement | null>(null);
   const account = initialData.account;
   const dirtyRef = useRef(false);
   const lastSavedRef = useRef(initialLeadMagnet);
@@ -220,7 +230,7 @@ export function PageEditorClient({
   }, []);
 
   async function saveLeadMagnet(overrides: Partial<LeadMagnet> = {}) {
-    if (saveState === 'saving' || isUploadingImage) return;
+    if (saveState === 'saving' || isUploadingImage || isUploadingEmailImage) return;
     setError('');
 
     // Merge any caller overrides into the payload AND into local state. The
@@ -358,6 +368,69 @@ export function PageEditorClient({
     }
   }
 
+  function pickEmailImage(target: EmailImageTarget) {
+    if (isUploadingEmailImage) return;
+    setEmailImageUploadTarget(target);
+    emailImageInputRef.current?.click();
+  }
+
+  async function handleEmailImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    const target = emailImageUploadTarget;
+    if (!file || !target) return;
+
+    if (!MAGNET_IMAGE_TYPES.has(file.type)) {
+      setError('Email image must be a PNG, JPG, WebP, or GIF.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_MAGNET_IMAGE_BYTES) {
+      setError('Email image must be 10 MB or smaller.');
+      event.target.value = '';
+      return;
+    }
+
+    setError('');
+    setIsUploadingEmailImage(true);
+    try {
+      const multipart = file.size > 8_000_000;
+      const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/email-image`;
+      const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/email-images/${safeImageName(file)}`;
+      const blob = await uploadPresigned(pathname, file, {
+        access: 'public',
+        contentType: file.type,
+        handleUploadUrl,
+        multipart,
+      });
+
+      dirtyRef.current = true;
+      setSaveState('idle');
+      setLeadMagnet((current) => {
+        if (target.kind === 'resource') {
+          return {
+            ...current,
+            emailBody: appendEmailImageMarkdown(current.emailBody, blob.url),
+          };
+        }
+
+        return {
+          ...current,
+          followUpEmails: current.followUpEmails.map((email) =>
+            email.id === target.emailId
+              ? { ...email, body: appendEmailImageMarkdown(email.body, blob.url) }
+              : email
+          ),
+        };
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Email image could not be uploaded.');
+    } finally {
+      setIsUploadingEmailImage(false);
+      setEmailImageUploadTarget(null);
+      event.target.value = '';
+    }
+  }
+
   const brand = account.brand;
   const accountLogo = useMemo(() => {
     const fallback = (account.logoText.trim() || 'Your Brand').slice(0, 24);
@@ -446,7 +519,7 @@ export function PageEditorClient({
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                     : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
                 )}
-                disabled={saveState === 'saving' || isUploadingImage}
+                disabled={saveState === 'saving' || isUploadingImage || isUploadingEmailImage}
                 onClick={() => saveLeadMagnet({ published: !leadMagnet.published })}
                 type="button"
               >
@@ -460,11 +533,11 @@ export function PageEditorClient({
                 {leadMagnet.published ? 'Published' : 'Draft'}
               </button>
               <AceternityButton
-                disabled={saveState === 'saving' || isUploadingImage}
+                disabled={saveState === 'saving' || isUploadingImage || isUploadingEmailImage}
                 onClick={() => saveLeadMagnet()}
                 variant="secondary"
               >
-                {saveState === 'saving' || isUploadingImage ? (
+                {saveState === 'saving' || isUploadingImage || isUploadingEmailImage ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : saveState === 'saved' ? (
                   <Check className="h-4 w-4" />
@@ -475,6 +548,8 @@ export function PageEditorClient({
                   ? imageUploadProgress > 0
                     ? `Uploading ${imageUploadProgress}%`
                     : 'Uploading image'
+                  : isUploadingEmailImage
+                    ? 'Uploading image'
                   : saveState === 'saving'
                     ? 'Saving'
                     : saveState === 'saved'
@@ -502,13 +577,17 @@ export function PageEditorClient({
           ) : mode === 'email' ? (
             <EmailCanvas
               account={account}
+              isUploadingEmailImage={isUploadingEmailImage && emailImageUploadTarget?.kind === 'resource'}
               leadMagnet={leadMagnet}
+              onAddImage={() => pickEmailImage({ kind: 'resource' })}
               onPatch={patchLeadMagnet}
             />
           ) : (
             <SequenceCanvas
               account={account}
+              emailImageUploadTarget={isUploadingEmailImage ? emailImageUploadTarget : null}
               leadMagnet={leadMagnet}
+              onAddImage={(emailId) => pickEmailImage({ kind: 'follow-up', emailId })}
               onPatch={patchLeadMagnet}
             />
           )}
@@ -522,10 +601,18 @@ export function PageEditorClient({
           type="file"
         />
 
+        <input
+          accept={MAGNET_IMAGE_ACCEPT}
+          className="hidden"
+          onChange={handleEmailImageUpload}
+          ref={emailImageInputRef}
+          type="file"
+        />
+
         {(mode === 'email' || mode === 'sequence') && (
           <p className="text-center text-xs text-ink-500">
             Tip: in the email body, use <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{name}'}</code> for the recipient name and{' '}
-            <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{download_link}'}</code> for the resource URL.
+            <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{download_link}'}</code> for the resource URL. Use Add image to insert hosted images.
           </p>
         )}
       </div>
@@ -958,11 +1045,15 @@ function ImageHotspot({
 
 function EmailCanvas({
   account,
+  isUploadingEmailImage,
   leadMagnet,
+  onAddImage,
   onPatch,
 }: {
   account: DashboardPayload['account'];
+  isUploadingEmailImage: boolean;
   leadMagnet: LeadMagnet;
+  onAddImage: () => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
 }) {
   const missingDownloadLink = !leadMagnet.downloadLink.trim();
@@ -1030,6 +1121,22 @@ function EmailCanvas({
           </div>
 
           <div className="px-6 py-7">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-ink-700">Body</span>
+              <button
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
+                disabled={isUploadingEmailImage}
+                onClick={onAddImage}
+                type="button"
+              >
+                {isUploadingEmailImage ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImageIcon className="h-3.5 w-3.5" />
+                )}
+                {isUploadingEmailImage ? 'Uploading' : 'Add image'}
+              </button>
+            </div>
             <div className="text-[15px] leading-7 text-ink-700">
               <InlineParagraphs
                 ariaLabel="Email body"
@@ -1047,11 +1154,15 @@ function EmailCanvas({
 
 function SequenceCanvas({
   account,
+  emailImageUploadTarget,
   leadMagnet,
+  onAddImage,
   onPatch,
 }: {
   account: DashboardPayload['account'];
+  emailImageUploadTarget: EmailImageTarget | null;
   leadMagnet: LeadMagnet;
+  onAddImage: (emailId: string) => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
 }) {
   const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
@@ -1273,7 +1384,27 @@ function SequenceCanvas({
                   </label>
 
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Body</span>
+                    <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-ink-700">
+                      Body
+                      <button
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
+                        disabled={Boolean(emailImageUploadTarget)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onAddImage(email.id);
+                        }}
+                        type="button"
+                      >
+                        {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ImageIcon className="h-3.5 w-3.5" />
+                        )}
+                        {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id
+                          ? 'Uploading'
+                          : 'Add image'}
+                      </button>
+                    </span>
                     <AceternityTextarea
                       className="min-h-44"
                       onChange={(event) => updateEmail(index, { body: event.target.value })}

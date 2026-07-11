@@ -12,9 +12,11 @@ import {
 import {
   cleanEmailText,
   cleanPreviewText,
+  renderEmailTextFallback,
   renderPlainEmailHtml,
   scrubResendErrorMessage,
 } from './resend';
+import { followUpStopUrl } from './follow-up-opt-out';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
@@ -23,7 +25,11 @@ const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
   { key: 'NAME', type: 'string' },
   { key: 'DOWNLOAD_LINK', type: 'string' },
+  { key: 'STOP_SEQUENCE_URL', type: 'string' },
 ];
+const STOP_SEQUENCE_TEMPLATE_URL = '{{{STOP_SEQUENCE_URL}}}';
+const STOP_SEQUENCE_TEXT = `Stop these follow-up emails: ${STOP_SEQUENCE_TEMPLATE_URL}`;
+const STOP_SEQUENCE_HTML = `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font:13px/1.5 Arial,sans-serif;color:#6b7280">Don't want these follow-up emails? <a href="${STOP_SEQUENCE_TEMPLATE_URL}" style="color:#374151;text-decoration:underline">Stop this sequence</a>.</div>`;
 
 type ResendObject = {
   id?: string;
@@ -156,14 +162,14 @@ function resendName(label: string, magnet: Pick<LeadMagnet, 'id' | 'slug' | 'tit
 
 function templatePayload(account: AccountSettings, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
   const body = replaceTemplateVariables(email.body);
-  const text = cleanEmailText(body);
+  const text = renderEmailTextFallback([body, STOP_SEQUENCE_TEXT].filter(Boolean).join('\n\n'));
 
   return {
     name: resendName('Magnets follow-up email', magnet, String(index + 1)),
     from: account.resendFromEmail,
     subject: email.subject,
     text,
-    html: renderPlainEmailHtml(text, email.preview),
+    html: renderPlainEmailHtml(cleanEmailText(body), email.preview, STOP_SEQUENCE_HTML),
     variables: TEMPLATE_VARIABLES,
   };
 }
@@ -345,6 +351,7 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
           variables: {
             NAME: { var: 'event.name' },
             DOWNLOAD_LINK: { var: 'event.downloadLink' },
+            STOP_SEQUENCE_URL: { var: 'event.stopSequenceUrl' },
           },
         },
         from: account.resendFromEmail,
@@ -554,6 +561,7 @@ export async function startLeadMagnetFollowUpSequence({
       downloadLink: syncedMagnet.downloadLink.trim(),
       leadMagnetId: syncedMagnet.id,
       leadMagnetTitle: syncedMagnet.title,
+      stopSequenceUrl: followUpStopUrl(account, syncedMagnet.id, email),
     });
   } catch (error) {
     if (run.runId) {
