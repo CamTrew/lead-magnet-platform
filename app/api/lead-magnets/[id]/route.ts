@@ -18,6 +18,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
+import { proxyEmailImagesInBody } from '@/lib/email-image-proxy';
 import {
   type LogoValidationError,
   MAX_MAGNET_IMAGE_BYTES,
@@ -316,7 +317,27 @@ export async function PUT(
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    let leadMagnet = await updateLeadMagnet(payload.account.id, id, parsed.data);
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+    const updateData = {
+      ...parsed.data,
+      emailBody: proxyEmailImagesInBody({
+        accountId: payload.account.id,
+        baseUrl,
+        body: parsed.data.emailBody,
+        leadMagnetId: id,
+      }),
+      followUpEmails: parsed.data.followUpEmails.map((email) => ({
+        ...email,
+        body: proxyEmailImagesInBody({
+          accountId: payload.account.id,
+          baseUrl,
+          body: email.body,
+          leadMagnetId: id,
+        }),
+      })),
+    };
+
+    let leadMagnet = await updateLeadMagnet(payload.account.id, id, updateData);
 
     if (!leadMagnet) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });

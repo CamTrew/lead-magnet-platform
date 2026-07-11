@@ -3,6 +3,10 @@ import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/b
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentDashboardPayload } from '@/lib/auth';
+import {
+  isAccountEmailImageBlobUrl,
+  publicEmailImageUrl,
+} from '@/lib/email-image-proxy';
 import { log } from '@/lib/logger';
 import { MAX_MAGNET_IMAGE_BYTES } from '@/lib/upload';
 
@@ -10,6 +14,9 @@ const ROUTE = '/api/lead-magnets/[id]/email-image';
 
 const idSchema = z.string().uuid();
 const allowedContentTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const finaliseImageSchema = z.object({
+  blobUrl: z.string().url(),
+}).strict();
 
 class UploadRouteError extends Error {
   status: number;
@@ -147,5 +154,61 @@ export async function POST(
     });
 
     return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const start = Date.now();
+  const { id: rawId } = await params;
+  const idParse = idSchema.safeParse(rawId);
+  if (!idParse.success) {
+    return NextResponse.json({ error: 'Invalid page id' }, { status: 400 });
+  }
+  const leadMagnetId = idParse.data;
+
+  try {
+    const payload = await getCurrentDashboardPayload();
+    if (!payload) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (!payload.leadMagnets.some((leadMagnet) => leadMagnet.id === leadMagnetId)) {
+      return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+    }
+
+    const body = await request.json().catch(() => null);
+    const parsed = finaliseImageSchema.safeParse(body);
+    if (
+      !parsed.success ||
+      !isAccountEmailImageBlobUrl(parsed.data.blobUrl, payload.account.id, leadMagnetId)
+    ) {
+      return NextResponse.json({ error: 'Invalid uploaded image URL' }, { status: 400 });
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+    const imageUrl = publicEmailImageUrl(parsed.data.blobUrl, baseUrl);
+
+    log.info('Email image ready', {
+      route: ROUTE,
+      method: 'PUT',
+      status: 200,
+      userId: payload.user.id,
+      accountId: payload.account.id,
+      durationMs: Date.now() - start,
+      extra: { leadMagnetId },
+    });
+
+    return NextResponse.json({ imageUrl });
+  } catch (err) {
+    log.warn('Email image finalisation failed', {
+      route: ROUTE,
+      method: 'PUT',
+      status: 500,
+      durationMs: Date.now() - start,
+      extra: { leadMagnetId, error: err },
+    });
+    return NextResponse.json({ error: 'Image could not be prepared for email' }, { status: 500 });
   }
 }

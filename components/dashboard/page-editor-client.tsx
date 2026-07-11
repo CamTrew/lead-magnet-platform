@@ -147,6 +147,24 @@ async function recordUploadedMagnetImage(leadMagnetId: string, imageUrl: string)
   return data.leadMagnet;
 }
 
+async function finaliseUploadedEmailImage(leadMagnetId: string, blobUrl: string) {
+  const response = await fetch(`/api/lead-magnets/${leadMagnetId}/email-image`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blobUrl }),
+  });
+  const data = (await response.json().catch(() => null)) as {
+    imageUrl?: string;
+    error?: string;
+  } | null;
+
+  if (!response.ok || !data?.imageUrl) {
+    throw new Error(data?.error || 'Image uploaded, but could not be prepared for email.');
+  }
+
+  return data.imageUrl;
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -431,6 +449,7 @@ export function PageEditorClient({
             : current);
         },
       });
+      const imageUrl = await finaliseUploadedEmailImage(leadMagnet.id, blob.url);
 
       dirtyRef.current = true;
       setSaveState('idle');
@@ -438,7 +457,7 @@ export function PageEditorClient({
         if (target.kind === 'resource') {
           return {
             ...current,
-            emailBody: appendEmailImage(current.emailBody, blob.url),
+            emailBody: appendEmailImage(current.emailBody, imageUrl),
           };
         }
 
@@ -446,7 +465,7 @@ export function PageEditorClient({
           ...current,
           followUpEmails: current.followUpEmails.map((email) =>
             email.id === target.emailId
-              ? { ...email, body: appendEmailImage(email.body, blob.url) }
+              ? { ...email, body: appendEmailImage(email.body, imageUrl) }
               : email
           ),
         };
@@ -1121,19 +1140,26 @@ function EmailBodyEditor({
           );
         }
 
-        const visibleLines = Math.max(3, Math.min(14, segment.raw.split('\n').length + 1));
+        const trimmedText = segment.raw.trim();
+        const visibleLines = trimmedText
+          ? Math.max(2, Math.min(10, trimmedText.split('\n').length + 1))
+          : 2;
         return (
-          <AceternityTextarea
-            aria-label={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
-            className="min-h-24 resize-y border-0 px-2 py-1 shadow-none focus:ring-0"
-            key={`text-${index}`}
-            onChange={(event) => onChange(replaceEmailBodySegment(value, index, event.target.value))}
-            placeholder={index === 0
-              ? 'Write the email. Use {name} for the recipient and {download_link} for the resource.'
-              : 'Continue writing below the image...'}
-            rows={visibleLines}
-            value={segment.raw}
-          />
+          <div className="space-y-1" key={`text-${index}`}>
+            {index > 0 && segments[index - 1]?.kind === 'image' && (
+              <p className="px-2 text-[11px] font-medium uppercase text-ink-400">Text below image</p>
+            )}
+            <AceternityTextarea
+              aria-label={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
+              className="min-h-0 resize-y border-0 px-2 py-1 shadow-none focus:ring-0"
+              onChange={(event) => onChange(replaceEmailBodySegment(value, index, event.target.value))}
+              placeholder={index === 0
+                ? 'Write the email. Use {name} for the recipient and {download_link} for the resource.'
+                : 'Continue writing below the image...'}
+              rows={visibleLines}
+              value={segment.raw}
+            />
+          </div>
         );
       })}
 

@@ -23,9 +23,7 @@ export function parseEmailImageLine(line: string) {
 
 export function appendEmailImage(body: string, imageUrl: string, alt = 'Image') {
   const safeAlt = alt.replace(/[\]\n\r]/g, '').trim() || 'Image';
-  return [body.trimEnd(), `![${safeAlt}](${imageUrl})`, '']
-    .filter((part, index) => Boolean(part) || index === 2)
-    .join('\n\n');
+  return [body.trim(), `![${safeAlt}](${imageUrl})`].filter(Boolean).join('\n\n');
 }
 
 export function parseEmailBodySegments(body: string): EmailBodySegment[] {
@@ -52,14 +50,16 @@ export function parseEmailBodySegments(body: string): EmailBodySegment[] {
 export function replaceEmailBodySegment(body: string, segmentIndex: number, nextValue: string) {
   return parseEmailBodySegments(body)
     .map((segment, index) => index === segmentIndex ? nextValue : segment.raw)
-    .join('');
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export function removeEmailBodySegment(body: string, segmentIndex: number) {
   return parseEmailBodySegments(body)
     .filter((_, index) => index !== segmentIndex)
     .map((segment) => segment.raw)
-    .join('')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join('\n\n');
 }

@@ -16,6 +16,11 @@ import {
   removeEmailBodySegment,
   replaceEmailBodySegment,
 } from '../lib/email-body-images';
+import {
+  proxyEmailImagesInBody,
+  publicEmailImageUrl,
+  verifyEmailImageToken,
+} from '../lib/email-image-proxy';
 import { verifyFollowUpStopToken } from '../lib/follow-up-opt-out';
 import { renderEmailTextFallback, renderPlainEmailHtml } from '../lib/resend';
 import type { AccountSettings, LeadMagnet } from '../lib/types';
@@ -286,6 +291,21 @@ async function run() {
   assert.match(editedBody, /!\[Preview\]\(https:\/\/cdn\.example\.com\/preview\.png\)/);
   assert.match(editedBody, /Updated text after\.$/);
   assert.equal(removeEmailBodySegment(editedBody, 1), 'Text before.\n\nUpdated text after.');
+
+  const privateImageUrl = `https://store.private.blob.vercel-storage.com/lead-magnets/${account.id}/${magnet.id}/email-images/promo.png`;
+  const proxiedImageUrl = publicEmailImageUrl(privateImageUrl, 'https://magnets.so');
+  assert.match(proxiedImageUrl, /^https:\/\/magnets\.so\/email-images\//);
+  const proxyToken = new URL(proxiedImageUrl).pathname.split('/').pop() || '';
+  assert.equal(verifyEmailImageToken(proxyToken), privateImageUrl);
+  assert.equal(
+    proxyEmailImagesInBody({
+      accountId: account.id,
+      baseUrl: 'https://magnets.so',
+      body: `Before.\n\n![Promo](${privateImageUrl})\n\nAfter.`,
+      leadMagnetId: magnet.id,
+    }),
+    `Before.\n\n![Promo](${proxiedImageUrl})\n\nAfter.`
+  );
 
   assert.ok(findRequest('/templates/tmpl_1/publish', 'POST'));
   assert.ok(findRequest('/templates/tmpl_2/publish', 'POST'));
