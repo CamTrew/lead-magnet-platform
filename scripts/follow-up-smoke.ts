@@ -291,6 +291,14 @@ async function run() {
   assert.match(editedBody, /!\[Preview\]\(https:\/\/cdn\.example\.com\/preview\.png\)/);
   assert.match(editedBody, /Updated text after\.$/);
   assert.equal(removeEmailBodySegment(editedBody, 1), 'Text before.\n\nUpdated text after.');
+  assert.equal(
+    replaceEmailBodySegment('Hello', 0, 'Hello world with spaces '),
+    'Hello world with spaces '
+  );
+  assert.equal(
+    replaceEmailBodySegment(bodyAroundImage, 2, '\n\nText after with spaces '),
+    'Text before.\n\n![Preview](https://cdn.example.com/preview.png)\n\nText after with spaces '
+  );
 
   const privateImageUrl = `https://store.private.blob.vercel-storage.com/lead-magnets/${account.id}/${magnet.id}/email-images/promo.png`;
   const proxiedImageUrl = publicEmailImageUrl(privateImageUrl, 'https://magnets.so');

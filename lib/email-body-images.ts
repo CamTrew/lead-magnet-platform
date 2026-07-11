@@ -48,11 +48,28 @@ export function parseEmailBodySegments(body: string): EmailBodySegment[] {
 }
 
 export function replaceEmailBodySegment(body: string, segmentIndex: number, nextValue: string) {
-  return parseEmailBodySegments(body)
-    .map((segment, index) => index === segmentIndex ? nextValue : segment.raw)
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .join('\n\n');
+  const segments = parseEmailBodySegments(body).map((segment, index) => ({
+    ...segment,
+    raw: index === segmentIndex ? nextValue : segment.raw,
+  }));
+
+  return segments.reduce((output, segment, index) => {
+    if (!segment.raw) return output;
+
+    const previous = segments[index - 1];
+    const needsSeparator =
+      Boolean(output) &&
+      (segment.kind === 'image' || previous?.kind === 'image');
+
+    if (!needsSeparator) return output + segment.raw;
+    if (output.endsWith('\n\n') || segment.raw.startsWith('\n\n')) {
+      return output + segment.raw;
+    }
+    if (output.endsWith('\n') || segment.raw.startsWith('\n')) {
+      return `${output}\n${segment.raw}`;
+    }
+    return `${output}\n\n${segment.raw}`;
+  }, '');
 }
 
 export function removeEmailBodySegment(body: string, segmentIndex: number) {
