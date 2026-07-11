@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { senderMatchesAccountDomain } from './dns-records';
+import { parseEmailImageLine } from './email-body-images';
 import { log } from './logger';
 import type { AccountSettings, LeadMagnet } from './types';
 
@@ -17,30 +18,6 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-const emailImageLinePattern = /^!\[([^\]\n]{0,120})\]\((https?:\/\/[^\s)]+)\)$/;
-
-function parseEmailImageLine(line: string) {
-  const match = line.trim().match(emailImageLinePattern);
-  if (!match) return null;
-
-  const [, alt = '', rawUrl = ''] = match;
-  try {
-    const url = new URL(rawUrl);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-    return {
-      alt: alt.trim() || 'Email image',
-      url: url.toString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function addEmailImageMarkdown(body: string, imageUrl: string, alt = 'Image') {
-  const block = `![${alt.replace(/[\]\n\r]/g, '').trim() || 'Image'}](${imageUrl})`;
-  return cleanEmailText([body.trimEnd(), block].filter(Boolean).join('\n\n'));
 }
 
 export function renderEmailTextFallback(text: string) {

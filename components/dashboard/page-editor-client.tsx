@@ -19,6 +19,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
+import {
+  appendEmailImage,
+  parseEmailBodySegments,
+  removeEmailBodySegment,
+  replaceEmailBodySegment,
+} from '@/lib/email-body-images';
 import type { DashboardPayload, LeadMagnet } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import {
@@ -36,6 +42,11 @@ type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 type EmailImageTarget =
   | { kind: 'resource' }
   | { kind: 'follow-up'; emailId: string };
+type PendingEmailImage = {
+  target: EmailImageTarget;
+  previewUrl: string;
+  progress: number;
+};
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
 const MAX_FOLLOW_UP_DELAY_MINUTES = 30 * 24 * 60;
@@ -58,10 +69,6 @@ function safeImageName(file: File) {
     .slice(0, 48) || 'image';
 
   return `${base}-${Date.now()}.${extensionForImage(file)}`;
-}
-
-function appendEmailImageMarkdown(body: string, imageUrl: string) {
-  return [body.trimEnd(), `![Image](${imageUrl})`].filter(Boolean).join('\n\n');
 }
 
 function magnetImageProxyUrl(leadMagnetId: string) {
@@ -198,6 +205,7 @@ export function PageEditorClient({
   const [isUploadingEmailImage, setIsUploadingEmailImage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [emailImageUploadTarget, setEmailImageUploadTarget] = useState<EmailImageTarget | null>(null);
+  const [pendingEmailImage, setPendingEmailImage] = useState<PendingEmailImage | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -210,6 +218,20 @@ export function PageEditorClient({
     dirtyRef.current = true;
     setSaveState('idle');
     setLeadMagnet((current) => ({ ...current, ...updates }));
+  };
+
+  const patchFollowUpEmail = (
+    emailId: string,
+    updates: Partial<LeadMagnet['followUpEmails'][number]>
+  ) => {
+    dirtyRef.current = true;
+    setSaveState('idle');
+    setLeadMagnet((current) => ({
+      ...current,
+      followUpEmails: current.followUpEmails.map((email) =>
+        email.id === emailId ? { ...email, ...updates } : email
+      ),
+    }));
   };
 
   // No auto-save. The user explicitly hits Save (or toggles Published) when
@@ -392,6 +414,8 @@ export function PageEditorClient({
 
     setError('');
     setIsUploadingEmailImage(true);
+    const previewUrl = URL.createObjectURL(file);
+    setPendingEmailImage({ target, previewUrl, progress: 0 });
     try {
       const multipart = file.size > 8_000_000;
       const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/email-image`;
@@ -401,6 +425,11 @@ export function PageEditorClient({
         contentType: file.type,
         handleUploadUrl,
         multipart,
+        onUploadProgress: ({ percentage }) => {
+          setPendingEmailImage((current) => current?.previewUrl === previewUrl
+            ? { ...current, progress: Math.round(percentage) }
+            : current);
+        },
       });
 
       dirtyRef.current = true;
@@ -409,7 +438,7 @@ export function PageEditorClient({
         if (target.kind === 'resource') {
           return {
             ...current,
-            emailBody: appendEmailImageMarkdown(current.emailBody, blob.url),
+            emailBody: appendEmailImage(current.emailBody, blob.url),
           };
         }
 
@@ -417,7 +446,7 @@ export function PageEditorClient({
           ...current,
           followUpEmails: current.followUpEmails.map((email) =>
             email.id === target.emailId
-              ? { ...email, body: appendEmailImageMarkdown(email.body, blob.url) }
+              ? { ...email, body: appendEmailImage(email.body, blob.url) }
               : email
           ),
         };
@@ -427,6 +456,8 @@ export function PageEditorClient({
     } finally {
       setIsUploadingEmailImage(false);
       setEmailImageUploadTarget(null);
+      setPendingEmailImage(null);
+      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 0);
       event.target.value = '';
     }
   }
@@ -581,6 +612,7 @@ export function PageEditorClient({
               leadMagnet={leadMagnet}
               onAddImage={() => pickEmailImage({ kind: 'resource' })}
               onPatch={patchLeadMagnet}
+              pendingImage={pendingEmailImage?.target.kind === 'resource' ? pendingEmailImage : null}
             />
           ) : (
             <SequenceCanvas
@@ -589,6 +621,8 @@ export function PageEditorClient({
               leadMagnet={leadMagnet}
               onAddImage={(emailId) => pickEmailImage({ kind: 'follow-up', emailId })}
               onPatch={patchLeadMagnet}
+              onUpdateEmail={patchFollowUpEmail}
+              pendingImage={pendingEmailImage?.target.kind === 'follow-up' ? pendingEmailImage : null}
             />
           )}
         </AceternityCard>
@@ -1043,18 +1077,98 @@ function ImageHotspot({
   );
 }
 
+function EmailBodyEditor({
+  ariaLabel,
+  onChange,
+  pendingImage,
+  value,
+}: {
+  ariaLabel: string;
+  onChange: (value: string) => void;
+  pendingImage: PendingEmailImage | null;
+  value: string;
+}) {
+  const segments = parseEmailBodySegments(value);
+
+  return (
+    <div className="space-y-3 rounded-lg border border-ink-200 bg-white p-3">
+      {segments.map((segment, index) => {
+        if (segment.kind === 'image') {
+          return (
+            <div
+              className="group/email-image relative overflow-hidden rounded-lg border border-ink-200 bg-ink-50"
+              key={`image-${index}-${segment.url}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt={segment.alt}
+                className="max-h-96 w-full object-contain"
+                src={segment.url}
+              />
+              <button
+                aria-label={`Remove ${segment.alt}`}
+                className="absolute right-2 top-2 inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white/95 px-2.5 text-xs font-medium text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onChange(removeEmailBodySegment(value, index));
+                }}
+                type="button"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove
+              </button>
+            </div>
+          );
+        }
+
+        const visibleLines = Math.max(3, Math.min(14, segment.raw.split('\n').length + 1));
+        return (
+          <AceternityTextarea
+            aria-label={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
+            className="min-h-24 resize-y border-0 px-2 py-1 shadow-none focus:ring-0"
+            key={`text-${index}`}
+            onChange={(event) => onChange(replaceEmailBodySegment(value, index, event.target.value))}
+            placeholder={index === 0
+              ? 'Write the email. Use {name} for the recipient and {download_link} for the resource.'
+              : 'Continue writing below the image...'}
+            rows={visibleLines}
+            value={segment.raw}
+          />
+        );
+      })}
+
+      {pendingImage && (
+        <div className="relative overflow-hidden rounded-lg border border-ink-200 bg-ink-50">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt="Uploading email image"
+            className="max-h-96 w-full object-contain opacity-75"
+            src={pendingImage.previewUrl}
+          />
+          <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-white/90 px-3 py-2 text-xs font-medium text-ink-700 backdrop-blur">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Uploading{pendingImage.progress > 0 ? ` ${pendingImage.progress}%` : ''}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailCanvas({
   account,
   isUploadingEmailImage,
   leadMagnet,
   onAddImage,
   onPatch,
+  pendingImage,
 }: {
   account: DashboardPayload['account'];
   isUploadingEmailImage: boolean;
   leadMagnet: LeadMagnet;
   onAddImage: () => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
+  pendingImage: PendingEmailImage | null;
 }) {
   const missingDownloadLink = !leadMagnet.downloadLink.trim();
 
@@ -1137,14 +1251,12 @@ function EmailCanvas({
                 {isUploadingEmailImage ? 'Uploading' : 'Add image'}
               </button>
             </div>
-            <div className="text-[15px] leading-7 text-ink-700">
-              <InlineParagraphs
-                ariaLabel="Email body"
-                emptyPlaceholder="Write the email. Use {name} for the recipient, {download_link} for the file."
-                onChange={(value) => onPatch({ emailBody: value })}
-                value={leadMagnet.emailBody}
-              />
-            </div>
+            <EmailBodyEditor
+              ariaLabel="Email body"
+              onChange={(value) => onPatch({ emailBody: value })}
+              pendingImage={pendingImage}
+              value={leadMagnet.emailBody}
+            />
           </div>
         </div>
       </div>
@@ -1158,12 +1270,19 @@ function SequenceCanvas({
   leadMagnet,
   onAddImage,
   onPatch,
+  onUpdateEmail,
+  pendingImage,
 }: {
   account: DashboardPayload['account'];
   emailImageUploadTarget: EmailImageTarget | null;
   leadMagnet: LeadMagnet;
   onAddImage: (emailId: string) => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
+  onUpdateEmail: (
+    emailId: string,
+    updates: Partial<LeadMagnet['followUpEmails'][number]>
+  ) => void;
+  pendingImage: PendingEmailImage | null;
 }) {
   const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
   const resendConfigured = Boolean(
@@ -1180,10 +1299,9 @@ function SequenceCanvas({
         : 'a calendar provider';
 
   function updateEmail(index: number, updates: Partial<LeadMagnet['followUpEmails'][number]>) {
-    const next = leadMagnet.followUpEmails.map((email, emailIndex) =>
-      emailIndex === index ? { ...email, ...updates } : email
-    );
-    onPatch({ followUpEmails: next });
+    const email = leadMagnet.followUpEmails[index];
+    if (!email) return;
+    onUpdateEmail(email.id, updates);
   }
 
   function updateDelayDraft(emailId: string, value: string) {
@@ -1405,10 +1523,12 @@ function SequenceCanvas({
                           : 'Add image'}
                       </button>
                     </span>
-                    <AceternityTextarea
-                      className="min-h-44"
-                      onChange={(event) => updateEmail(index, { body: event.target.value })}
-                      placeholder="Write the follow-up email..."
+                    <EmailBodyEditor
+                      ariaLabel={`Body for email ${index + 1}`}
+                      onChange={(value) => onUpdateEmail(email.id, { body: value })}
+                      pendingImage={pendingImage?.target.kind === 'follow-up' && pendingImage.target.emailId === email.id
+                        ? pendingImage
+                        : null}
                       value={email.body}
                     />
                   </label>

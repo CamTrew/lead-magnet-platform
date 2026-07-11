@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentDashboardPayload } from '@/lib/auth';
 import { log } from '@/lib/logger';
-import { findLeadMagnetForAccount } from '@/lib/platform-store';
 import { MAX_MAGNET_IMAGE_BYTES } from '@/lib/upload';
 
 const ROUTE = '/api/lead-magnets/[id]/email-image';
@@ -73,8 +72,7 @@ export async function POST(
           throw new UploadRouteError('Not authenticated', 401);
         }
 
-        const leadMagnet = await findLeadMagnetForAccount(payload.account.id, leadMagnetId);
-        if (!leadMagnet) {
+        if (!payload.leadMagnets.some((leadMagnet) => leadMagnet.id === leadMagnetId)) {
           throw new UploadRouteError('Lead magnet not found', 404);
         }
 

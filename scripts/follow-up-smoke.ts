@@ -10,6 +10,12 @@ import {
   stopLeadMagnetFollowUpSequence,
   syncLeadMagnetFollowUpAutomation,
 } from '../lib/follow-up-sequences';
+import {
+  appendEmailImage,
+  parseEmailBodySegments,
+  removeEmailBodySegment,
+  replaceEmailBodySegment,
+} from '../lib/email-body-images';
 import { verifyFollowUpStopToken } from '../lib/follow-up-opt-out';
 import { renderEmailTextFallback, renderPlainEmailHtml } from '../lib/resend';
 import type { AccountSettings, LeadMagnet } from '../lib/types';
@@ -267,6 +273,19 @@ async function run() {
   const normalEmailBody = 'Here is the screenshot:\n\n![Screenshot](https://cdn.example.com/screenshot.jpg)\n\nDone.';
   assert.match(renderPlainEmailHtml(normalEmailBody, 'Preview'), /<img src="https:\/\/cdn\.example\.com\/screenshot\.jpg"/);
   assert.match(renderEmailTextFallback(normalEmailBody), /Screenshot: https:\/\/cdn\.example\.com\/screenshot\.jpg/);
+
+  const originalBody = 'First paragraph.\n\nSecond paragraph that must stay.';
+  const bodyWithFirstImage = appendEmailImage(originalBody, 'https://cdn.example.com/first.png');
+  const bodyWithTwoImages = appendEmailImage(bodyWithFirstImage, 'https://cdn.example.com/second.png');
+  assert.ok(bodyWithTwoImages.startsWith(originalBody));
+  assert.equal(parseEmailBodySegments(bodyWithTwoImages).filter((segment) => segment.kind === 'image').length, 2);
+
+  const bodyAroundImage = 'Text before.\n\n![Preview](https://cdn.example.com/preview.png)\n\nText after.';
+  const editedBody = replaceEmailBodySegment(bodyAroundImage, 2, '\n\nUpdated text after.');
+  assert.match(editedBody, /^Text before\./);
+  assert.match(editedBody, /!\[Preview\]\(https:\/\/cdn\.example\.com\/preview\.png\)/);
+  assert.match(editedBody, /Updated text after\.$/);
+  assert.equal(removeEmailBodySegment(editedBody, 1), 'Text before.\n\nUpdated text after.');
 
   assert.ok(findRequest('/templates/tmpl_1/publish', 'POST'));
   assert.ok(findRequest('/templates/tmpl_2/publish', 'POST'));
