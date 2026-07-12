@@ -555,7 +555,8 @@ export async function startLeadMagnetFollowUpSequence({
   }
 
   try {
-    syncedMagnet = await syncAndPersistFollowUpAutomation(account, syncedMagnet, store);
+    // The automation is synced when the magnet is saved. Re-patching the shared
+    // graph for every signup can disturb contacts already waiting in active runs.
     await sendEvent(account, syncedMagnet.id, 'signup', email, {
       name: name.trim() || 'there',
       downloadLink: syncedMagnet.downloadLink.trim(),
