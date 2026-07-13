@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "smoke:follow-up": "node scripts/follow-up-smoke.mjs",
+    "resync:follow-up-opt-outs": "node scripts/run-tsx.mjs scripts/resync-follow-up-opt-outs.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",

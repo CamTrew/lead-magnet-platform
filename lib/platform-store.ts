@@ -894,6 +894,40 @@ export async function getAccountWithSecrets(accountId: string) {
   return result.rows[0] ? mapAccount(result.rows[0], { revealSecrets: true }) : null;
 }
 
+/** Stores a single Resend key without rewriting unrelated account settings. */
+export async function updateAccountResendApiKey(accountId: string, resendApiKey: string) {
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set resend_api_key = $2, updated_at = now()
+      where id = $1
+      returning *
+    `,
+    [accountId, encryptSecret(resendApiKey)]
+  );
+
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+}
+
+/**
+ * Finds persisted follow-up automations that need a one-off provider sync.
+ * The caller must fetch each account separately with secrets before calling
+ * Resend, so encrypted API keys never travel with this result.
+ */
+export async function listEnabledFollowUpAutomationTargets() {
+  const result = await query<LeadMagnetRow>(
+    `
+      select m.*
+      from public.magnets_lead_magnets m
+      where m.follow_up_enabled = true
+        and coalesce(m.resend_follow_up_automation_id, '') <> ''
+      order by m.account_id, m.created_at
+    `
+  );
+
+  return result.rows.map(mapLeadMagnet);
+}
+
 /**
  * Look up an existing token, or mint a new one if none is set. The token is the
  * value the user pastes into a TXT record on their DNS to prove ownership; we

@@ -393,9 +393,7 @@ async function run() {
 
   assert.deepEqual(started, { started: true, reason: null });
   const startAutomationPatches = automationPatchBodies('auto_1');
-  assert.equal(startAutomationPatches.length, 2);
-  assert.ok(Array.isArray(startAutomationPatches[0]?.steps));
-  assert.deepEqual(startAutomationPatches[1], { status: 'enabled' });
+  assert.equal(startAutomationPatches.length, 0);
   const startEvents = eventSendBodies();
   const startPayload = (startEvents[0]?.payload || {}) as JsonRecord;
   assert.equal(typeof startPayload.stopSequenceUrl, 'string');
