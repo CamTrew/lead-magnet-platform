@@ -894,21 +894,6 @@ export async function getAccountWithSecrets(accountId: string) {
   return result.rows[0] ? mapAccount(result.rows[0], { revealSecrets: true }) : null;
 }
 
-/** Stores a single Resend key without rewriting unrelated account settings. */
-export async function updateAccountResendApiKey(accountId: string, resendApiKey: string) {
-  const result = await query<AccountRow>(
-    `
-      update public.magnets_accounts
-      set resend_api_key = $2, updated_at = now()
-      where id = $1
-      returning *
-    `,
-    [accountId, encryptSecret(resendApiKey)]
-  );
-
-  return result.rows[0] ? mapAccount(result.rows[0]) : null;
-}
-
 /**
  * Finds persisted follow-up automations that need a one-off provider sync.
  * The caller must fetch each account separately with secrets before calling

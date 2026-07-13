@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import {
   getAccountWithSecrets,
   listEnabledFollowUpAutomationTargets,
-  updateAccountResendApiKey,
   updateLeadMagnetFollowUpSync,
 } from '../lib/platform-store';
 import { syncLeadMagnetFollowUpAutomation } from '../lib/follow-up-sequences';
@@ -31,25 +30,18 @@ loadLocalEnvironment();
 
 async function main() {
   const targets = await listEnabledFollowUpAutomationTargets();
-  const suppliedAccountId = process.env.RESEND_ACCOUNT_ID?.trim() || '';
-  const suppliedResendApiKey = process.env.RESEND_ACCOUNT_API_KEY?.trim() || '';
   let synced = 0;
   let failed = 0;
 
   for (const magnet of targets) {
-    let account = await getAccountWithSecrets(magnet.accountId);
+    const account = await getAccountWithSecrets(magnet.accountId);
     if (!account) {
       failed += 1;
       console.error(`Skipped ${magnet.id}: account not found.`);
       continue;
     }
 
-    if (!account.resendApiKey && suppliedResendApiKey && magnet.accountId === suppliedAccountId) {
-      await updateAccountResendApiKey(magnet.accountId, suppliedResendApiKey);
-      account = await getAccountWithSecrets(magnet.accountId);
-    }
-
-    if (!account?.resendApiKey) {
+    if (!account.resendApiKey) {
       failed += 1;
       console.error(`Skipped ${magnet.id}: no Resend API key is saved for this account.`);
       continue;
