@@ -6,6 +6,8 @@ import { log } from '@/lib/logger';
 import { getLeadMagnetImageSource } from '@/lib/platform-store';
 
 const ROUTE = '/magnet-images/[id]';
+const PUBLISHED_IMAGE_CACHE_CONTROL =
+  'public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=604800, immutable';
 
 const idSchema = z.string().uuid();
 
@@ -46,19 +48,43 @@ export async function GET(
     const blob = await get(source.imageUrl, {
       access: blobAccessFromUrl(source.imageUrl),
       storeId: blobStoreId(),
+      ifNoneMatch: request.headers.get('if-none-match') || undefined,
     });
 
-    if (!blob || blob.statusCode !== 200 || !blob.stream) {
+    if (!blob) {
+      return new NextResponse('Not found', { status: 404 });
+    }
+
+    const cacheHeaders: Record<string, string> = source.published
+      ? {
+          // Vercel only retains dynamic route responses at the edge when an
+          // explicit shared-cache lifetime is supplied. These image URLs are
+          // versioned with the magnet update timestamp, so they are immutable.
+          'Cache-Control': PUBLISHED_IMAGE_CACHE_CONTROL,
+          'CDN-Cache-Control': PUBLISHED_IMAGE_CACHE_CONTROL,
+          'Vercel-CDN-Cache-Control': PUBLISHED_IMAGE_CACHE_CONTROL,
+        }
+      : {
+          'Cache-Control': 'private, no-store',
+        };
+
+    if (blob.statusCode === 304) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: cacheHeaders,
+      });
+    }
+
+    if (!blob.stream) {
       return new NextResponse('Not found', { status: 404 });
     }
 
     return new NextResponse(blob.stream, {
       headers: {
-        'Cache-Control': source.published
-          ? 'public, max-age=31536000, immutable'
-          : 'private, no-store',
+        ...cacheHeaders,
         'Content-Length': String(blob.blob.size),
         'Content-Type': blob.blob.contentType,
+        ETag: blob.blob.etag,
       },
     });
   } catch (err) {
