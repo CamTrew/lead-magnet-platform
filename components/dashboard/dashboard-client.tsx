@@ -504,6 +504,15 @@ export function DashboardClient({
     setAccount(next);
   }
 
+  function prepareResendKeyEdit() {
+    // Do not mark this as dirty yet. Opening the field must never turn the
+    // masked key into a blank saved value if the user changes their mind.
+    const next = { ...accountRef.current, resendApiKey: '' };
+    accountRef.current = next;
+    setAccount(next);
+    setUnlockResendKey(true);
+  }
+
   const commitSection = useCallback(
     (section: SaveSection) => {
       if (!dirty.current[section]) return;
@@ -755,10 +764,7 @@ export function DashboardClient({
                   confirmTitle="Replace your sending key?"
                   displayValue={<span className="font-mono text-ink-700">••••••••</span>}
                   locked={Boolean(account.resendApiKey) && !unlockResendKey}
-                  onConfirmEdit={() => {
-                    patchAccount({ resendApiKey: '' }, 'delivery');
-                    setUnlockResendKey(true);
-                  }}
+                  onConfirmEdit={prepareResendKeyEdit}
                 >
                   <AceternityInput
                     value={account.resendApiKey}

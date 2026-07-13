@@ -7,6 +7,7 @@ import {
   updateLeadMagnetFollowUpSync,
 } from '../lib/platform-store';
 import { syncLeadMagnetFollowUpAutomation } from '../lib/follow-up-sequences';
+import { senderMatchesAccountDomain } from '../lib/dns-records';
 
 function loadLocalEnvironment() {
   const envPath = resolve(process.cwd(), '.env.local');
@@ -51,6 +52,25 @@ async function main() {
     if (!account?.resendApiKey) {
       failed += 1;
       console.error(`Skipped ${magnet.id}: no Resend API key is saved for this account.`);
+      continue;
+    }
+
+    if (process.env.DIAGNOSE_READINESS === 'true') {
+      const expectedHost = account.subdomain && account.domain
+        ? `${account.subdomain}.${account.domain}`.toLowerCase()
+        : '';
+      console.log({
+        accountId: account.id,
+        resendKeySaved: Boolean(account.resendApiKey),
+        domainVerified: Boolean(account.domainVerifiedAt),
+        attachedHostMatches: account.domainAttachedHost.toLowerCase() === expectedHost,
+        senderConfigured: Boolean(account.resendFromEmail),
+        returnPathConfigured: Boolean(account.resendReturnPath),
+        senderMatchesDomain: senderMatchesAccountDomain(account),
+      });
+    }
+
+    if (process.env.DIAGNOSE_ONLY === 'true') {
       continue;
     }
 
