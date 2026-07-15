@@ -9,11 +9,6 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
-import {
-  logoValidationMessage,
-  MAX_LOGO_DATA_URL_LENGTH,
-  validateLogoDataUrl,
-} from '@/lib/upload';
 
 const ROUTE = '/api/onboarding';
 
@@ -39,31 +34,14 @@ const MAGNET_TYPES = [
 ] as const;
 const CADENCES = ['Weekly', 'Bi-weekly', 'Monthly', 'Quarterly', 'Ad-hoc'] as const;
 
-const logoSchema = z
-  .string()
-  .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
-  .superRefine((value, ctx) => {
-    const result = validateLogoDataUrl(value);
-    if (!result.ok) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: logoValidationMessage(result.reason) });
-    }
-  });
-
 const schema = z.object({
-  businessName: z.string().trim().max(80),
-  logoUrl: logoSchema,
+  businessName: z.string().trim().min(1, 'Add your business or creator name.').max(80),
+  // Accepted temporarily so an open tab using the previous onboarding screen can still finish.
+  logoUrl: z.string().optional(),
   businessType: z.enum(BUSINESS_TYPES),
   magnetType: z.enum(MAGNET_TYPES),
   cadence: z.enum(CADENCES),
-}).strict().superRefine((value, ctx) => {
-  if (!value.logoUrl && !value.businessName.trim()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Add a business name or upload a logo.',
-      path: ['businessName'],
-    });
-  }
-});
+}).strict();
 
 export async function POST(request: NextRequest) {
   let userId: string | undefined;

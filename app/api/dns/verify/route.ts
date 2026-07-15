@@ -14,6 +14,7 @@ import {
   type DnsRecordDefinition,
 } from '@/lib/dns-records';
 import { getAccountWithSecrets } from '@/lib/platform-store';
+import { hasPlatformResendApiKey, resolveResendApiKey } from '@/lib/platform-resend';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -131,7 +132,7 @@ async function getResendEmailDnsSetup(
   rootDomain: string
 ): Promise<ResendDomainSetup> {
   if (!resendApiKey) {
-    throw new Error('Add your Resend API key in Delivery before checking sending DNS.');
+    throw new Error('Email sending is not configured yet. Contact support if this keeps happening.');
   }
 
   const resend = new Resend(resendApiKey);
@@ -368,6 +369,21 @@ export async function POST(request: NextRequest) {
       if (!accountWithSecrets) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
+
+      // A customer-owned Resend key only affects that customer's Resend
+      // workspace. The Magnets-managed key is shared, so require the account
+      // to have completed our ownership TXT check before it can create or
+      // inspect a sending domain there. This prevents a user from consuming
+      // the shared account's domain quota with a domain they do not control.
+      const usingMagnetsManagedResend =
+        !accountWithSecrets.resendApiKey && hasPlatformResendApiKey();
+      if (usingMagnetsManagedResend && !accountWithSecrets.domainVerifiedAt) {
+        return NextResponse.json(
+          { error: 'Verify that you own this domain before setting up email sending.' },
+          { status: 409 }
+        );
+      }
+
       if (
         !senderMatchesAccountDomain({
           domain: accountWithSecrets.domain,
@@ -399,11 +415,11 @@ export async function POST(request: NextRequest) {
       try {
         resendSetup = await getResendEmailDnsSetup(
           senderDomain,
-          accountWithSecrets.resendApiKey,
+          resolveResendApiKey(accountWithSecrets),
           returnPath,
           rootDomain
         );
-        resendApiKeyForVerification = accountWithSecrets.resendApiKey;
+        resendApiKeyForVerification = resolveResendApiKey(accountWithSecrets);
         records = resendSetup.records;
       } catch (error) {
         const rawMessage = error instanceof Error

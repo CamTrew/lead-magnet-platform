@@ -1,4 +1,3 @@
-import { senderMatchesAccountDomain } from './dns-records';
 import {
   createFollowUpRun as createFollowUpRunInStore,
   followUpSequenceFingerprint,
@@ -17,6 +16,7 @@ import {
   scrubResendErrorMessage,
 } from './resend';
 import { followUpStopUrl } from './follow-up-opt-out';
+import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
@@ -68,15 +68,16 @@ export class FollowUpSequenceError extends Error {
 }
 
 function ensureResendReady(account: AccountSettings) {
-  if (!account.resendApiKey) {
-    throw new FollowUpSequenceError('Connect Resend before enabling a follow-up sequence.');
+  const resendApiKey = resolveResendApiKey(account);
+  if (!resendApiKey) {
+    throw new FollowUpSequenceError('Sending is not configured for this account yet.');
   }
-  if (!account.resendFromEmail) {
-    throw new FollowUpSequenceError('Set your sender address before enabling a follow-up sequence.');
+  const from = resolveResendFromEmail(account);
+  if (!from) {
+    throw new FollowUpSequenceError('Sending is not configured for this account yet.');
   }
-  if (!account.domainVerifiedAt || !senderMatchesAccountDomain(account)) {
-    throw new FollowUpSequenceError('Finish sender domain verification before enabling a follow-up sequence.');
-  }
+
+  return { from, resendApiKey };
 }
 
 function eventName(kind: 'signup' | 'booked', leadMagnetId: string) {
@@ -160,13 +161,13 @@ function resendName(label: string, magnet: Pick<LeadMagnet, 'id' | 'slug' | 'tit
   return `${full.slice(0, maxPrefixLength).trimEnd()}${suffix}`;
 }
 
-function templatePayload(account: AccountSettings, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
+function templatePayload(from: string, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
   const body = replaceTemplateVariables(email.body);
   const text = renderEmailTextFallback([body, STOP_SEQUENCE_TEXT].filter(Boolean).join('\n\n'));
 
   return {
     name: resendName('Magnets follow-up email', magnet, String(index + 1)),
-    from: account.resendFromEmail,
+    from,
     subject: email.subject,
     text,
     html: renderPlainEmailHtml(cleanEmailText(body), email.preview, STOP_SEQUENCE_HTML),
@@ -213,7 +214,7 @@ function needsFullAccessHelp(path: string, status: number, message: string) {
 }
 
 function resendFullAccessMessage() {
-  return 'Your Resend API key needs Full access to create follow-up sequences. In Resend, create a Full access API key, paste it in Configure, then save this sequence again.';
+  return 'Magnets could not create this follow-up sequence yet. Contact support so we can finish connecting sending for your account.';
 }
 
 async function resendRequest<T extends ResendObject>(
@@ -300,7 +301,7 @@ async function upsertTemplate(
   return created.id;
 }
 
-function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emails: FollowUpEmail[]) {
+function buildAutomationGraph(from: string, magnet: LeadMagnet, emails: FollowUpEmail[]) {
   const startEvent = eventName('signup', magnet.id);
   const bookedEvent = eventName('booked', magnet.id);
   const steps: Array<Record<string, unknown>> = [
@@ -354,7 +355,7 @@ function buildAutomationGraph(account: AccountSettings, magnet: LeadMagnet, emai
             STOP_SEQUENCE_URL: { var: 'event.stopSequenceUrl' },
           },
         },
-        from: account.resendFromEmail,
+        from,
         subject: email.subject,
       },
     });
@@ -418,7 +419,12 @@ async function sendEvent(
   email: string,
   payload: Record<string, string>
 ) {
-  await resendRequest(account.resendApiKey, '/events/send', {
+  const resendApiKey = resolveResendApiKey(account);
+  if (!resendApiKey) {
+    throw new FollowUpSequenceError('Sending is not configured for this account yet.');
+  }
+
+  await resendRequest(resendApiKey, '/events/send', {
     method: 'POST',
     body: JSON.stringify({
       event: eventName(kind, leadMagnetId),
@@ -433,10 +439,11 @@ export async function syncLeadMagnetFollowUpAutomation(
   magnet: LeadMagnet
 ) {
   const emails = normaliseFollowUpEmails(magnet.followUpEmails);
+  const resendApiKey = resolveResendApiKey(account);
 
   if (!magnet.followUpEnabled) {
-    if (account.resendApiKey && magnet.resendFollowUpAutomationId) {
-      await disableAutomation(account.resendApiKey, magnet.resendFollowUpAutomationId).catch(() => undefined);
+    if (resendApiKey && magnet.resendFollowUpAutomationId) {
+      await disableAutomation(resendApiKey, magnet.resendFollowUpAutomationId).catch(() => undefined);
     }
     return {
       automationId: magnet.resendFollowUpAutomationId,
@@ -444,35 +451,35 @@ export async function syncLeadMagnetFollowUpAutomation(
     };
   }
 
-  ensureResendReady(account);
+  const { from, resendApiKey: readyResendApiKey } = ensureResendReady(account);
 
   const activeEmails = emails.filter((email) => email.subject && email.body);
   if (activeEmails.length === 0) {
     throw new FollowUpSequenceError('Add at least one follow-up email before enabling the sequence.');
   }
 
-  await createEvent(account.resendApiKey, eventName('signup', magnet.id));
+  await createEvent(readyResendApiKey, eventName('signup', magnet.id));
   if (magnet.followUpStopOnBooking) {
-    await createEvent(account.resendApiKey, eventName('booked', magnet.id));
+    await createEvent(readyResendApiKey, eventName('booked', magnet.id));
   }
 
   const syncedEmails: FollowUpEmail[] = [];
   for (let index = 0; index < activeEmails.length; index += 1) {
     const email = activeEmails[index];
     const templateId = await upsertTemplate(
-      account.resendApiKey,
+      readyResendApiKey,
       email.resendTemplateId,
-      templatePayload(account, magnet, email, index)
+      templatePayload(from, magnet, email, index)
     );
     syncedEmails.push({ ...email, resendTemplateId: templateId });
   }
 
   const automationId = await upsertAutomation(
-    account.resendApiKey,
+    readyResendApiKey,
     magnet.resendFollowUpAutomationId,
-    buildAutomationGraph(account, magnet, syncedEmails)
+    buildAutomationGraph(from, magnet, syncedEmails)
   );
-  await enableAutomation(account.resendApiKey, automationId);
+  await enableAutomation(readyResendApiKey, automationId);
 
   return {
     automationId,

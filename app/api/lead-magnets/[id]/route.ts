@@ -104,6 +104,45 @@ const downloadLinkSchema = z
     }
   });
 
+const httpUrlSchema = z
+  .string()
+  .trim()
+  .max(2048)
+  .superRefine((value, ctx) => {
+    if (!value) return;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use a full http:// or https:// URL.' });
+      }
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid URL.' });
+    }
+  });
+
+const quizOptionSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  label: z.string().trim().min(1).max(160),
+  destinationUrl: httpUrlSchema,
+}).strict();
+
+const quizQuestionSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  prompt: z.string().trim().min(1).max(240),
+  options: z.array(quizOptionSchema).min(2).max(6),
+}).strict();
+
+const quizRouteConditionSchema = z.object({
+  questionId: z.string().trim().min(1).max(80),
+  optionId: z.string().trim().min(1).max(80),
+}).strict();
+
+const quizRouteSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  destinationUrl: httpUrlSchema,
+  conditions: z.array(quizRouteConditionSchema).max(5),
+}).strict();
+
 const delayHoursSchema = z.preprocess(
   (value) => {
     if (typeof value === 'string' && value.trim() !== '') return Number(value);
@@ -173,6 +212,18 @@ const schema = z.object({
   followUpStopOnBooking: z.boolean(),
   followUpEmails: z.array(followUpEmailSchema).max(10),
   resendFollowUpAutomationId: z.string().max(200),
+  postSignupMode: z.enum(['message', 'redirect', 'page']),
+  postSignupRedirectUrl: httpUrlSchema,
+  postSignupHeading: z.string().max(160),
+  postSignupBody: z.string().max(5000),
+  postSignupVideoUrl: httpUrlSchema,
+  postSignupCtaLabel: z.string().max(80),
+  postSignupCtaUrl: httpUrlSchema,
+  postSignupQuizEnabled: z.boolean(),
+  postSignupQuizTitle: z.string().max(140),
+  postSignupQuizDescription: z.string().max(300),
+  postSignupQuizQuestions: z.array(quizQuestionSchema).max(5),
+  postSignupQuizRoutes: z.array(quizRouteSchema).max(20),
   published: z.boolean(),
 }).strict().superRefine((value, ctx) => {
   if (value.followUpEnabled) {
@@ -208,6 +259,26 @@ const schema = z.object({
 
   if (!value.published) return;
 
+  if (value.postSignupMode === 'redirect' && !value.postSignupRedirectUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Add a destination URL for the post-signup redirect.',
+      path: ['postSignupRedirectUrl'],
+    });
+  }
+
+  if (
+    value.postSignupMode !== 'message'
+    && value.postSignupQuizEnabled
+    && value.postSignupQuizQuestions.length === 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Add at least one quiz question before publishing.',
+      path: ['postSignupQuizQuestions'],
+    });
+  }
+
   // When publishing, every visible field on the page and email must be filled.
   // Empty drafts can sit in the DB unpublished, but the moment the user toggles
   // to "Published" we refuse silently-empty content.
@@ -219,7 +290,6 @@ const schema = z.object({
     { key: 'ctaText', label: 'CTA button text' },
     { key: 'formHeading', label: 'Form heading' },
     { key: 'formSubtext', label: 'Form subtext' },
-    { key: 'downloadLink', label: 'Resource URL' },
     { key: 'emailSubject', label: 'Email subject' },
     { key: 'emailBody', label: 'Email body' },
     { key: 'emailPreview', label: 'Email preview text' },
@@ -257,7 +327,7 @@ function friendlyFollowUpSyncMessage(error: FollowUpSequenceError) {
     message === 'Set your sender address before enabling a follow-up sequence.' ||
     message === 'Finish sender domain verification before enabling a follow-up sequence.' ||
     message === 'Add at least one follow-up email before enabling the sequence.' ||
-    message.startsWith('Your Resend API key needs Full access')
+    message.startsWith('Magnets could not create this follow-up sequence yet')
   ) {
     return message;
   }
@@ -320,6 +390,8 @@ export async function PUT(
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
     const updateData = {
       ...parsed.data,
+      postSignupQuizEnabled: parsed.data.postSignupMode !== 'message'
+        && parsed.data.postSignupQuizEnabled,
       emailBody: proxyEmailImagesInBody({
         accountId: payload.account.id,
         baseUrl,

@@ -39,3 +39,25 @@ export function leadMagnetImageSrcSet(imageUrl: string) {
     .map((width) => `${optimiseLeadMagnetImageUrl(imageUrl, width)} ${width}w`)
     .join(', ');
 }
+
+/**
+ * Private Blob URLs cannot be loaded by a visitor's browser. Keep newer public
+ * uploads direct, but route legacy private uploads through our access-aware
+ * image endpoint instead.
+ */
+export function leadMagnetDisplayImageUrl({
+  id,
+  imageUrl,
+  updatedAt,
+}: {
+  id: string;
+  imageUrl: string;
+  updatedAt?: string;
+}) {
+  if (imageUrl.includes('.private.blob.vercel-storage.com')) {
+    const version = updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : '';
+    return `/magnet-images/${id}${version}`;
+  }
+
+  return optimiseLeadMagnetImageUrl(imageUrl);
+}

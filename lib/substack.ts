@@ -1,3 +1,4 @@
+import { log } from './logger';
 import type { AccountSettings } from './types';
 
 function normaliseSubstackPublication(value: string) {
@@ -13,7 +14,10 @@ function normaliseSubstackPublication(value: string) {
 export async function addToSubstack(account: AccountSettings, email: string) {
   const publication = normaliseSubstackPublication(account.substackPublication);
   if (!publication) {
-    console.info('Skipping Substack subscription because this account has no Substack publication set.');
+    log.info('Skipping Substack subscription because this account has no Substack publication set.', {
+      route: 'lib/substack',
+      accountId: account.id,
+    });
     return null;
   }
 
@@ -30,6 +34,7 @@ export async function addToSubstack(account: AccountSettings, email: string) {
       'User-Agent': 'Mozilla/5.0 (compatible; magnets.so/1.0; +https://magnets.so)',
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(8_000),
   });
 
   if (!response.ok) {

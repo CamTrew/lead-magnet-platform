@@ -11,22 +11,29 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { BrandSettings, FollowUpEmail } from '../lib/types';
+import type {
+  BrandSettings,
+  FollowUpEmail,
+  PostSignupQuizConfig,
+  PostSignupQuizQuestion,
+} from '../lib/types';
 
 export const defaultBrand: BrandSettings = {
   primary: '#FE6F34',
   accent: '#FDC957',
   success: '#7FD4DD',
   highlightIntensity: 100,
+  pageTheme: 'light',
 };
 
-const defaultBrandSql = sql`'{"primary":"#FE6F34","accent":"#FDC957","success":"#7FD4DD","highlightIntensity":100}'::jsonb`;
+const defaultBrandSql = sql`'{"primary":"#FE6F34","accent":"#FDC957","success":"#7FD4DD","highlightIntensity":100,"pageTheme":"light"}'::jsonb`;
 
 export const accounts = pgTable(
   'magnets_accounts',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     ownerUserId: uuid('owner_user_id').notNull(),
+    username: text('username').notNull().default(''),
     subdomain: text('subdomain').notNull().default('get'),
     domain: text('domain').notNull().default(''),
     logoUrl: text('logo_url').notNull().default(''),
@@ -37,6 +44,8 @@ export const accounts = pgTable(
     beehiivApiKey: text('beehiiv_api_key').notNull().default(''),
     beehiivPublicationId: text('beehiiv_publication_id').notNull().default(''),
     substackPublication: text('substack_publication').notNull().default(''),
+    slackWebhookUrl: text('slack_webhook_url').notNull().default(''),
+    pipedriveApiToken: text('pipedrive_api_token').notNull().default(''),
     // Subdomain we tell Resend to put the sending DNS under (MX / SPF / DKIM).
     // Empty until the user enters a sending domain in Configure; we probe their
     // DNS for a clear label and store it so the records stay consistent across
@@ -74,6 +83,9 @@ export const accounts = pgTable(
   },
   (table) => [
     uniqueIndex('magnets_accounts_owner_user_id_unique').on(table.ownerUserId),
+    uniqueIndex('magnets_accounts_username_unique')
+      .on(table.username)
+      .where(sql`${table.username} <> ''`),
     index('magnets_accounts_domain_idx').on(table.domain),
     index('magnets_accounts_domain_subdomain_idx').on(table.domain, table.subdomain),
     index('magnets_accounts_updated_at_idx').on(table.updatedAt),
@@ -90,6 +102,23 @@ export const authCredentials = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.userId], name: 'magnets_auth_credentials_pkey' }),
+  ]
+);
+
+export const passwordResetTokens = pgTable(
+  'magnets_password_reset_tokens',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('magnets_password_reset_tokens_token_hash_unique').on(table.tokenHash),
+    index('magnets_password_reset_tokens_user_created_idx').on(table.userId, table.createdAt),
+    index('magnets_password_reset_tokens_expires_at_idx').on(table.expiresAt),
   ]
 );
 
@@ -118,6 +147,20 @@ export const leadMagnets = pgTable(
     followUpStopOnBooking: boolean('follow_up_stop_on_booking').notNull().default(true),
     followUpEmails: jsonb('follow_up_emails').$type<FollowUpEmail[]>().notNull().default(sql`'[]'::jsonb`),
     resendFollowUpAutomationId: text('resend_follow_up_automation_id').notNull().default(''),
+    postSignupMode: text('post_signup_mode').notNull().default('message'),
+    postSignupRedirectUrl: text('post_signup_redirect_url').notNull().default(''),
+    postSignupHeading: text('post_signup_heading').notNull().default(''),
+    postSignupBody: text('post_signup_body').notNull().default(''),
+    postSignupVideoUrl: text('post_signup_video_url').notNull().default(''),
+    postSignupCtaLabel: text('post_signup_cta_label').notNull().default(''),
+    postSignupCtaUrl: text('post_signup_cta_url').notNull().default(''),
+    postSignupQuizEnabled: boolean('post_signup_quiz_enabled').notNull().default(false),
+    postSignupQuizTitle: text('post_signup_quiz_title').notNull().default(''),
+    postSignupQuizDescription: text('post_signup_quiz_description').notNull().default(''),
+    postSignupQuizQuestions: jsonb('post_signup_quiz_questions')
+      .$type<PostSignupQuizConfig | PostSignupQuizQuestion[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     published: boolean('published').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -180,6 +223,33 @@ export const submissions = pgTable(
   ]
 );
 
+export const quizResponses = pgTable(
+  'magnets_quiz_responses',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    leadMagnetId: uuid('lead_magnet_id')
+      .notNull()
+      .references(() => leadMagnets.id, { onDelete: 'cascade' }),
+    submissionId: uuid('submission_id')
+      .notNull()
+      .references(() => submissions.id, { onDelete: 'cascade' }),
+    questionId: text('question_id').notNull(),
+    question: text('question').notNull().default(''),
+    optionId: text('option_id').notNull(),
+    optionLabel: text('option_label').notNull().default(''),
+    destinationUrl: text('destination_url').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('magnets_quiz_responses_submission_question_unique').on(table.submissionId, table.questionId),
+    index('magnets_quiz_responses_account_created_idx').on(table.accountId, table.createdAt),
+    index('magnets_quiz_responses_magnet_created_idx').on(table.leadMagnetId, table.createdAt),
+  ]
+);
+
 export const rateLimits = pgTable(
   'magnets_rate_limits',
   {
@@ -203,6 +273,7 @@ export const rateLimits = pgTable(
 export const accountsRelations = relations(accounts, ({ many }) => ({
   leadMagnets: many(leadMagnets),
   submissions: many(submissions),
+  quizResponses: many(quizResponses),
   followUpRuns: many(followUpRuns),
 }));
 
@@ -212,6 +283,7 @@ export const leadMagnetsRelations = relations(leadMagnets, ({ one, many }) => ({
     references: [accounts.id],
   }),
   submissions: many(submissions),
+  quizResponses: many(quizResponses),
   followUpRuns: many(followUpRuns),
 }));
 
@@ -223,6 +295,21 @@ export const submissionsRelations = relations(submissions, ({ one }) => ({
   leadMagnet: one(leadMagnets, {
     fields: [submissions.leadMagnetId],
     references: [leadMagnets.id],
+  }),
+}));
+
+export const quizResponsesRelations = relations(quizResponses, ({ one }) => ({
+  account: one(accounts, {
+    fields: [quizResponses.accountId],
+    references: [accounts.id],
+  }),
+  leadMagnet: one(leadMagnets, {
+    fields: [quizResponses.leadMagnetId],
+    references: [leadMagnets.id],
+  }),
+  submission: one(submissions, {
+    fields: [quizResponses.submissionId],
+    references: [submissions.id],
   }),
 }));
 

@@ -10,6 +10,7 @@ import {
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
 import { isSetupComplete } from '@/lib/setup';
+import { generatedLeadMagnetSchema } from '@/lib/lead-magnet-ai';
 
 const ROUTE = '/api/lead-magnets';
 
@@ -24,9 +25,9 @@ const schema = z.object({
   downloadLink: z
     .string()
     .trim()
-    .min(1, 'Resource URL is required')
     .max(2048)
     .superRefine((value, ctx) => {
+      if (!value) return;
       try {
         const url = new URL(value);
         if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -35,7 +36,9 @@ const schema = z.object({
       } catch {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Resource URL is not a valid URL' });
       }
-    }),
+    })
+    .optional(),
+  generatedDraft: generatedLeadMagnetSchema.optional(),
 }).strict();
 
 function isUniqueViolation(error: unknown) {
@@ -53,7 +56,7 @@ export async function POST(request: Request) {
 
     if (!isSetupComplete(payload.account)) {
       return NextResponse.json(
-        { error: 'Finish account setup before creating magnets.' },
+        { error: 'Choose your Magnets URL on Configure before creating a page.' },
         { status: 412 }
       );
     }
@@ -82,8 +85,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const { title, slug, downloadLink } = parsed.data;
-    const leadMagnet = await createLeadMagnet(payload.account.id, title, slug, downloadLink);
+    const { title, slug, downloadLink = '', generatedDraft } = parsed.data;
+    const leadMagnet = await createLeadMagnet(
+      payload.account.id,
+      title,
+      slug,
+      downloadLink,
+      generatedDraft
+    );
 
     log.info('Lead magnet created', {
       route: ROUTE,

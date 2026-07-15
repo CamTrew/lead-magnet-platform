@@ -1,11 +1,15 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
+import { createHash, randomBytes } from 'node:crypto';
 import {
+  createPasswordResetToken,
   createDatabaseSession,
   createUserWithPasswordSession,
   deleteDatabaseSession,
   findUserWithPasswordByEmail,
   getDashboardPayloadBySessionToken,
+  resetPasswordFromToken,
 } from './platform-store';
 import { hashPassword, verifyPassword } from './passwords';
 
@@ -78,6 +82,41 @@ export async function createRegisterSession(email: string, password: string, nam
   return result.user;
 }
 
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
+function hashPasswordResetToken(token: string) {
+  return `sha256:${createHash('sha256').update(token).digest('hex')}`;
+}
+
+/**
+ * Unknown addresses deliberately return null. The caller always gives the
+ * same response so this route cannot be used to discover registered emails.
+ */
+export async function createPasswordReset(email: string) {
+  const result = await findUserWithPasswordByEmail(email);
+  if (!result) return null;
+
+  const token = randomBytes(32).toString('base64url');
+  await createPasswordResetToken(
+    result.user.id,
+    hashPasswordResetToken(token),
+    new Date(Date.now() + PASSWORD_RESET_TTL_MS)
+  );
+
+  return { email: result.user.email, token };
+}
+
+export async function completePasswordReset(token: string, password: string) {
+  const userId = await resetPasswordFromToken(
+    hashPasswordResetToken(token),
+    await hashPassword(password)
+  );
+
+  if (!userId) {
+    throw new AuthActionError('This reset link is invalid or has expired. Request another.', 400);
+  }
+}
+
 export async function clearSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
@@ -89,13 +128,13 @@ export async function clearSession() {
   cookieStore.delete(sessionCookieName);
 }
 
-export async function getCurrentDashboardPayload() {
+export const getCurrentDashboardPayload = cache(async () => {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (!token) return null;
 
   return getDashboardPayloadBySessionToken(token);
-}
+});
 
 export async function requireDashboardPayload() {
   const payload = await getCurrentDashboardPayload();

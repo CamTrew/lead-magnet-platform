@@ -8,7 +8,9 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
+  '/api/auth/password-reset',
   '/api/submit',
+  '/api/quiz-responses',
   '/api/calendar-webhooks',
 ];
 
@@ -40,10 +42,6 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
 
-  if (pathname === '/') {
-    return applySecurityHeaders(NextResponse.redirect(new URL('/login', request.url)), request);
-  }
-
   // Dashboard pages — redirect unauthenticated users to /login with a return URL.
   if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
     if (!hasSession) {
@@ -65,7 +63,7 @@ export function middleware(request: NextRequest) {
 
   // Logged-in users hitting /login or /register — bounce them into the dashboard.
   if ((pathname === '/login' || pathname === '/register') && hasSession) {
-    return applySecurityHeaders(NextResponse.redirect(new URL('/dashboard', request.url)), request);
+    return applySecurityHeaders(NextResponse.redirect(new URL('/dashboard/pages', request.url)), request);
   }
 
   return applySecurityHeaders(NextResponse.next(), request);

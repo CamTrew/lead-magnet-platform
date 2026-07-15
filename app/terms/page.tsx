@@ -5,146 +5,152 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
-  description: 'The terms covering use of Magnets, the free lead-magnet platform.',
+  description: 'The terms covering use of Magnets.',
   alternates: { canonical: `${SITE_URL}/terms` },
   openGraph: {
-    title: 'Magnets — Terms of Service',
-    description: 'The terms covering use of Magnets, the free lead-magnet platform.',
+    title: 'Magnets - Terms of Service',
+    description: 'The terms covering use of Magnets.',
     url: `${SITE_URL}/terms`,
   },
 };
 
-const EFFECTIVE = 'June 13, 2026';
+const EFFECTIVE = 'July 14, 2026';
 
 export default function TermsPage() {
   return (
     <LegalPage effective={EFFECTIVE} subtitle="Legal" title="Terms of Service">
       <p>
-        These Terms govern your use of Magnets (the &ldquo;Service&rdquo;), a free lead-magnet platform operated by the
-        Magnets team (&ldquo;we&rdquo;, &ldquo;us&rdquo;). By creating an account or using the Service you agree to
-        these Terms. If you do not agree, do not use the Service.
+        These Terms govern your use of Magnets (the &ldquo;Service&rdquo;). By creating an account, publishing a page,
+        or otherwise using the Service, you agree to these Terms. If you do not agree, do not use the Service.
       </p>
 
-      <LegalSection title="1. What Magnets is">
+      <LegalSection title="1. What Magnets does">
         <p>
-          Magnets lets you build branded landing pages that collect an email address in exchange for a downloadable
-          resource. We deliver the resource to the subscriber by email and, if you ask us to, forward the subscriber to
-          a third-party newsletter (such as Beehiiv or Substack). The Service is provided free of charge.
+          Magnets lets you create branded lead-magnet pages, collect signups, deliver resources by email, and optionally
+          run follow-up emails and connected integrations. Pages may be hosted at a Magnets URL or, if you choose, on a
+          custom domain you connect. Magnets may be offered free of charge or with different plans and features over time.
         </p>
       </LegalSection>
 
-      <LegalSection title="2. The account is yours">
+      <LegalSection title="2. Your account">
         <p>
-          You are responsible for the email address, password, and integration credentials (such as your Resend,
-          Beehiiv, or Substack API keys) you connect to your account. Keep them confidential and use them only with
-          accounts you own or have permission to use. You are responsible for everything that happens under your
-          account.
+          You are responsible for your account, password, and the accuracy of the information you provide. You must keep
+          your credentials confidential and promptly tell us if you believe your account has been accessed without
+          permission. You may only connect domains, sender addresses, API keys, webhook URLs, and third-party accounts
+          that you own or are authorised to use.
         </p>
       </LegalSection>
 
-      <LegalSection title="2.1 Magnets product newsletter">
+      <LegalSection title="3. Sending email">
         <p>
-          When you register, we add your email address to the Magnets product newsletter. We use it for product
-          updates, occasional tips, and important changes that affect your account. You can unsubscribe at any time
-          from the link in the footer of any email, or by emailing{' '}
-          <a className="text-ink-900 underline-offset-4 hover:underline" href="mailto:hello@magnets.so">hello@magnets.so</a>
-          . Unsubscribing from the newsletter does not delete your account or stop transactional emails (password
-          resets, security alerts, etc.).
+          Magnets can send a resource email from a Magnets-managed sender address so you can get started without setting
+          up a sender domain. You may choose to send from your own verified domain instead. We will only use a customer
+          sender address when the related domain has been verified for that sending setup.
+        </p>
+        <p>
+          You are responsible for your email content, the resources you offer, and compliance with applicable laws,
+          including consent, disclosure, unsubscribe, and anti-spam requirements. Where you enable a follow-up sequence,
+          recipients can use the provided stop link to stop that sequence. You must not remove, obscure, or circumvent
+          that control.
         </p>
       </LegalSection>
 
-      <LegalSection title="3. Bring your own keys">
+      <LegalSection title="4. Follow-up sequences and calendar stops">
         <p>
-          Magnets does not provide email sending or newsletter accounts. To send the resource email you must connect
-          your own Resend API key. To forward subscribers to a newsletter you must connect your own Beehiiv key or
-          Substack publication. We pass requests to those third parties using the credentials you provide; their terms
-          and pricing apply to your use of their services.
+          A follow-up sequence sends the schedule and content you configure after a person signs up. You may choose to
+          stop an enabled sequence when a connected Calendly or Cal.com booking webhook reports a booking for the same
+          email address. You are responsible for configuring and securing your calendar connection and for checking that
+          the sequence content and timing are appropriate for your audience.
         </p>
       </LegalSection>
 
-      <LegalSection title="4. Acceptable use">
-        <p>You agree not to use the Service to:</p>
+      <LegalSection title="5. Optional integrations">
+        <p>
+          You may connect supported third-party services, including Beehiiv, Substack, Slack, Pipedrive, Calendly, and
+          Cal.com. If you do, you authorise Magnets to send the information needed to perform the selected action, such
+          as adding a subscriber, posting a signup notification, creating or updating a contact, or stopping a sequence.
+          Your use of those services is also governed by their terms, privacy notices, pricing, and limits.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="6. Your content and your subscribers">
+        <p>
+          You retain ownership of the pages, copy, images, resources, and other content you submit to Magnets. You give
+          us the limited rights needed to store, host, display, deliver, and operate that content through the Service.
+          You are responsible for ensuring you have all rights and permissions needed to use that content.
+        </p>
+        <p>
+          You are also responsible for the personal data you collect through your pages. This includes providing an
+          appropriate privacy notice, having a lawful basis for collection and messaging, responding to data-rights
+          requests, and complying with the laws that apply to you and your subscribers.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="7. Acceptable use">
+        <p>You must not use Magnets to:</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Send unsolicited bulk email or violate anti-spam laws (CAN-SPAM, CASL, GDPR, PECR, etc.).</li>
-          <li>Distribute malware, phishing material, illegal content, or content that infringes someone else&apos;s rights.</li>
-          <li>Collect personal data without a lawful basis, or in violation of any applicable privacy law.</li>
-          <li>Abuse our infrastructure: scraping, mass automation, attempts to circumvent rate limits, and so on.</li>
-          <li>Resell the Service or rebrand it as your own.</li>
+          <li>Send unsolicited, deceptive, unlawful, or abusive messages, including spam, phishing, or malware.</li>
+          <li>Collect or use personal data without a lawful basis or required permissions.</li>
+          <li>Publish content that is illegal, infringes rights, or is otherwise harmful.</li>
+          <li>Attempt to bypass security controls, abuse rate limits, scrape the Service, or interfere with its operation.</li>
+          <li>Use the Service in a way that harms Magnets, its providers, or other users.</li>
         </ul>
         <p>
-          We may suspend or terminate any account that we reasonably believe is being used in violation of these Terms
-          or in a way that endangers the Service or other users.
-        </p>
-      </LegalSection>
-
-      <LegalSection title="5. Your content">
-        <p>
-          You own the pages, copy, images, and resources you upload to the Service, and the email addresses you
-          collect. You grant us the limited rights needed to host them, deliver them, and operate the Service. We
-          don&apos;t claim ownership and we don&apos;t use your content to train models or sell to third parties.
-        </p>
-      </LegalSection>
-
-      <LegalSection title="6. Free service — no warranties">
-        <p>
-          The Service is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo;, without warranties of any kind,
-          either express or implied, including the implied warranties of merchantability, fitness for a particular
-          purpose, non-infringement, or uninterrupted operation. We do not promise that the Service will be error-free,
-          secure, or available at any particular time.
-        </p>
-      </LegalSection>
-
-      <LegalSection title="7. Limitation of liability">
-        <p>
-          To the maximum extent permitted by law, in no event will we be liable for any indirect, incidental, special,
-          consequential, or punitive damages, or any loss of profits, revenue, data, or goodwill, arising out of or
-          related to your use of the Service. Our total cumulative liability for any claim arising out of or relating
-          to the Service is limited to one hundred US dollars (USD&nbsp;$100), even if we have been advised of the
-          possibility of such damages.
-        </p>
-        <p>
-          Because the Service is provided free of charge, you understand that we accept a much lower level of risk than
-          a paid service might.
+          We may suspend, limit, or terminate access where we reasonably believe these Terms have been breached or the
+          Service, its users, or providers are at risk.
         </p>
       </LegalSection>
 
       <LegalSection title="8. Third-party services">
         <p>
-          The Service relies on third-party providers (such as Vercel for hosting, Neon for the database, Resend for
-          email sending, and Beehiiv or Substack for newsletter forwarding). Their availability, terms, and privacy
-          practices are outside our control. We are not responsible for outages, data loss, or charges caused by those
-          third parties.
+          Magnets relies on third-party providers for hosting, storage, authentication, email delivery, and integrations.
+          We do not control those services and are not responsible for their availability, policies, changes, or charges.
+          You are responsible for maintaining any third-party accounts or plans required for features you choose to use.
         </p>
       </LegalSection>
 
-      <LegalSection title="9. Termination">
+      <LegalSection title="9. Availability and changes">
         <p>
-          You can stop using the Service at any time. You can delete your account from the dashboard; on deletion we
-          will remove your account record and the lead-magnet pages you created within thirty (30) days. We may
-          suspend or terminate the Service, or any account, at our discretion, with or without notice, for any reason
-          (including non-use or violation of these Terms).
+          We work to keep Magnets available and reliable, but the Service is provided on an &ldquo;as available&rdquo; basis.
+          We may change, suspend, or discontinue features, including third-party integrations, where reasonably needed to
+          operate, secure, or improve the Service. We do not guarantee uninterrupted or error-free operation.
         </p>
       </LegalSection>
 
-      <LegalSection title="10. Changes">
+      <LegalSection title="10. Disclaimer and limitation of liability">
         <p>
-          We may update these Terms from time to time. If the changes are material we will give reasonable notice
-          (for example, by email or a notice in the dashboard) before they take effect. Continued use of the Service
-          after a change means you accept the updated Terms.
+          To the maximum extent permitted by law, Magnets is provided without warranties of any kind, whether express,
+          implied, or statutory. We are not liable for indirect, incidental, special, consequential, exemplary, or
+          punitive damages, or for lost profits, revenue, data, goodwill, or business opportunity arising from your use
+          of the Service.
+        </p>
+        <p>
+          To the maximum extent permitted by law, our total liability for any claim related to the Service is limited to
+          one hundred US dollars (USD $100). Nothing in these Terms excludes liability that cannot lawfully be excluded.
         </p>
       </LegalSection>
 
-      <LegalSection title="11. Governing law">
+      <LegalSection title="11. Ending use">
         <p>
-          These Terms are governed by the laws of England and Wales, without regard to its conflict-of-laws principles.
-          Any dispute will be resolved exclusively in the courts located in London, England, unless required otherwise
-          by mandatory law.
+          You may stop using Magnets at any time. You can request or use the dashboard controls to delete your account.
+          We may suspend or terminate your access where permitted by law, including for non-use, security reasons, or a
+          breach of these Terms. Sections that should reasonably survive termination will continue to apply.
         </p>
       </LegalSection>
 
-      <LegalSection title="12. Contact">
+      <LegalSection title="12. Changes to these Terms">
         <p>
-          Reach us at <a className="text-ink-900 underline-offset-4 hover:underline" href="mailto:hello@magnets.so">hello@magnets.so</a>.
+          We may update these Terms as Magnets changes. If a change is material, we will provide reasonable notice before
+          it takes effect. Continued use after the effective date means you accept the updated Terms.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="13. Governing law and contact">
+        <p>
+          These Terms are governed by the laws of England and Wales, without regard to conflict-of-law rules. Courts in
+          London, England have exclusive jurisdiction, except where mandatory law provides otherwise. Questions about
+          these Terms can be sent to{' '}
+          <a className="text-ink-900 underline-offset-4 hover:underline" href="mailto:hello@magnets.so">hello@magnets.so</a>.
         </p>
       </LegalSection>
     </LegalPage>

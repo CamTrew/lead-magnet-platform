@@ -16,7 +16,7 @@ export function aceternityButtonClassName({
   variant?: ButtonVariant;
 } = {}) {
   return cn(
-    'inline-flex items-center justify-center gap-2 rounded-md border text-sm font-medium transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+    'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border text-sm font-medium transition duration-150 ease-out touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&:not(:disabled)]:active:translate-y-px',
     variant === 'primary' &&
       'border-ink-950 bg-ink-950 text-white hover:border-brand-orange hover:bg-brand-orange hover:text-ink-950',
     variant === 'secondary' &&
@@ -25,9 +25,9 @@ export function aceternityButtonClassName({
       'border-ink-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-200',
     variant === 'ghost' &&
       'border-transparent bg-transparent text-ink-600 hover:bg-ink-100 hover:text-ink-900',
-    size === 'sm' && 'h-8 px-3 text-xs',
-    size === 'md' && 'h-9 px-3.5',
-    size === 'lg' && 'h-11 px-5 text-base',
+    size === 'sm' && 'px-3 text-xs sm:min-h-8 sm:h-8',
+    size === 'md' && 'px-3.5 sm:min-h-9 sm:h-9',
+    size === 'lg' && 'min-h-12 px-5 text-base',
     className
   );
 }
@@ -54,7 +54,7 @@ export const AceternityInput = React.forwardRef<
   <input
     ref={ref}
     className={cn(
-      'flex h-9 w-full rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-950 focus:ring-1 focus:ring-ink-950 disabled:cursor-not-allowed disabled:opacity-50',
+      'flex min-h-11 w-full rounded-md border border-ink-200 bg-white px-3 text-base text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-950 focus:ring-1 focus:ring-ink-950 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 sm:h-9 sm:text-sm',
       'focus:border-brand-orange focus:ring-brand-orange',
       className
     )}
@@ -70,7 +70,7 @@ export const AceternityTextarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'min-h-28 w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm leading-6 text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-950 focus:ring-1 focus:ring-ink-950 disabled:cursor-not-allowed disabled:opacity-50',
+      'min-h-28 w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-base leading-6 text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-950 focus:ring-1 focus:ring-ink-950 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm',
       'focus:border-brand-orange focus:ring-brand-orange',
       className
     )}
@@ -89,7 +89,7 @@ export function AceternityCard({
   return (
     <section
       className={cn(
-        'relative overflow-hidden rounded-lg border border-ink-200 bg-white',
+        'relative overflow-hidden rounded-lg border border-ink-200 bg-white shadow-[0_1px_2px_rgba(17,17,17,0.025)]',
         className
       )}
     >
@@ -123,6 +123,7 @@ export function StatusPill({ state }: { state: 'idle' | 'saving' | 'saved' | 'er
 
   return (
     <span
+      aria-live="polite"
       className={cn(
         'inline-flex h-7 items-center rounded-md border px-2 text-xs font-medium',
         state === 'error' && 'border-red-200 bg-red-50 text-red-700',

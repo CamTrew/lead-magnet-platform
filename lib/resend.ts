@@ -1,7 +1,12 @@
 import { Resend } from 'resend';
-import { senderMatchesAccountDomain } from './dns-records';
 import { parseEmailImageLine } from './email-body-images';
 import { log } from './logger';
+import {
+  platformResendApiKey,
+  platformResendFromEmail,
+  resolveResendApiKey,
+  resolveResendFromEmail,
+} from './platform-resend';
 import type { AccountSettings, LeadMagnet } from './types';
 
 export class EmailDeliveryError extends Error {
@@ -93,9 +98,44 @@ export function scrubResendErrorMessage(message: string) {
     .replace(/Bearer\s+[A-Za-z0-9._-]{8,}/gi, 'Bearer <redacted>');
 }
 
+export async function sendPasswordResetEmail({
+  to,
+  resetUrl,
+}: {
+  to: string;
+  resetUrl: string;
+}) {
+  const resendApiKey = platformResendApiKey();
+  if (!resendApiKey) {
+    throw new EmailDeliveryError('Password reset email is not configured.');
+  }
+
+  const resend = new Resend(resendApiKey);
+  const text = `Reset your Magnets password\n\nUse this link to choose a new password:\n${resetUrl}\n\nThis link expires in one hour. If you did not request it, you can ignore this email.`;
+  const html = `<p style="font:16px/1.5 Arial,sans-serif;color:#111827">Use the link below to choose a new Magnets password.</p><p><a href="${escapeHtml(resetUrl)}" style="font:600 16px Arial,sans-serif;color:#111827">Reset your password</a></p><p style="font:14px/1.5 Arial,sans-serif;color:#4b5563">This link expires in one hour. If you did not request it, you can ignore this email.</p>`;
+
+  try {
+    const result = await resend.emails.send({
+      from: platformResendFromEmail(),
+      to,
+      subject: 'Reset your Magnets password',
+      text,
+      html,
+    });
+
+    if (result.error) {
+      throw new Error(result.error.message || 'The email provider rejected the message.');
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new EmailDeliveryError(scrubResendErrorMessage(message));
+  }
+}
+
 /**
  * Sends the magnet's resource email to `to`. Caller must pass an account loaded
- * with revealSecrets so account.resendApiKey is the plaintext key.
+ * with revealSecrets so any account-owned key is available. Accounts without
+ * one use the server-only Magnets-managed Resend key when configured.
  *
  * Behaviour:
  *  - No key set + NODE_ENV !== 'production' → no-op, logs at info, returns
@@ -117,7 +157,9 @@ export async function sendLeadMagnetEmail({
   to: string;
   name: string;
 }): Promise<{ skipped: true } | { messageId: string }> {
-  if (!account.resendApiKey) {
+  const resendApiKey = resolveResendApiKey(account);
+
+  if (!resendApiKey) {
     if (process.env.NODE_ENV === 'production') {
       throw new EmailDeliveryError(
         'Email could not be sent because this account has no sender configured.'
@@ -131,25 +173,12 @@ export async function sendLeadMagnetEmail({
     return { skipped: true };
   }
 
-  if (!account.resendFromEmail) {
-    throw new EmailDeliveryError(
-      'Email could not be sent because no sender address is set.'
-    );
+  const from = resolveResendFromEmail(account);
+  if (!from) {
+    throw new EmailDeliveryError('Email could not be sent because no sender is configured.');
   }
 
-  if (!account.domainVerifiedAt) {
-    throw new EmailDeliveryError(
-      'Email could not be sent because the account domain has not been verified.'
-    );
-  }
-
-  if (!senderMatchesAccountDomain(account)) {
-    throw new EmailDeliveryError(
-      'Email could not be sent because the sender address does not match this account domain.'
-    );
-  }
-
-  const resend = new Resend(account.resendApiKey);
+  const resend = new Resend(resendApiKey);
   const downloadLink = (magnet.downloadLink || '').trim();
   const body = cleanEmailText(
     magnet.emailBody
@@ -162,7 +191,7 @@ export async function sendLeadMagnetEmail({
   let result;
   try {
     result = await resend.emails.send({
-      from: account.resendFromEmail,
+      from,
       to,
       subject: magnet.emailSubject,
       text,

@@ -36,13 +36,76 @@
   }
   html {
     background: #f7f5f1;
+    scroll-behavior: smooth;
   }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-weight: 400;
+    line-height: 1.5;
     text-rendering: optimizeLegibility;
-    font-feature-settings: 'cv11', 'ss03';
+    font-feature-settings: 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  ::selection {
+    background: rgba(254, 111, 52, 0.3);
+    color: #111111;
+  }
+
+  :focus-visible {
+    outline: 2px solid #fe6f34;
+    outline-offset: 2px;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  summary {
+    -webkit-tap-highlight-color: rgba(254, 111, 52, 0.14);
+    touch-action: manipulation;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/*
+ * The first brand pass leaned too heavily on 800/900 weights. It made labels,
+ * controls, and headings compete with each other, especially on small screens.
+ * Keep hierarchy through type scale and spacing, reserving a 700 weight for
+ * actual display text and 600 for actions and section labels.
+ */
+.font-black,
+.font-extrabold {
+  font-weight: 700;
+}
+
+.font-bold {
+  font-weight: 600;
+}
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
 }
 
 @layer utilities {
@@ -96,4 +159,62 @@
       linear-gradient(90deg, rgba(17, 17, 17, 0.04) 1px, transparent 1px);
     background-size: 56px 56px;
   }
+}
+
+/* Public lead-magnet appearance. The dashboard stays intentionally light;
+   this only affects branded pages and their matching previews. */
+.magnet-page--dark {
+  color: #f8fafc;
+}
+
+.magnet-page--dark .magnet-page-shell {
+  border-color: rgb(255 255 255 / 0.12) !important;
+  background-color: rgb(19 23 29 / 0.92) !important;
+  background-image:
+    radial-gradient(circle at 0% 0%, rgb(var(--brand-primary-rgb) / 0.09) 0, transparent 42%),
+    radial-gradient(circle at 100% 100%, rgb(var(--brand-primary-rgb) / 0.06) 0, transparent 44%),
+    linear-gradient(180deg, rgb(24 29 37 / 0.98) 0%, rgb(14 17 23 / 0.96) 100%) !important;
+  box-shadow: 0 36px 110px -72px rgb(0 0 0 / 0.9), 0 0 0 1px rgb(var(--brand-primary-rgb) / 0.12) !important;
+}
+
+.magnet-page--dark .magnet-page-heading {
+  color: #f8fafc !important;
+}
+
+.magnet-page--dark .magnet-page-muted {
+  color: #b9c0cb !important;
+}
+
+.magnet-page--dark .magnet-page-copy {
+  color: #d9dee7 !important;
+}
+
+.magnet-page--dark .magnet-image {
+  border-color: rgb(255 255 255 / 0.12) !important;
+  background-color: #151922 !important;
+}
+
+.magnet-page--dark .magnet-capture {
+  border-color: rgb(var(--brand-primary-rgb) / 0.38) !important;
+  background-color: #151922 !important;
+  background-image:
+    radial-gradient(circle at 18% 0%, rgb(var(--brand-primary-rgb) / 0.16) 0, transparent 38%),
+    radial-gradient(circle at 82% 100%, rgb(var(--brand-primary-rgb) / 0.12) 0, transparent 42%),
+    linear-gradient(180deg, #191e27 0%, #11151b 100%) !important;
+  box-shadow: 0 26px 78px -48px rgb(var(--brand-primary-rgb) / 0.55), 0 18px 48px -42px rgb(0 0 0 / 0.7) !important;
+}
+
+.magnet-page--dark .magnet-form-input {
+  border-color: rgb(255 255 255 / 0.14) !important;
+  background-color: rgb(8 10 14 / 0.74) !important;
+  color: #f8fafc !important;
+}
+
+.magnet-page--dark .magnet-form-input::placeholder {
+  color: #87909e !important;
+}
+
+.magnet-page--dark .magnet-page-footer {
+  border-color: rgb(255 255 255 / 0.09) !important;
+  background-color: rgb(8 10 14 / 0.45) !important;
 }

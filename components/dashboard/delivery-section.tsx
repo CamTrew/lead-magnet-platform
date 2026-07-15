@@ -52,7 +52,7 @@ type DnsVerifyResponse = {
 export type DeliveryAccount = {
   domain: string;
   domainAttachedHost: string;
-  resendApiKey: string;
+  resendConfigured: boolean;
   resendFromEmail: string;
   resendReturnPath: string;
 };
@@ -62,10 +62,9 @@ export type DeliveryPatch = (updates: Partial<DeliveryAccount>) => void;
 /**
  * The whole "set up sending" flow rebuilt as a step list.
  *
- * Step 1: Resend key is the responsibility of the parent (already laid out).
- * Step 2: Sender subdomain — we suggest one, user can override, locks once saved.
- * Step 3: Sender local part — user types `hello`; we own the @<sub>.<domain> suffix.
- * Step 4: Sending-domain DNS records — only revealed once step 3 is locked.
+ * Step 1: Sender subdomain — we suggest one, user can override, locks once saved.
+ * Step 2: Sender local part — user types `hello`; we own the @<sub>.<domain> suffix.
+ * Step 3: Sending-domain DNS records — only revealed once step 2 is locked.
  *
  * Editing step 2 or 3 invalidates downstream steps until the user re-saves.
  */
@@ -638,13 +637,13 @@ function SendingDnsChecker({
   // to click. Only runs once per mount; the user clicks the button to recheck.
   useEffect(() => {
     if (autoChecked) return;
-    if (!account.resendFromEmail || !account.resendApiKey) return;
+    if (!account.resendFromEmail || !account.resendConfigured) return;
     setAutoChecked(true);
     void check();
     // We intentionally do NOT depend on `check` — the callback's deps include
     // `checking` which would re-fire the effect after the request completes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account.resendFromEmail, account.resendApiKey, autoChecked]);
+  }, [account.resendFromEmail, account.resendConfigured, autoChecked]);
 
   return (
     <div className="space-y-3">

@@ -188,11 +188,11 @@ export function SignupsClient({
                 One row per email, deduplicated across every magnet on this account.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="relative w-full sm:w-auto">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <AceternityInput
-                  className="pl-8"
+                  className="pl-8 sm:w-64"
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search email, name, or magnet"
                   value={search}
@@ -245,9 +245,9 @@ export function SignupsClient({
             </p>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase text-ink-500">
+          <div className="md:overflow-x-auto">
+            <table className="block w-full text-left text-sm md:table md:min-w-[960px]">
+              <thead className="hidden border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase text-ink-500 md:table-header-group">
                 <tr>
                   <th className="px-5 py-3">Email</th>
                   <th className="px-5 py-3">Name</th>
@@ -258,10 +258,10 @@ export function SignupsClient({
                   <th className="w-28 px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ink-200">
+              <tbody className="block divide-y divide-ink-200 md:table-row-group">
                 {filtered.length === 0 ? (
-                  <tr className="bg-white">
-                    <td colSpan={7} className="px-5 py-12 text-center">
+                  <tr className="block bg-white md:table-row">
+                    <td colSpan={7} className="block px-5 py-12 text-center md:table-cell">
                       <p className="font-semibold text-ink-950">
                         {totalCount === 0 ? 'No signups yet' : 'No matches'}
                       </p>
@@ -274,26 +274,49 @@ export function SignupsClient({
                   </tr>
                 ) : (
                   filtered.map((signup) => (
-                    <tr key={signup.email} className="bg-white transition hover:bg-ink-50">
-                      <td className="px-5 py-3">
+                    <tr key={signup.email} className="block bg-white px-5 py-4 transition hover:bg-ink-50 md:table-row md:px-0 md:py-0">
+                      <td className="block py-0 md:table-cell md:px-5 md:py-3">
                         <p className="truncate font-medium text-ink-950">{signup.email}</p>
                       </td>
-                      <td className="px-5 py-3 text-ink-700">{signup.name}</td>
-                      <td className="px-5 py-3">
+                      <td className="mt-2 block text-ink-700 md:mt-0 md:table-cell md:px-5 md:py-3">
+                        {signup.name && <><span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">Name</span>{signup.name}</>}
+                      </td>
+                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-3">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">First magnet</span>
                         <p className="truncate text-ink-700">{signup.firstLeadMagnetTitle}</p>
                         <p className="truncate font-mono text-xs text-ink-500">/{signup.firstLeadMagnetSlug}</p>
+                        {signup.quizAnswers.length > 0 && (
+                          <details className="mt-2 max-w-xs text-xs text-ink-600">
+                            <summary className="cursor-pointer font-medium text-ink-700">
+                              Quiz answers ({signup.quizAnswers.length})
+                            </summary>
+                            <div className="mt-1.5 space-y-1.5 border-l border-ink-200 pl-2.5">
+                              {signup.quizAnswers.map((answer, index) => (
+                                <p key={`${answer.question}-${answer.optionLabel}-${index}`}>
+                                  <span className="text-ink-500">{answer.question}: </span>
+                                  <span className="font-medium text-ink-800">{answer.optionLabel}</span>
+                                </p>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                       </td>
-                      <td className="px-5 py-3 text-ink-600">{formatDate(signup.firstSignupAt)}</td>
-                      <td className="px-5 py-3">
+                      <td className="mt-3 block text-ink-600 md:mt-0 md:table-cell md:px-5 md:py-3">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">First signup</span>
+                        {formatDate(signup.firstSignupAt)}
+                      </td>
+                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-3">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">Signups</span>
                         <span className="inline-flex rounded-md border border-ink-200 bg-ink-50 px-2 py-0.5 text-xs font-medium text-ink-800">
                           {signup.signupCount}
                         </span>
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-3">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">Sequence</span>
                         <SequenceStatus signup={signup} />
                       </td>
-                      <td className="px-5 py-3">
-                        <div className="flex justify-end gap-1">
+                      <td className="mt-4 block md:mt-0 md:table-cell md:px-5 md:py-3">
+                        <div className="flex gap-1 md:justify-end">
                           {signup.followUpStatus === 'active' && (
                             <button
                               aria-label={`Stop sequence for ${signup.email}`}
@@ -478,7 +501,7 @@ function MagnetSelect({
 }) {
   return (
     <select
-      className="h-9 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950"
+      className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:h-9"
       onChange={(event) => onChange(event.target.value)}
       value={value}
     >
@@ -724,7 +747,7 @@ function ImportModal({
             </Field>
             <Field label="First row">
               <select
-                className="h-9 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950"
+                className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:h-9"
                 onChange={(event) => setHasHeader(event.target.value === 'header')}
                 value={hasHeader ? 'header' : 'data'}
               >
@@ -852,7 +875,7 @@ function ColumnSelect({
 }) {
   return (
     <select
-      className="h-9 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950"
+      className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:h-9"
       onChange={(event) => {
         const raw = event.target.value;
         if (raw === '') onChange(null);

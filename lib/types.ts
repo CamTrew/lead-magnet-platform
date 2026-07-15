@@ -11,6 +11,7 @@ export interface BrandSettings {
   accent: string;
   success: string;
   highlightIntensity: number;
+  pageTheme: 'light' | 'dark';
 }
 
 export interface OnboardingAnswers {
@@ -32,6 +33,7 @@ export type CalendarProvider = '' | 'calendly' | 'calcom';
 export interface AccountSettings {
   id: string;
   ownerUserId: string;
+  username: string;
   subdomain: string;
   domain: string;
   logoUrl: string;
@@ -39,9 +41,13 @@ export interface AccountSettings {
   brand: BrandSettings;
   resendFromEmail: string;
   resendApiKey: string;
+  resendConfigured: boolean;
+  resendManagedByPlatform: boolean;
   beehiivApiKey: string;
   beehiivPublicationId: string;
   substackPublication: string;
+  slackWebhookUrl: string;
+  pipedriveApiToken: string;
   resendReturnPath: string;
   calendarWebhookEnabled: boolean;
   calendarWebhookToken: string;
@@ -70,6 +76,49 @@ export interface FollowUpEmail {
   resendTemplateId: string;
 }
 
+export type PostSignupMode = 'message' | 'redirect' | 'page';
+
+export interface PostSignupQuizOption {
+  id: string;
+  label: string;
+  destinationUrl: string;
+}
+
+export interface PostSignupQuizQuestion {
+  id: string;
+  prompt: string;
+  options: PostSignupQuizOption[];
+}
+
+export interface PostSignupQuizRouteCondition {
+  questionId: string;
+  optionId: string;
+}
+
+export interface PostSignupQuizRoute {
+  id: string;
+  destinationUrl: string;
+  conditions: PostSignupQuizRouteCondition[];
+}
+
+export interface PostSignupQuizConfig {
+  questions: PostSignupQuizQuestion[];
+  routes: PostSignupQuizRoute[];
+}
+
+export interface QuizResponse {
+  id: string;
+  accountId: string;
+  leadMagnetId: string;
+  submissionId: string;
+  questionId: string;
+  question: string;
+  optionId: string;
+  optionLabel: string;
+  destinationUrl: string;
+  createdAt: string;
+}
+
 export interface LeadMagnet {
   id: string;
   accountId: string;
@@ -91,6 +140,18 @@ export interface LeadMagnet {
   followUpStopOnBooking: boolean;
   followUpEmails: FollowUpEmail[];
   resendFollowUpAutomationId: string;
+  postSignupMode: PostSignupMode;
+  postSignupRedirectUrl: string;
+  postSignupHeading: string;
+  postSignupBody: string;
+  postSignupVideoUrl: string;
+  postSignupCtaLabel: string;
+  postSignupCtaUrl: string;
+  postSignupQuizEnabled: boolean;
+  postSignupQuizTitle: string;
+  postSignupQuizDescription: string;
+  postSignupQuizQuestions: PostSignupQuizQuestion[];
+  postSignupQuizRoutes: PostSignupQuizRoute[];
   published: boolean;
   createdAt: string;
   updatedAt: string;
@@ -107,6 +168,13 @@ export interface Submission {
   createdAt: string;
 }
 
+export interface SignupQuizAnswer {
+  question: string;
+  optionLabel: string;
+  destinationUrl: string;
+  createdAt: string;
+}
+
 export interface AccountSignup {
   email: string;
   name: string;
@@ -119,6 +187,7 @@ export interface AccountSignup {
   followUpStatus: FollowUpStatus;
   followUpStoppedAt: string | null;
   followUpStopReason: string;
+  quizAnswers: SignupQuizAnswer[];
 }
 
 export interface PlatformData {

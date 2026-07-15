@@ -19,7 +19,7 @@ export function LegalPage({
       <header className="border-b border-ink-200 bg-brand-soft">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" aria-label="Magnets home">
-            <MagnetsLogo markClassName="h-8 w-8" textClassName="text-xl" />
+            <MagnetsLogo markClassName="h-8" />
           </Link>
           <Link
             href="/"

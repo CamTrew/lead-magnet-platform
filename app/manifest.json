@@ -3,9 +3,9 @@
   "short_name": "Magnets",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/brand/magnets-mark-dark.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {

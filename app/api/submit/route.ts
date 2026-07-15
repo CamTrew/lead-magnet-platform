@@ -1,9 +1,9 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addToBeehiiv } from '@/lib/beehiiv';
-import { senderMatchesAccountDomain } from '@/lib/dns-records';
 import { addToSubstack } from '@/lib/substack';
 import { findLeadMagnet, recordSubmission } from '@/lib/platform-store';
+import { isEmailDeliveryReady } from '@/lib/setup';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -13,6 +13,8 @@ import {
 import { EmailDeliveryError, sendLeadMagnetEmail } from '@/lib/resend';
 import { startLeadMagnetFollowUpSequence } from '@/lib/follow-up-sequences';
 import { log } from '@/lib/logger';
+import { sendSlackSignupNotification } from '@/lib/slack';
+import { upsertPipedrivePerson } from '@/lib/pipedrive';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 const ROUTE = '/api/submit';
@@ -36,51 +38,46 @@ async function runPostSubmissionWork({
   name: string;
   email: string;
 }) {
-  try {
-    const followUp = await startLeadMagnetFollowUpSequence({
-      account,
-      magnet: leadMagnet,
-      email,
-      name,
-    });
-    if (!followUp.started) {
-      log.info('Follow-up sequence not started', {
+  const tasks = [
+    {
+      name: 'follow-up sequence start',
+      run: async () => {
+        const followUp = await startLeadMagnetFollowUpSequence({
+          account,
+          magnet: leadMagnet,
+          email,
+          name,
+        });
+        if (!followUp.started) {
+          log.info('Follow-up sequence not started', {
+            route: ROUTE,
+            method: 'POST',
+            status: 200,
+            accountId: account.id,
+            extra: { leadMagnetId: leadMagnet.id, reason: followUp.reason },
+          });
+        }
+      },
+    },
+    { name: 'Beehiiv subscribe', run: () => addToBeehiiv(account, email, name) },
+    { name: 'Substack subscribe', run: () => addToSubstack(account, email) },
+    {
+      name: 'Slack signup notification',
+      run: () => sendSlackSignupNotification({ account, leadMagnet, email, name }),
+    },
+    { name: 'Pipedrive signup sync', run: () => upsertPipedrivePerson({ account, email, name }) },
+  ];
+
+  const results = await Promise.allSettled(tasks.map((task) => task.run()));
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'rejected') {
+      log.warn(`${tasks[index].name} failed (non-fatal)`, {
         route: ROUTE,
         method: 'POST',
-        status: 200,
         accountId: account.id,
-        extra: { leadMagnetId: leadMagnet.id, reason: followUp.reason },
+        extra: { leadMagnetId: leadMagnet.id, error: result.reason },
       });
     }
-  } catch (followUpError) {
-    log.warn('Follow-up sequence start failed (non-fatal)', {
-      route: ROUTE,
-      method: 'POST',
-      accountId: account.id,
-      extra: { leadMagnetId: leadMagnet.id, error: followUpError },
-    });
-  }
-
-  try {
-    await addToBeehiiv(account, email, name);
-  } catch (beehiivError) {
-    log.warn('Beehiiv subscribe failed (non-fatal)', {
-      route: ROUTE,
-      method: 'POST',
-      accountId: account.id,
-      extra: { leadMagnetId: leadMagnet.id, error: beehiivError },
-    });
-  }
-
-  try {
-    await addToSubstack(account, email);
-  } catch (substackError) {
-    log.warn('Substack subscribe failed (non-fatal)', {
-      route: ROUTE,
-      method: 'POST',
-      accountId: account.id,
-      extra: { leadMagnetId: leadMagnet.id, error: substackError },
-    });
   }
 }
 
@@ -110,17 +107,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
 
-    const expectedAttachedHost =
-      result.account.subdomain && result.account.domain
-        ? `${result.account.subdomain}.${result.account.domain}`.toLowerCase()
-        : '';
-    const senderReady =
-      Boolean(result.account.resendApiKey) &&
-      Boolean(result.account.domainVerifiedAt) &&
-      result.account.domainAttachedHost.toLowerCase() === expectedAttachedHost &&
-      Boolean(result.account.resendFromEmail) &&
-      Boolean(result.account.resendReturnPath) &&
-      senderMatchesAccountDomain(result.account);
+    const senderReady = isEmailDeliveryReady(result.account);
 
     if (!senderReady) {
       log.warn('Email delivery blocked: unsafe sender configuration', {
@@ -131,7 +118,7 @@ export async function POST(request: NextRequest) {
         extra: { leadMagnetId },
       });
       return NextResponse.json(
-        { error: 'This resource is not ready to send yet. Please contact the page owner.' },
+        { error: 'Email delivery is not configured yet. Please contact the page owner.' },
         { status: 409 }
       );
     }
@@ -162,7 +149,7 @@ export async function POST(request: NextRequest) {
       throw sendError;
     }
 
-    await recordSubmission({
+    const submission = await recordSubmission({
       accountId,
       leadMagnetId,
       name,
@@ -186,7 +173,7 @@ export async function POST(request: NextRequest) {
       extra: { leadMagnetId },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, submissionId: submission.id });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

@@ -208,6 +208,20 @@ export function PublishingWizard({
     stage === 'attached-pending' &&
     (status.liveStatus?.issue === 'deployment_not_found' || status.liveStatus?.configured === false);
 
+  if (stage === 'live') {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <div>
+          <p className="text-sm font-semibold text-emerald-950">Domain is live</p>
+          <p className="mt-0.5 text-xs leading-5 text-emerald-800">
+            {status.host} is connected and serving your Magnets pages.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <StepCard
@@ -260,7 +274,7 @@ export function PublishingWizard({
         index={2}
         title="Point traffic at your magnets"
         description={
-          stage === 'attached-pending' || stage === 'live'
+          stage === 'attached-pending'
             ? 'Add this CNAME at your DNS provider. We refresh status automatically.'
             : 'After ownership is verified, we will give you a CNAME unique to your account.'
         }
@@ -277,7 +291,7 @@ export function PublishingWizard({
           </div>
         )}
 
-        {(stage === 'attached-pending' || stage === 'live') && status.cnameRecord && (
+        {stage === 'attached-pending' && status.cnameRecord && (
           <>
             <RecordRow record={status.cnameRecord} />
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -342,7 +356,7 @@ export function PublishingWizard({
           </>
         )}
 
-        {(stage === 'attached-pending' || stage === 'live') && !status.cnameRecord && (
+        {stage === 'attached-pending' && !status.cnameRecord && (
           <p className="text-xs text-ink-500">Looking up the CNAME unique to your account.</p>
         )}
       </StepCard>

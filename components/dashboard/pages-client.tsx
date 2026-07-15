@@ -5,18 +5,22 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ExternalLink,
+  ImageIcon,
   Loader2,
   Pencil,
   Plus,
+  Sparkles,
   X,
 } from 'lucide-react';
 import {
   AceternityButton,
   AceternityCard,
   AceternityInput,
+  AceternityTextarea,
 } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import type { DashboardPayload, LeadMagnet } from '@/lib/types';
+import type { GeneratedLeadMagnet } from '@/lib/lead-magnet-ai';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from '@/lib/limits';
 import { cn } from '@/lib/utils';
 
@@ -54,12 +58,14 @@ function liveSlug(input: string) {
 }
 
 function CreatePageModal({
-  downloadLink,
+  aiBrief,
+  createWithAi,
   error,
   isCreating,
   onClose,
   onSubmit,
-  setDownloadLink,
+  setAiBrief,
+  setCreateWithAi,
   setSlug,
   setSlugTouched,
   setTitle,
@@ -67,12 +73,14 @@ function CreatePageModal({
   slugTouched,
   title,
 }: {
-  downloadLink: string;
+  aiBrief: string;
+  createWithAi: boolean;
   error: string;
   isCreating: boolean;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  setDownloadLink: (value: string) => void;
+  setAiBrief: (value: string) => void;
+  setCreateWithAi: (value: boolean) => void;
   setSlug: (value: string) => void;
   setSlugTouched: (value: boolean) => void;
   setTitle: (value: string) => void;
@@ -99,7 +107,7 @@ function CreatePageModal({
           <div>
             <h2 className="text-lg font-semibold text-ink-950">Create a magnet</h2>
             <p className="mt-1 text-sm leading-6 text-ink-600">
-              Name the page and add the link people will get by email.
+              Name the page and choose its URL.
             </p>
           </div>
           <button
@@ -114,63 +122,94 @@ function CreatePageModal({
         </div>
 
         <form className="space-y-4" onSubmit={onSubmit}>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink-700">Page name</span>
-            <AceternityInput
-              autoFocus
+          <div className="grid grid-cols-2 rounded-lg border border-[#dfd8cf] bg-[#f7f5f1] p-1">
+            <button
+              className={cn(
+                'flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition',
+                !createWithAi ? 'bg-white text-[#111111] shadow-sm' : 'text-[#746d64] hover:text-[#1f1d1b]'
+              )}
               disabled={isCreating}
-              maxLength={120}
-              onChange={(event) => {
-                const value = event.target.value;
-                setTitle(value);
-                // Auto-derive the slug from the title until the user manually edits it.
-                if (!slugTouched) setSlug(slugifyTitle(value));
-              }}
-              placeholder="AI Pipeline Playbook"
-              required
-              value={title}
-            />
-          </label>
+              onClick={() => setCreateWithAi(false)}
+              type="button"
+            >
+              Start blank
+            </button>
+            <button
+              className={cn(
+                'flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition',
+                createWithAi ? 'bg-white text-[#111111] shadow-sm' : 'text-[#746d64] hover:text-[#1f1d1b]'
+              )}
+              disabled={isCreating}
+              onClick={() => setCreateWithAi(true)}
+              type="button"
+            >
+              <Sparkles className="h-4 w-4" />
+              Write with AI
+            </button>
+          </div>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink-700">URL slug</span>
-            <div className="flex h-9 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
-              <span className="flex shrink-0 items-center border-r border-ink-200 bg-ink-50 px-2.5 font-mono text-xs text-ink-500">
-                /
-              </span>
-              <input
-                className="min-w-0 flex-1 bg-transparent px-2 font-mono text-sm text-ink-900 outline-none placeholder:text-ink-400"
+          {createWithAi ? (
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-ink-700">What is this lead magnet about?</span>
+              <AceternityTextarea
+                autoFocus
+                className="min-h-44"
                 disabled={isCreating}
-                maxLength={80}
-                onChange={(event) => {
-                  setSlug(liveSlug(event.target.value));
-                  setSlugTouched(true);
-                }}
-                placeholder="ai-pipeline-playbook"
+                maxLength={12000}
+                onChange={(event) => setAiBrief(event.target.value)}
+                placeholder="Paste your notes, offer details, audience, what they will get, why it matters, and any proof or examples you want included."
                 required
-                value={slug}
+                value={aiBrief}
               />
-            </div>
-            <span className="mt-1.5 block text-xs leading-5 text-ink-500">
-              The path of the page. Lowercase, digits, and hyphens only.
-            </span>
-          </label>
+              <span className="mt-1.5 block text-xs leading-5 text-ink-500">
+                We will write the page and delivery email. You can edit every word before publishing.
+              </span>
+            </label>
+          ) : (
+            <>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">Page name</span>
+                <AceternityInput
+                  autoFocus
+                  disabled={isCreating}
+                  maxLength={120}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setTitle(value);
+                    // Auto-derive the slug from the title until the user manually edits it.
+                    if (!slugTouched) setSlug(slugifyTitle(value));
+                  }}
+                  placeholder="AI Pipeline Playbook"
+                  required
+                  value={title}
+                />
+              </label>
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink-700">Resource URL</span>
-            <AceternityInput
-              disabled={isCreating}
-              maxLength={2048}
-              onChange={(event) => setDownloadLink(event.target.value)}
-              placeholder="https://example.com/my-guide.pdf"
-              required
-              type="url"
-              value={downloadLink}
-            />
-            <span className="mt-1.5 block text-xs leading-5 text-ink-500">
-              Where the download button in the email points. You can change this later.
-            </span>
-          </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">URL slug</span>
+                <div className="flex h-9 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
+                  <span className="flex shrink-0 items-center border-r border-ink-200 bg-ink-50 px-2.5 font-mono text-xs text-ink-500">
+                    /
+                  </span>
+                  <input
+                    className="min-w-0 flex-1 bg-transparent px-2 font-mono text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                    disabled={isCreating}
+                    maxLength={80}
+                    onChange={(event) => {
+                      setSlug(liveSlug(event.target.value));
+                      setSlugTouched(true);
+                    }}
+                    placeholder="ai-pipeline-playbook"
+                    required
+                    value={slug}
+                  />
+                </div>
+                <span className="mt-1.5 block text-xs leading-5 text-ink-500">
+                  The path of the page. Lowercase, digits, and hyphens only.
+                </span>
+              </label>
+            </>
+          )}
 
           {error && (
             <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
@@ -183,11 +222,11 @@ function CreatePageModal({
               Cancel
             </AceternityButton>
             <AceternityButton
-              disabled={isCreating || !title.trim() || !downloadLink.trim() || !slug.trim()}
+              disabled={isCreating || (createWithAi ? aiBrief.trim().length < 40 : !title.trim() || !slug.trim())}
               type="submit"
             >
               {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              {isCreating ? 'Creating page' : 'Create page'}
+              {isCreating ? (createWithAi ? 'Writing page' : 'Creating page') : (createWithAi ? 'Write page' : 'Create page')}
             </AceternityButton>
           </div>
         </form>
@@ -199,20 +238,58 @@ function CreatePageModal({
 function publicUrl(account: DashboardPayload['account'], slug: string) {
   const subdomain = account.subdomain?.trim();
   const domain = account.domain?.trim();
-  if (!domain) return null;
+  if (!domain || !account.domainAttachedHost) return null;
   const host = subdomain ? `${subdomain}.${domain}` : domain;
   return `https://${host}/${slug}`;
 }
 
-function platformUrl(id: string) {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/p/${id}`;
+function platformUrl(username: string, slug: string) {
+  if (!username) return null;
+  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '');
+  if (configuredSiteUrl) return `${configuredSiteUrl}/${username}/${slug}`;
+
+  // Keep local development links on the local server. In production the
+  // dashboard may live on app.magnets.so, so never derive a public URL from
+  // window.location there.
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname.startsWith('127.'))
+  ) {
+    return `${window.location.origin}/${username}/${slug}`;
   }
-  return `/p/${id}`;
+
+  return `https://magnets.so/${username}/${slug}`;
 }
 
 function leadMagnetUrl(account: DashboardPayload['account'], leadMagnet: LeadMagnet) {
-  return publicUrl(account, leadMagnet.slug) || platformUrl(leadMagnet.id);
+  return publicUrl(account, leadMagnet.slug) || platformUrl(account.username, leadMagnet.slug) || `/p/${leadMagnet.id}`;
+}
+
+function PageThumbnail({ imageUrl, title }: Pick<LeadMagnet, 'imageUrl' | 'title'>) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  if (!imageUrl || hasImageError) {
+    return (
+      <div
+        aria-hidden="true"
+        className="flex h-12 w-16 shrink-0 items-center justify-center rounded-md border border-[#dfd8cf] bg-[#f7f5f1] text-[#9b9388]"
+      >
+        <ImageIcon className="h-4 w-4" />
+      </div>
+    );
+  }
+
+  return (
+    // Customer images can be served from arbitrary Blob URLs, so this cannot use a fixed Next image-host allowlist.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      alt={`Preview of ${title}`}
+      className="h-12 w-16 shrink-0 rounded-md border border-[#dfd8cf] bg-[#f7f5f1] object-cover"
+      decoding="async"
+      onError={() => setHasImageError(true)}
+      src={imageUrl}
+    />
+  );
 }
 
 export function PagesClient({ initialData }: { initialData: DashboardPayload }) {
@@ -224,22 +301,25 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   const [createTitle, setCreateTitle] = useState('');
   const [createSlug, setCreateSlug] = useState('');
   const [createSlugTouched, setCreateSlugTouched] = useState(false);
-  const [createDownloadLink, setCreateDownloadLink] = useState('');
+  const [createWithAi, setCreateWithAi] = useState(false);
+  const [aiBrief, setAiBrief] = useState('');
+  const [isWritingWithAi, setIsWritingWithAi] = useState(false);
   const [createState, setCreateState] = useState<SaveState>('idle');
   const [openingPageId, setOpeningPageId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
   const isCreating = createState === 'saving';
+  const isCreateBusy = isCreating || isWritingWithAi;
   const isOpening = Boolean(openingPageId) || isPending;
   const pageLimitReached = leadMagnets.length >= MAX_LEAD_MAGNETS_PER_ACCOUNT;
   const actionLabel = pageLimitReached
     ? 'Limit reached'
-    : isCreating
+    : isCreateBusy
       ? 'Creating page'
       : 'New page';
 
   function openCreateDialog() {
-    if (isCreating || isOpening) return;
+    if (isCreateBusy || isOpening) return;
     if (pageLimitReached) {
       setError(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages. Delete a page before creating another.`);
       return;
@@ -250,64 +330,79 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
   }
 
   function closeCreateDialog() {
-    if (isCreating) return;
+    if (isCreateBusy) return;
     setCreateOpen(false);
     setCreateError('');
     // Drop in-flight state so reopening the modal starts from scratch.
     setCreateTitle('');
     setCreateSlug('');
     setCreateSlugTouched(false);
-    setCreateDownloadLink('');
+    setCreateWithAi(false);
+    setAiBrief('');
+    setIsWritingWithAi(false);
     setCreateState('idle');
   }
 
   async function createLeadMagnet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isCreating || isOpening) return;
+    if (isCreateBusy || isOpening) return;
     if (pageLimitReached) {
       setCreateError(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages. Delete a page before creating another.`);
       return;
     }
 
-    const title = createTitle.trim();
-    const downloadLink = createDownloadLink.trim();
-    const slug = createSlug.trim();
-    if (!title) {
-      setCreateError('Enter a page name first.');
-      return;
-    }
-    if (!slug) {
-      setCreateError('Pick a slug for the page URL.');
-      return;
-    }
-    if (!/^[a-z0-9-]+$/.test(slug)) {
-      setCreateError('Slug can only contain lowercase letters, digits, and hyphens.');
-      return;
-    }
-    if (!downloadLink) {
-      setCreateError('Add the URL people will get by email.');
-      return;
-    }
-    try {
-      const parsed = new URL(downloadLink);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        setCreateError('Resource URL must start with http:// or https://');
-        return;
-      }
-    } catch {
-      setCreateError('Resource URL is not a valid URL.');
-      return;
-    }
-
-    setCreateState('saving');
     setError('');
     setCreateError('');
 
     try {
+      let title = createTitle.trim();
+      let slug = createSlug.trim();
+      let generatedDraft: GeneratedLeadMagnet | undefined;
+
+      if (createWithAi) {
+        if (aiBrief.trim().length < 40) {
+          setCreateError('Add a little more detail so the draft has something real to work with.');
+          return;
+        }
+
+        setIsWritingWithAi(true);
+        const generateResponse = await fetch('/api/lead-magnets/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brief: aiBrief }),
+        });
+        const generated = (await generateResponse.json().catch(() => null)) as {
+          draft?: GeneratedLeadMagnet & { slug: string };
+          error?: string;
+        } | null;
+        if (!generateResponse.ok || !generated?.draft) {
+          throw new Error(generated?.error || 'Could not write a draft right now. Please try again.');
+        }
+        const { slug: generatedSlug, ...draft } = generated.draft;
+        title = draft.title;
+        slug = generatedSlug;
+        generatedDraft = draft;
+        setIsWritingWithAi(false);
+      } else {
+        if (!title) {
+          setCreateError('Enter a page name first.');
+          return;
+        }
+        if (!slug) {
+          setCreateError('Pick a slug for the page URL.');
+          return;
+        }
+        if (!/^[a-z0-9-]+$/.test(slug)) {
+          setCreateError('Slug can only contain lowercase letters, digits, and hyphens.');
+          return;
+        }
+      }
+
+      setCreateState('saving');
       const response = await fetch('/api/lead-magnets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, slug, downloadLink }),
+        body: JSON.stringify({ title, slug, generatedDraft }),
       });
 
       if (!response.ok) {
@@ -324,7 +419,8 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
       setCreateTitle('');
       setCreateSlug('');
       setCreateSlugTouched(false);
-      setCreateDownloadLink('');
+      setCreateWithAi(false);
+      setAiBrief('');
       setCreateState('saved');
       setOpeningPageId(data.leadMagnet.id);
       window.dispatchEvent(new Event('magnets:navigation-start'));
@@ -335,11 +431,13 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
       setCreateError(err instanceof Error ? err.message : 'Something went wrong');
       setOpeningPageId(null);
       setCreateState('error');
+    } finally {
+      setIsWritingWithAi(false);
     }
   }
 
   function openLeadMagnet(leadMagnetId: string) {
-    if (isCreating || isOpening) return;
+    if (isCreateBusy || isOpening) return;
 
     setOpeningPageId(leadMagnetId);
     window.dispatchEvent(new Event('magnets:navigation-start'));
@@ -353,12 +451,14 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
       <PageHeader title="Pages" subtitle="Create and edit magnets" />
       {createOpen && (
         <CreatePageModal
-          downloadLink={createDownloadLink}
+          aiBrief={aiBrief}
+          createWithAi={createWithAi}
           error={createError}
-          isCreating={isCreating}
+          isCreating={isCreateBusy}
           onClose={closeCreateDialog}
           onSubmit={createLeadMagnet}
-          setDownloadLink={setCreateDownloadLink}
+          setAiBrief={setAiBrief}
+          setCreateWithAi={setCreateWithAi}
           setSlug={setCreateSlug}
           setSlugTouched={setCreateSlugTouched}
           setTitle={setCreateTitle}
@@ -376,16 +476,16 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
             <div>
               <h2 className="text-base font-black text-[#111111]">All pages</h2>
               <p className="mt-1 text-sm text-[#5c554e]">
-                Open a page to edit the copy, email, and download link.
+                Open a page to edit the copy and email.
               </p>
               <p className="mt-1 text-xs font-medium text-[#746d64]">
                 {leadMagnets.length} / {MAX_LEAD_MAGNETS_PER_ACCOUNT} pages used
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
               <AceternityButton
-                className="min-w-[152px]"
-                disabled={pageLimitReached || isCreating || isOpening}
+                className="w-full min-w-[152px] sm:w-auto"
+                disabled={pageLimitReached || isCreateBusy || isOpening}
                 onClick={openCreateDialog}
               >
                 {isCreating ? (
@@ -398,9 +498,9 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="border-b border-[#dfd8cf] bg-[#f7f5f1] text-xs font-black uppercase text-[#746d64]">
+          <div className="md:overflow-x-auto">
+            <table className="block w-full text-left text-sm md:table md:min-w-[920px]">
+              <thead className="hidden border-b border-[#dfd8cf] bg-[#f7f5f1] text-xs font-black uppercase text-[#746d64] md:table-header-group">
                 <tr>
                   <th className="px-5 py-3">Page</th>
                   <th className="px-5 py-3">URL</th>
@@ -409,15 +509,15 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                   <th className="w-32 px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#dfd8cf]">
+              <tbody className="block divide-y divide-[#dfd8cf] md:table-row-group">
                 {leadMagnets.length === 0 && !isCreating && (
-                  <tr className="bg-white">
-                    <td colSpan={5} className="px-5 py-10 text-center">
+                  <tr className="block bg-white md:table-row">
+                    <td colSpan={5} className="block px-5 py-10 text-center md:table-cell">
                       <p className="font-black text-[#111111]">No pages yet</p>
                       <p className="mt-1 text-sm text-[#746d64]">Create a page when the resource is ready.</p>
                       <AceternityButton
                         className="mt-4 min-w-[152px]"
-                        disabled={pageLimitReached || isOpening}
+                        disabled={pageLimitReached || isCreateBusy || isOpening}
                         onClick={openCreateDialog}
                       >
                         <Plus className="h-4 w-4" />
@@ -432,13 +532,19 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                   return (
                     <tr
                       key={leadMagnet.id}
-                      className="bg-white transition hover:bg-[#f7f5f1]"
+                      className="block bg-white px-5 py-4 transition hover:bg-[#f7f5f1] md:table-row md:px-0 md:py-0"
                     >
-                      <td className="max-w-[300px] px-5 py-4">
-                        <p className="truncate font-black text-[#111111]">{leadMagnet.title}</p>
-                        <p className="truncate text-xs text-[#746d64]">{leadMagnet.subtitle}</p>
+                      <td className="block max-w-[360px] py-0 md:table-cell md:px-5 md:py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <PageThumbnail imageUrl={leadMagnet.imageUrl} title={leadMagnet.title} />
+                          <div className="min-w-0">
+                            <p className="truncate font-black text-[#111111]">{leadMagnet.title}</p>
+                            <p className="mt-0.5 truncate text-xs text-[#746d64]">{leadMagnet.subtitle}</p>
+                          </div>
+                        </div>
                       </td>
-                      <td className="max-w-[360px] px-5 py-4">
+                      <td className="mt-3 block max-w-[360px] md:mt-0 md:table-cell md:px-5 md:py-4">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[#746d64] md:hidden">URL</span>
                         {leadMagnet.published ? (
                           <a
                             className="block truncate font-mono text-xs text-ink-700 underline-offset-2 hover:text-ink-950 hover:underline"
@@ -455,7 +561,8 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-4">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-[#746d64] md:hidden">Status</span>
                         <span
                           className={cn(
                             'rounded-lg border px-2 py-1 text-xs font-bold',
@@ -467,24 +574,31 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                           {leadMagnet.published ? 'Published' : 'Draft'}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-[#5c554e]">{formatDate(leadMagnet.updatedAt)}</td>
-                      <td className="px-5 py-4">
-                        <div className="flex justify-end gap-2">
+                      <td className="mt-3 block text-[#5c554e] md:mt-0 md:table-cell md:px-5 md:py-4">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-[#746d64] md:hidden">Updated</span>
+                        {formatDate(leadMagnet.updatedAt)}
+                      </td>
+                      <td className="mt-4 block md:mt-0 md:table-cell md:px-5 md:py-4">
+                        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-[#746d64] md:hidden">
+                          Actions
+                        </span>
+                        <div className="flex flex-nowrap items-center gap-2 md:justify-end">
                           {leadMagnet.published && (
                             <a
                               aria-label={`View ${leadMagnet.title}`}
-                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-xs font-medium text-ink-900 transition hover:bg-ink-50"
+                              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-0 text-xs font-medium text-ink-900 transition hover:bg-ink-50 sm:h-8 sm:w-auto sm:px-3"
                               href={url}
                               rel="noreferrer"
                               target="_blank"
                               title={url}
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
-                              View
+                              <span className="hidden sm:inline">View</span>
                             </a>
                           )}
                           <AceternityButton
                             aria-label={`Open ${leadMagnet.title}`}
+                            className="h-10 min-h-10 w-10 shrink-0 px-0 sm:h-8 sm:min-h-8 sm:w-auto sm:px-3"
                             disabled={isCreating || isOpening}
                             onClick={() => openLeadMagnet(leadMagnet.id)}
                             size="sm"
@@ -495,7 +609,7 @@ export function PagesClient({ initialData }: { initialData: DashboardPayload }) 
                             ) : (
                               <Pencil className="h-4 w-4" />
                             )}
-                            Open
+                            <span className="hidden sm:inline">Open</span>
                           </AceternityButton>
                         </div>
                       </td>

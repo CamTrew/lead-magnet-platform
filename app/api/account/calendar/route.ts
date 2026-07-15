@@ -55,6 +55,43 @@ function calendarWebhookOrigin(request: NextRequest) {
   return url.origin;
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const payload = await requireDashboardPayload();
+    const account = await getAccountWithSecrets(payload.account.id);
+
+    if (!account) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+
+    if (!account.calendarWebhookEnabled || !account.calendarWebhookToken) {
+      return NextResponse.json({ webhookUrl: '' });
+    }
+
+    const webhookUrl = `${calendarWebhookOrigin(request)}/api/calendar-webhooks/${account.id}?token=${encodeURIComponent(account.calendarWebhookToken)}`;
+    return NextResponse.json({ webhookUrl });
+  } catch (err) {
+    if (err instanceof CalendarIntegrationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+
+    if (err instanceof SecretConfigurationError) {
+      return NextResponse.json(
+        { error: 'Calendar connection details are unavailable until secure storage is configured.' },
+        { status: 500 }
+      );
+    }
+
+    log.error('Calendar webhook URL lookup failed', {
+      route: ROUTE,
+      method: 'GET',
+      status: 500,
+      extra: { error: err },
+    });
+    return NextResponse.json({ error: 'Could not load calendar connection details' }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const payload = await requireDashboardPayload();

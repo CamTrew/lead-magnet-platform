@@ -22,7 +22,9 @@ const MAGIC_BYTES: Array<{ type: string; bytes: number[] }> = [
   // RIFF and WEBP are the file size and vary.
 ];
 
-export const MAX_LOGO_BYTES = 1_000_000; // 1 MB
+// Brand logos can be exported at a fairly high resolution. Store new uploads
+// directly in Blob rather than making the account settings request carry them.
+export const MAX_LOGO_BYTES = 10_000_000; // 10 MB
 export const MAX_LOGO_DATA_URL_LENGTH = Math.ceil(MAX_LOGO_BYTES * 4 / 3) + 256; // base64 overhead + header
 
 // Lead-magnet hero images are larger by nature (photography, screenshots).
@@ -121,7 +123,7 @@ export function validateLogoDataUrl(
 
 const ERROR_MESSAGES: Record<LogoValidationError, string> = {
   empty: 'The logo file is empty.',
-  too_large: 'The logo must be 1 MB or smaller.',
+  too_large: 'The logo must be 10 MB or smaller.',
   bad_format: 'Re-upload the logo. We could not read the file you provided.',
   mime_not_allowed: 'Logo must be a PNG, JPG, WebP, or GIF. SVG is not supported.',
   content_mismatch: 'That file does not look like the image type it claims to be.',

@@ -8,12 +8,13 @@ import {
   normaliseSubdomain,
   parseSenderEmail,
 } from '@/lib/dns-records';
+import { isValidPlatformUsername, normalisePlatformUsername } from '@/lib/platform-username';
 import {
   clearDomainAttached,
   recordDomainAttached,
   updateAccount,
 } from '@/lib/platform-store';
-import { SecretConfigurationError } from '@/lib/secrets';
+import { isMaskedSecret, SecretConfigurationError } from '@/lib/secrets';
 import {
   attachDomain,
   getDomainConfig,
@@ -38,6 +39,7 @@ import {
   MAX_BRAND_HIGHLIGHT_INTENSITY,
   MIN_BRAND_HIGHLIGHT_INTENSITY,
 } from '@/lib/brand-highlight';
+import { isValidSlackWebhookUrl } from '@/lib/slack';
 
 const ROUTE = '/api/account';
 
@@ -57,11 +59,27 @@ const logoSchema = z
   .string()
   .max(MAX_LOGO_DATA_URL_LENGTH, 'Logo is too large')
   .superRefine((value, ctx) => {
+    if (!value || value.startsWith('https://')) return;
     const result = validateLogoDataUrl(value);
     if (!result.ok) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: logoValidationMessage(result.reason) });
     }
   });
+
+function isAccountLogoUrl(value: string, accountId: string) {
+  if (!value || value.startsWith('data:')) return true;
+
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.hostname.endsWith('.blob.vercel-storage.com') &&
+      url.pathname.startsWith(`/brand-logos/${accountId}/`)
+    );
+  } catch {
+    return false;
+  }
+}
 const domainSchema = z
   .string()
   .trim()
@@ -73,6 +91,16 @@ const domainSchema = z
   );
 
 const schema = z.object({
+  username: z
+    .string()
+    .trim()
+    .max(40)
+    .default('')
+    .transform(normalisePlatformUsername)
+    .refine(
+      (value) => value === '' || isValidPlatformUsername(value),
+      'Use 3 to 40 lowercase letters, numbers, or hyphens for your Magnets URL.'
+    ),
   subdomain: z
     .string()
     .trim()
@@ -90,6 +118,9 @@ const schema = z.object({
     accent: hexColorSchema,
     success: hexColorSchema,
     highlightIntensity: brandHighlightIntensitySchema,
+    // Older dashboard tabs can submit the previous brand shape while a new
+    // deployment is rolling out. Treat the missing appearance choice as light.
+    pageTheme: z.enum(['light', 'dark']).default('light'),
   }),
   resendFromEmail: z
     .string()
@@ -114,19 +145,30 @@ const schema = z.object({
   beehiivApiKey: z.string().max(2000),
   beehiivPublicationId: z.string().trim().max(200),
   substackPublication: z.string().trim().max(200),
+  slackWebhookUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine(
+      (value) => value === '' || isMaskedSecret(value) || isValidSlackWebhookUrl(value),
+      'Paste a valid Slack incoming-webhook URL.'
+    ),
+  pipedriveApiToken: z.string().trim().max(2000),
   calendarWebhookEnabled: z.boolean(),
-}).strict().superRefine((value, ctx) => {
-  if (!value.logoUrl && !value.logoText.trim()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Add a business name or upload a logo.',
-      path: ['logoText'],
-    });
-  }
-});
+}).strict();
 
 function isUniqueViolation(error: unknown) {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
+}
+
+function isUsernameUniqueViolation(error: unknown) {
+  return (
+    isUniqueViolation(error) &&
+    typeof error === 'object' &&
+    error !== null &&
+    'constraint' in error &&
+    error.constraint === 'magnets_accounts_username_unique'
+  );
 }
 
 function buildHost(subdomain: string, domain: string): string {
@@ -181,6 +223,10 @@ export async function PUT(request: NextRequest) {
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message || 'Check the configuration fields and try again.';
       return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    if (!isAccountLogoUrl(parsed.data.logoUrl, payload.account.id)) {
+      return NextResponse.json({ error: 'That logo upload is not valid for this account.' }, { status: 400 });
     }
 
     const previousHost = buildHost(payload.account.subdomain, payload.account.domain);
@@ -339,6 +385,10 @@ export async function PUT(request: NextRequest) {
         { error: 'Secure account storage is not configured. Contact support before saving settings.' },
         { status: 500 }
       );
+    }
+
+    if (isUsernameUniqueViolation(err)) {
+      return NextResponse.json({ error: 'That Magnets URL is already taken.' }, { status: 409 });
     }
 
     if (isUniqueViolation(err)) {

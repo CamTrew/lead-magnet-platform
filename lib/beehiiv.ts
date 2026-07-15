@@ -1,8 +1,12 @@
+import { log } from './logger';
 import type { AccountSettings } from './types';
 
 export async function addToBeehiiv(account: AccountSettings, email: string, name: string) {
   if (!account.beehiivApiKey || !account.beehiivPublicationId) {
-    console.info('Skipping Beehiiv subscription because this account has no Beehiiv API key.');
+    log.info('Skipping Beehiiv subscription because this account has no Beehiiv API key.', {
+      route: 'lib/beehiiv',
+      accountId: account.id,
+    });
     return null;
   }
 
@@ -26,6 +30,7 @@ export async function addToBeehiiv(account: AccountSettings, email: string, name
           },
         ],
       }),
+      signal: AbortSignal.timeout(8_000),
     }
   );
 

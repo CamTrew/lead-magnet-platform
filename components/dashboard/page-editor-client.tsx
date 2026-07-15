@@ -9,12 +9,15 @@ import {
   CalendarCheck,
   Check,
   Clock,
+  ExternalLink,
   Image as ImageIcon,
+  ListChecks,
   Loader2,
   Mail,
   Plus,
   Save,
   Trash2,
+  Video,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,7 +40,7 @@ import { ConfirmDialog } from '@/components/dashboard/confirm-dialog';
 import { EditableHotspot, InlineParagraphs, InlineText } from '@/components/dashboard/inline-edit';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type Mode = 'page' | 'email' | 'sequence';
+type Mode = 'page' | 'email' | 'sequence' | 'after';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 type EmailImageTarget =
   | { kind: 'resource' }
@@ -84,6 +87,26 @@ function newFollowUpEmail() {
     preview: '',
     body: '',
     resendTemplateId: '',
+  };
+}
+
+function newQuizQuestion() {
+  const questionId = `question-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return {
+    id: questionId,
+    prompt: 'Which best describes you?',
+    options: [
+      { id: `${questionId}-option-1`, label: 'Option one', destinationUrl: '' },
+      { id: `${questionId}-option-2`, label: 'Option two', destinationUrl: '' },
+    ],
+  };
+}
+
+function newQuizRoute() {
+  return {
+    id: `route-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    destinationUrl: '',
+    conditions: [],
   };
 }
 
@@ -313,6 +336,18 @@ export function PageEditorClient({
           followUpStopOnBooking: payload.followUpStopOnBooking,
           followUpEmails: payload.followUpEmails,
           resendFollowUpAutomationId: payload.resendFollowUpAutomationId,
+          postSignupMode: payload.postSignupMode,
+          postSignupRedirectUrl: payload.postSignupRedirectUrl,
+          postSignupHeading: payload.postSignupHeading,
+          postSignupBody: payload.postSignupBody,
+          postSignupVideoUrl: payload.postSignupVideoUrl,
+          postSignupCtaLabel: payload.postSignupCtaLabel,
+          postSignupCtaUrl: payload.postSignupCtaUrl,
+          postSignupQuizEnabled: payload.postSignupQuizEnabled,
+          postSignupQuizTitle: payload.postSignupQuizTitle,
+          postSignupQuizDescription: payload.postSignupQuizDescription,
+          postSignupQuizQuestions: payload.postSignupQuizQuestions,
+          postSignupQuizRoutes: payload.postSignupQuizRoutes,
           published: payload.published,
         }),
       });
@@ -517,18 +552,18 @@ export function PageEditorClient({
         )}
 
         <AceternityCard className="overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dfd8cf] bg-white p-4">
+          <div className="flex flex-col gap-3 border-b border-[#dfd8cf] bg-white p-3 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
               <AceternityButton onClick={() => router.push('/dashboard/pages')} variant="secondary">
                 <ArrowLeft className="h-4 w-4" />
                 All pages
               </AceternityButton>
 
-              <div className="flex h-9 items-center rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm">
+              <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm sm:max-w-[12rem] sm:flex-none">
                 <span className="mr-1 font-mono text-xs text-ink-500">/</span>
                 <input
                   aria-label="Page slug"
-                  className="w-40 bg-transparent font-mono text-sm text-ink-900 outline-none"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink-900 outline-none"
                   onBlur={(event) => patchLeadMagnet({ slug: slugify(event.target.value) || leadMagnet.slug })}
                   onChange={(event) => patchLeadMagnet({ slug: event.target.value.toLowerCase() })}
                   spellCheck={false}
@@ -536,12 +571,12 @@ export function PageEditorClient({
                 />
               </div>
 
-              <div className="flex h-9 items-center rounded-md border border-ink-200 bg-ink-50 p-1">
-                {(['page', 'email', 'sequence'] as const).map((item) => (
+              <div className="flex min-h-10 w-full items-center overflow-x-auto overflow-y-hidden rounded-md border border-ink-200 bg-ink-50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:w-auto">
+                {(['page', 'email', 'sequence', 'after'] as const).map((item) => (
                   <button
                     key={item}
                     className={cn(
-                      'h-7 rounded-sm px-2.5 text-xs font-medium capitalize transition',
+                      'h-7 shrink-0 rounded-sm px-2.5 text-xs font-medium capitalize transition',
                       mode === item
                         ? 'bg-ink-950 text-white'
                         : 'text-ink-500 hover:text-ink-900'
@@ -549,13 +584,13 @@ export function PageEditorClient({
                     onClick={() => setMode(item)}
                     type="button"
                   >
-                    {item}
+                    {item === 'after' ? 'After signup' : item}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               {saveState === 'error' && (
                 <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700">
                   Could not save
@@ -633,6 +668,8 @@ export function PageEditorClient({
               onPatch={patchLeadMagnet}
               pendingImage={pendingEmailImage?.target.kind === 'resource' ? pendingEmailImage : null}
             />
+          ) : mode === 'after' ? (
+            <AfterSignupCanvas leadMagnet={leadMagnet} onPatch={patchLeadMagnet} />
           ) : (
             <SequenceCanvas
               account={account}
@@ -664,8 +701,7 @@ export function PageEditorClient({
 
         {(mode === 'email' || mode === 'sequence') && (
           <p className="text-center text-xs text-ink-500">
-            Tip: in the email body, use <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{name}'}</code> for the recipient name and{' '}
-            <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{download_link}'}</code> for the resource URL. Use Add image to insert hosted images.
+            Tip: in the email body, use <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{name}'}</code> for the recipient name. Use Add image to insert hosted images.
           </p>
         )}
       </div>
@@ -697,17 +733,28 @@ function PageCanvas({
   onPickImage: () => void;
 }) {
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
+  const isDark = account.brand.pageTheme === 'dark';
   const previewStyle: PreviewCss = {
     '--brand-primary': brandPrimary,
+    '--brand-primary-rgb': hexToRgb(brandPrimary) || '254 111 52',
     '--brand-primary-soft': tone(0.16),
     '--brand-primary-faint': tone(0.08),
     '--brand-primary-edge': tone(0.1),
-    backgroundImage: pageBackground,
+    backgroundColor: isDark ? '#0b0d10' : '#ffffff',
+    backgroundImage: isDark
+      ? [
+          'radial-gradient(circle at 7% 38%, var(--brand-primary-edge) 0, transparent 34%)',
+          'radial-gradient(circle at 93% 42%, var(--brand-primary-edge) 0, transparent 34%)',
+          'linear-gradient(180deg, #0d0f13 0%, #11151b 44%, #0b0d10 100%)',
+          'linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px)',
+        ].join(', ')
+      : pageBackground,
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
 
   return (
-    <div className="relative bg-white text-zinc-900" style={previewStyle}>
+    <div className={`magnet-page relative ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`} style={previewStyle}>
       <header className="relative z-10">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
           <BrandPreviewLockup
@@ -721,7 +768,7 @@ function PageCanvas({
       <main className="relative z-10">
         <div className="mx-auto max-w-[1280px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
-            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
+            className="magnet-page-shell relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
             style={{
               boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${tone(0.08)}`,
             }}
@@ -731,7 +778,7 @@ function PageCanvas({
                 <InlineText
                   ariaLabel="Page headline"
                   as="h1"
-                  className="mb-6 block max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-[58px] lg:leading-[1.05]"
+                  className="magnet-page-heading mb-6 block max-w-2xl break-words text-4xl font-bold leading-[1.08] text-gray-950 sm:text-5xl lg:text-[58px] lg:leading-[1.05]"
                   emptyPlaceholder="Your headline"
                   maxLength={140}
                   onChange={(value) => onPatch({ title: value })}
@@ -741,7 +788,7 @@ function PageCanvas({
                 <InlineText
                   ariaLabel="Page subheadline"
                   as="p"
-                  className="mb-10 block max-w-2xl text-lg font-medium leading-relaxed text-gray-600"
+                  className="magnet-page-muted mb-10 block max-w-2xl text-lg font-medium leading-relaxed text-gray-600"
                   emptyPlaceholder="Short subhead. say what they will get"
                   maxLength={220}
                   multiline
@@ -767,7 +814,7 @@ function PageCanvas({
                 <div className="mb-11 max-w-2xl">
                   <InlineParagraphs
                     ariaLabel="Page description"
-                    className="text-[15px] leading-7 text-gray-600"
+                    className="magnet-page-muted text-[15px] leading-7 text-gray-600"
                     emptyPlaceholder="Write a short pitch. Press Enter twice to start a new paragraph."
                     onChange={(value) => onPatch({ description: value })}
                     value={leadMagnet.description}
@@ -778,7 +825,7 @@ function PageCanvas({
                   <InlineText
                     as="p"
                     ariaLabel="Bullets heading"
-                    className="mb-6 block text-base font-semibold text-gray-700"
+                    className="magnet-page-copy mb-6 block text-base font-semibold text-gray-700"
                     emptyPlaceholder="What they will learn"
                     onChange={(value) => onPatch({ bulletsHeading: value })}
                     value={leadMagnet.bulletsHeading}
@@ -814,7 +861,7 @@ function PageCanvas({
                         <InlineText
                           as="span"
                           ariaLabel={`Bullet ${index + 1}`}
-                          className="flex-1 text-[15px] leading-7 text-gray-700"
+                          className="magnet-page-copy flex-1 text-[15px] leading-7 text-gray-700"
                           emptyPlaceholder="Write a benefit"
                           onChange={(value) => {
                             const next = [...leadMagnet.bullets];
@@ -869,8 +916,8 @@ function PageCanvas({
         </div>
       </main>
 
-      <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+      <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
+        <div className="magnet-page-muted mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
         </div>
       </footer>
@@ -895,7 +942,7 @@ function BrandPreviewLockup({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img alt="" className="h-8 w-auto max-w-[52px] object-contain sm:h-10" src={account.logoUrl} />
         {logoText && (
-          <span className="min-w-0 max-w-[72vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
+          <span className="magnet-page-heading min-w-0 max-w-[72vw] truncate text-[32px] font-bold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
             {logoText}
           </span>
         )}
@@ -904,7 +951,7 @@ function BrandPreviewLockup({
   }
 
   return (
-    <span className="max-w-[82vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
+    <span className="magnet-page-heading max-w-[82vw] truncate text-[32px] font-bold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
       {fallback}
     </span>
   );
@@ -973,7 +1020,7 @@ function CaptureCardPreview({
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   return (
     <div
-      className="rounded-[22px] border bg-white p-6 sm:p-8"
+      className="magnet-capture rounded-[22px] border bg-white p-6 sm:p-8"
       style={{
         borderColor: tone(0.28),
         backgroundImage: [
@@ -987,7 +1034,7 @@ function CaptureCardPreview({
       <InlineText
         ariaLabel="Form heading"
         as="h2"
-        className="mb-2 block break-words text-center text-2xl font-black leading-tight text-gray-950 sm:text-[30px]"
+        className="magnet-page-heading mb-2 block break-words text-center text-2xl font-bold leading-tight text-gray-950 sm:text-[30px]"
         emptyPlaceholder="Download for free"
         maxLength={80}
         onChange={(value) => onPatch({ formHeading: value })}
@@ -996,7 +1043,7 @@ function CaptureCardPreview({
       <InlineText
         ariaLabel="Form subtext"
         as="p"
-        className="mb-8 block text-center text-sm leading-6 text-gray-600"
+        className="magnet-page-muted mb-8 block text-center text-sm leading-6 text-gray-600"
         emptyPlaceholder="Pop your email in and we'll send it straight over."
         maxLength={140}
         multiline
@@ -1004,14 +1051,14 @@ function CaptureCardPreview({
         value={formSubtext}
       />
       <div className="space-y-4">
-        <div className="flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
+        <div className="magnet-form-input flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
           Name
         </div>
-        <div className="flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
+        <div className="magnet-form-input flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
           Email
         </div>
         <EditableHotspot label="CTA button">
-          <div className="flex min-h-14 items-center justify-center rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-sm font-bold uppercase leading-tight text-white shadow-xl shadow-gray-900/30">
+          <div className="flex min-h-14 items-center justify-center rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-sm font-semibold leading-tight text-white shadow-xl shadow-gray-900/30">
             <InlineText
               ariaLabel="CTA button text"
               as="span"
@@ -1050,7 +1097,7 @@ function ImageHotspot({
   if (!imageUrl) {
     return (
       <button
-        className="flex aspect-[16/10] w-full flex-col items-center justify-center rounded-[20px] border-2 border-dashed border-gray-200 bg-gray-50/60 text-gray-700 transition hover:bg-gray-100"
+        className="magnet-image magnet-page-copy flex aspect-[16/10] w-full flex-col items-center justify-center rounded-[20px] border-2 border-dashed border-gray-200 bg-gray-50/60 text-gray-700 transition hover:bg-gray-100"
         onClick={onPickImage}
         type="button"
       >
@@ -1063,7 +1110,7 @@ function ImageHotspot({
 
   return (
     <div
-      className="group/image relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50 transition-all duration-300"
+      className="magnet-image group/image relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50 transition-all duration-300"
       style={{ boxShadow: `0 18px 50px -26px ${tone(0.26)}` }}
     >
       <div className="aspect-[16/10] w-full">
@@ -1147,14 +1194,14 @@ function EmailBodyEditor({
         return (
           <div className="space-y-1" key={`text-${index}`}>
             {index > 0 && segments[index - 1]?.kind === 'image' && (
-              <p className="px-2 text-[11px] font-medium uppercase text-ink-400">Text below image</p>
+              <p className="px-2 text-[11px] font-medium text-ink-400">Text below image</p>
             )}
             <AceternityTextarea
               aria-label={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
               className="min-h-0 resize-y border-0 px-2 py-1 shadow-none focus:ring-0"
               onChange={(event) => onChange(replaceEmailBodySegment(value, index, event.target.value))}
               placeholder={index === 0
-                ? 'Write the email. Use {name} for the recipient and {download_link} for the resource.'
+                ? 'Write the email. Use {name} for the recipient.'
                 : 'Continue writing below the image...'}
               rows={visibleLines}
               value={segment.raw}
@@ -1196,46 +1243,19 @@ function EmailCanvas({
   onPatch: (updates: Partial<LeadMagnet>) => void;
   pendingImage: PendingEmailImage | null;
 }) {
-  const missingDownloadLink = !leadMagnet.downloadLink.trim();
-
   return (
     <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-2xl space-y-4">
-        {missingDownloadLink && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <p className="font-semibold">Add a Resource URL before publishing.</p>
-            <p className="mt-1 text-xs leading-5">
-              The email sends a button that points to your downloadable resource. Without a URL here, the button has nowhere
-              to go.
-            </p>
-          </div>
-        )}
-
-        <div className="rounded-lg border border-ink-200 bg-white p-4 text-sm">
-          <label className="block">
-            <span className="text-[11px] font-medium uppercase text-ink-500">Resource URL</span>
-            <p className="mt-0.5 text-xs text-ink-500">
-              Where {'{download_link}'} resolves to in the email body.
-            </p>
-            <AceternityInput
-              className="mt-2"
-              onChange={(event) => onPatch({ downloadLink: event.target.value })}
-              placeholder="https://..."
-              value={leadMagnet.downloadLink}
-            />
-          </label>
-        </div>
-
         <div className="rounded-lg border border-ink-200 bg-white">
           <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs text-ink-500">
             <Mail className="h-4 w-4 text-ink-700" />
             <span className="font-medium">Email preview</span>
-            <span className="ml-auto font-mono text-[10px]">{account.resendFromEmail || 'sender@example.com'}</span>
+            <span className="ml-auto font-mono text-[10px]">{account.resendFromEmail || 'Magnets <hello@mail.magnets.so>'}</span>
           </div>
 
           <div className="space-y-2 border-b border-ink-200 bg-white px-5 py-4">
             <label className="block">
-              <span className="text-[11px] font-medium uppercase text-ink-500">Subject</span>
+              <span className="text-[11px] font-medium text-ink-500">Subject</span>
               <InlineText
                 ariaLabel="Email subject"
                 as="div"
@@ -1247,7 +1267,7 @@ function EmailCanvas({
               />
             </label>
             <label className="block">
-              <span className="text-[11px] font-medium uppercase text-ink-500">Preview text</span>
+              <span className="text-[11px] font-medium text-ink-500">Preview text</span>
               <InlineText
                 ariaLabel="Email preview text"
                 as="div"
@@ -1311,11 +1331,7 @@ function SequenceCanvas({
   pendingImage: PendingEmailImage | null;
 }) {
   const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
-  const resendConfigured = Boolean(
-    account.resendApiKey &&
-    account.resendFromEmail &&
-    account.resendReturnPath
-  );
+  const resendConfigured = account.resendConfigured;
   const calendarConnected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
   const calendarProviderLabel =
     account.calendarProvider === 'calendly'
@@ -1358,9 +1374,9 @@ function SequenceCanvas({
       <div className="mx-auto max-w-4xl space-y-4">
         {!resendConfigured && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <p className="font-semibold">Finish Resend setup first.</p>
+            <p className="font-semibold">Magnets-managed sending is not available yet.</p>
             <p className="mt-1 text-xs leading-5">
-              Follow-up sequences need a Full access Resend API key, sender address, and sending domain before they can be enabled.
+              Contact support before enabling a follow-up sequence.
             </p>
           </div>
         )}
@@ -1373,7 +1389,7 @@ function SequenceCanvas({
                 Send extra emails after the lead magnet email. Delays are counted from the previous email or from signup for the first one.
               </p>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-ink-500">
-                Requires a Full access Resend API key so Magnets can create the events, templates, and automation for this sequence.
+                Magnets creates the events, templates, and automation for this sequence after your sender domain is ready.
               </p>
             </div>
             <button
@@ -1419,7 +1435,7 @@ function SequenceCanvas({
               </span>
             </button>
             <div className="rounded-lg border border-ink-200 bg-ink-50 p-3">
-              <p className="text-xs font-semibold uppercase text-ink-500">Calendar connection</p>
+              <p className="text-xs font-medium text-ink-500">Calendar connection</p>
               <p className="mt-2 text-xs leading-5 text-ink-600">
                 {calendarConnected
                   ? `${calendarProviderLabel} is connected on this account. If this option is on, a booked call from the same email stops this magnet's active sequence.`
@@ -1575,6 +1591,391 @@ function SequenceCanvas({
             Add email
           </AceternityButton>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AfterSignupCanvas({
+  leadMagnet,
+  onPatch,
+}: {
+  leadMagnet: LeadMagnet;
+  onPatch: (updates: Partial<LeadMagnet>) => void;
+}) {
+  const quizQuestions = leadMagnet.postSignupQuizQuestions;
+  const quizRoutes = leadMagnet.postSignupQuizRoutes;
+
+  function patchQuestion(questionIndex: number, updates: Partial<LeadMagnet['postSignupQuizQuestions'][number]>) {
+    onPatch({
+      postSignupQuizQuestions: quizQuestions.map((question, index) =>
+        index === questionIndex ? { ...question, ...updates } : question
+      ),
+    });
+  }
+
+  function patchOption(questionIndex: number, optionIndex: number, updates: Partial<LeadMagnet['postSignupQuizQuestions'][number]['options'][number]>) {
+    const question = quizQuestions[questionIndex];
+    if (!question) return;
+    patchQuestion(questionIndex, {
+      options: question.options.map((option, index) => index === optionIndex ? { ...option, ...updates } : option),
+    });
+  }
+
+  function patchRoute(routeIndex: number, updates: Partial<LeadMagnet['postSignupQuizRoutes'][number]>) {
+    onPatch({
+      postSignupQuizRoutes: quizRoutes.map((route, index) => index === routeIndex ? { ...route, ...updates } : route),
+    });
+  }
+
+  function patchRouteCondition(routeIndex: number, questionId: string, optionId: string) {
+    const route = quizRoutes[routeIndex];
+    if (!route) return;
+    const conditions = route.conditions.filter((condition) => condition.questionId !== questionId);
+    if (optionId) conditions.push({ questionId, optionId });
+    patchRoute(routeIndex, { conditions });
+  }
+
+  return (
+    <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-4xl space-y-5">
+        <div className="rounded-lg border border-ink-200 bg-white p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-ink-50 text-ink-800">
+              <Check className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-ink-950">What happens after someone opts in?</h2>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
+                Keep it simple: show a confirmation, take them straight to another URL, or give them a useful next step on a short page.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {([
+              ['message', 'Standard confirmation', 'Show the email confirmation message.'],
+              ['redirect', 'Send them elsewhere', 'Open a URL as soon as the form is submitted.'],
+              ['page', 'Custom next step', 'Show your own message, video, or offer.'],
+            ] as const).map(([mode, title, description]) => (
+              <button
+                aria-pressed={leadMagnet.postSignupMode === mode}
+                className={cn(
+                  'rounded-lg border p-4 text-left transition',
+                  leadMagnet.postSignupMode === mode
+                    ? 'border-ink-950 bg-ink-950 text-white'
+                    : 'border-ink-200 bg-white text-ink-800 hover:bg-ink-50'
+                )}
+                key={mode}
+                onClick={() => onPatch({
+                  postSignupMode: mode,
+                  ...(mode === 'message' ? { postSignupQuizEnabled: false } : {}),
+                })}
+                type="button"
+              >
+                <span className="block text-sm font-semibold">{title}</span>
+                <span className={cn('mt-1 block text-xs leading-5', leadMagnet.postSignupMode === mode ? 'text-white/70' : 'text-ink-500')}>
+                  {description}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {leadMagnet.postSignupMode === 'message' && (
+            <p className="mt-3 text-xs leading-5 text-ink-500">
+              Quick qualifier is available with Send them elsewhere or Custom next step.
+            </p>
+          )}
+
+          {leadMagnet.postSignupMode === 'redirect' && (
+            <label className="mt-5 block">
+              <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Destination URL
+              </span>
+              <AceternityInput
+                onChange={(event) => onPatch({ postSignupRedirectUrl: event.target.value })}
+                placeholder="https://your-site.com/next-step"
+                value={leadMagnet.postSignupRedirectUrl}
+              />
+              <span className="mt-1.5 block text-xs text-ink-500">They will be taken here straight after a successful signup.</span>
+            </label>
+          )}
+
+          {leadMagnet.postSignupMode === 'page' && (
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">Heading</span>
+                <AceternityInput
+                  onChange={(event) => onPatch({ postSignupHeading: event.target.value })}
+                  placeholder="You are in. Here is what to do next."
+                  value={leadMagnet.postSignupHeading}
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">Message</span>
+                <AceternityTextarea
+                  onChange={(event) => onPatch({ postSignupBody: event.target.value })}
+                  placeholder="Set expectations, introduce an offer, or explain the next step."
+                  rows={4}
+                  value={leadMagnet.postSignupBody}
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
+                  <Video className="h-3.5 w-3.5" />
+                  Loom or YouTube URL
+                </span>
+                <AceternityInput
+                  onChange={(event) => onPatch({ postSignupVideoUrl: event.target.value })}
+                  placeholder="https://www.loom.com/share/..."
+                  value={leadMagnet.postSignupVideoUrl}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">Button label</span>
+                <AceternityInput
+                  onChange={(event) => onPatch({ postSignupCtaLabel: event.target.value })}
+                  placeholder="Book a call"
+                  value={leadMagnet.postSignupCtaLabel}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">Button URL</span>
+                <AceternityInput
+                  onChange={(event) => onPatch({ postSignupCtaUrl: event.target.value })}
+                  placeholder="https://cal.com/..."
+                  value={leadMagnet.postSignupCtaUrl}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
+        {leadMagnet.postSignupMode !== 'message' && (
+          <div className="rounded-lg border border-ink-200 bg-white p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-ink-50 text-ink-800">
+                  <ListChecks className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-ink-950">Add a quick qualifier</h2>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
+                    Ask a simple question after signup. Answers are saved with the signup, then you can optionally route people after the final answer.
+                  </p>
+                </div>
+              </div>
+              <button
+                aria-pressed={leadMagnet.postSignupQuizEnabled}
+                className={cn(
+                  'inline-flex h-8 shrink-0 items-center gap-2 rounded-full border px-2 text-xs font-semibold transition',
+                  leadMagnet.postSignupQuizEnabled
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-ink-200 bg-white text-ink-600'
+                )}
+                onClick={() => onPatch({
+                  postSignupQuizEnabled: !leadMagnet.postSignupQuizEnabled,
+                  postSignupQuizQuestions: leadMagnet.postSignupQuizQuestions.length
+                    ? leadMagnet.postSignupQuizQuestions
+                    : [newQuizQuestion()],
+                })}
+                type="button"
+              >
+                <span className={cn('block h-4 w-4 rounded-full', leadMagnet.postSignupQuizEnabled ? 'bg-emerald-500' : 'bg-ink-300')} />
+                {leadMagnet.postSignupQuizEnabled ? 'Enabled' : 'Off'}
+              </button>
+            </div>
+
+            {leadMagnet.postSignupQuizEnabled && (
+              <div className="mt-5 space-y-4 border-t border-ink-100 pt-5">
+                <div className="rounded-md border border-ink-200 bg-ink-50 px-3 py-2.5 text-xs leading-5 text-ink-600">
+                  <span className="font-medium text-ink-900">All questions are always completed first.</span>{' '}
+                  Add an optional route below when a particular combination of answers should see a tailored next step. Otherwise, people continue to the confirmation you chose above.
+                </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Small heading</span>
+                  <AceternityInput
+                    onChange={(event) => onPatch({ postSignupQuizTitle: event.target.value })}
+                    placeholder="One quick question"
+                    value={leadMagnet.postSignupQuizTitle}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Supporting text</span>
+                  <AceternityInput
+                    onChange={(event) => onPatch({ postSignupQuizDescription: event.target.value })}
+                    placeholder="Help us point you in the right direction."
+                    value={leadMagnet.postSignupQuizDescription}
+                  />
+                </label>
+              </div>
+
+              {quizQuestions.map((question, questionIndex) => (
+                <div className="rounded-lg border border-ink-200 bg-ink-50 p-4" key={question.id}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium text-ink-500">Question {questionIndex + 1}</p>
+                    <button
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                      onClick={() => onPatch({
+                        postSignupQuizQuestions: quizQuestions.filter((_, index) => index !== questionIndex),
+                        postSignupQuizRoutes: quizRoutes.map((route) => ({
+                          ...route,
+                          conditions: route.conditions.filter((condition) => condition.questionId !== question.id),
+                        })),
+                      })}
+                      type="button"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remove
+                    </button>
+                  </div>
+                  <label className="mt-3 block">
+                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Question</span>
+                    <AceternityInput
+                      onChange={(event) => patchQuestion(questionIndex, { prompt: event.target.value })}
+                      value={question.prompt}
+                    />
+                  </label>
+                  <div className="mt-3 space-y-3">
+                    {question.options.map((option, optionIndex) => (
+                      <div className="rounded-md border border-ink-200 bg-white p-3" key={option.id}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-medium text-ink-700">Answer {optionIndex + 1}</span>
+                          <button
+                            aria-label={`Remove answer ${optionIndex + 1}`}
+                            className="inline-flex h-7 items-center justify-center rounded-md px-1.5 text-red-600 transition hover:bg-red-50 disabled:opacity-40"
+                            disabled={question.options.length <= 2}
+                          onClick={() => onPatch({
+                            postSignupQuizQuestions: quizQuestions.map((currentQuestion, index) => index === questionIndex
+                              ? { ...currentQuestion, options: question.options.filter((_, currentOptionIndex) => currentOptionIndex !== optionIndex) }
+                              : currentQuestion),
+                            postSignupQuizRoutes: quizRoutes.map((route) => ({
+                              ...route,
+                              conditions: route.conditions.filter((condition) => condition.optionId !== option.id),
+                            })),
+                          })}
+                            type="button"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="ml-1 text-xs">Remove</span>
+                          </button>
+                        </div>
+                        <div className="mt-2">
+                          <label className="block">
+                            <span className="mb-1 block text-xs text-ink-500">Answer text</span>
+                            <AceternityInput
+                              aria-label={`Answer ${optionIndex + 1}`}
+                              onChange={(event) => patchOption(questionIndex, optionIndex, { label: event.target.value })}
+                              placeholder="For example: I am just getting started"
+                              value={option.label}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {question.options.length < 6 && (
+                    <button
+                      className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100"
+                      onClick={() => patchQuestion(questionIndex, {
+                        options: [...question.options, {
+                          id: `${question.id}-option-${Date.now()}`,
+                          label: 'Another option',
+                          destinationUrl: '',
+                        }],
+                      })}
+                      type="button"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add answer
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {quizQuestions.length < 5 && (
+                <AceternityButton onClick={() => onPatch({ postSignupQuizQuestions: [...quizQuestions, newQuizQuestion()] })} type="button" variant="secondary">
+                  <Plus className="h-4 w-4" />
+                  Add question
+                </AceternityButton>
+              )}
+
+              <div className="rounded-lg border border-ink-200 bg-white p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-ink-950">Route after the final answer</h3>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
+                      Optional. Use this only when a combination of answers should go to a specific URL. The first complete match wins.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {quizRoutes.map((route, routeIndex) => (
+                    <div className="rounded-md border border-ink-200 bg-ink-50 p-3" key={route.id}>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-medium text-ink-700">Route {routeIndex + 1}</p>
+                        <button
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                          onClick={() => onPatch({ postSignupQuizRoutes: quizRoutes.filter((_, index) => index !== routeIndex) })}
+                          type="button"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      </div>
+                      <label className="mt-3 block">
+                        <span className="mb-1 block text-xs text-ink-500">Then send them to</span>
+                        <AceternityInput
+                          aria-label={`Destination for route ${routeIndex + 1}`}
+                          onChange={(event) => patchRoute(routeIndex, { destinationUrl: event.target.value })}
+                          placeholder="https://your-site.com/next-step"
+                          value={route.destinationUrl}
+                        />
+                      </label>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {quizQuestions.map((question) => {
+                          const selectedOptionId = route.conditions.find((condition) => condition.questionId === question.id)?.optionId || '';
+                          return (
+                            <label className="block" key={question.id}>
+                              <span className="mb-1 block truncate text-xs text-ink-500">{question.prompt}</span>
+                              <select
+                                aria-label={`Route ${routeIndex + 1} condition for ${question.prompt}`}
+                                className="h-10 w-full rounded-lg border border-ink-200 bg-white px-3 text-sm text-ink-800 outline-none transition focus:border-ink-500 focus:ring-2 focus:ring-ink-100"
+                                onChange={(event) => patchRouteCondition(routeIndex, question.id, event.target.value)}
+                                value={selectedOptionId}
+                              >
+                                <option value="">Any answer</option>
+                                {question.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                              </select>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {!route.destinationUrl.trim() || route.conditions.length === 0 ? (
+                        <p className="mt-2 text-xs text-ink-500">Add a destination and select at least one answer to activate this route.</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+
+                {quizRoutes.length < 20 && (
+                  <button
+                    className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100"
+                    onClick={() => onPatch({ postSignupQuizRoutes: [...quizRoutes, newQuizRoute()] })}
+                    type="button"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add route
+                  </button>
+                )}
+              </div>
+            </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

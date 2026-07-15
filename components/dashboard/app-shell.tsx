@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  CircleHelp,
+  Bug,
   FileText,
   LayoutDashboard,
   Loader2,
@@ -21,14 +21,17 @@ import {
 import { MagnetsLogo, MagnetsLogoMark } from '@/components/magnets-logo-mark';
 import { cn } from '@/lib/utils';
 
-const HELP_LOOM_EMBED_URL =
-  'https://www.loom.com/embed/adc4c43d43884842998acc42127497ca?hide_owner=true&hide_share=true&hide_title=true&hideEmbedTopBar=true';
-
 const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Configure', requiresSetup: false },
-  { href: '/dashboard/brand', icon: Palette, label: 'Brand', requiresDomain: true },
   { href: '/dashboard/pages', icon: FileText, label: 'Pages', requiresSetup: true },
   { href: '/dashboard/signups', icon: Users, label: 'Signups', requiresSetup: true },
+  {
+    href: '/dashboard',
+    icon: LayoutDashboard,
+    label: 'Configure',
+    requiresSetup: false,
+    dividerBefore: true,
+  },
+  { href: '/dashboard/brand', icon: Palette, label: 'Brand', requiresSetup: false },
   { href: '/dashboard/account', icon: Settings, label: 'Account', requiresSetup: false },
 ];
 
@@ -62,7 +65,7 @@ function SidebarLink({
   tooltip?: string;
 }) {
   const baseClassName = cn(
-    'group flex h-9 items-center rounded-md text-sm transition',
+    'group flex min-h-11 items-center rounded-md text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset lg:min-h-9',
     collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
     active
       ? 'bg-ink-100 text-ink-950 font-medium'
@@ -107,46 +110,12 @@ function SidebarLink({
   );
 }
 
-function SidebarButton({
-  collapsed,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  collapsed?: boolean;
-  icon: typeof LayoutDashboard;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={collapsed ? label : undefined}
-      className={cn(
-        'flex h-9 w-full items-center rounded-md text-sm text-ink-600 transition hover:bg-ink-50 hover:text-ink-900',
-        collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
-      )}
-    >
-      <Icon className="h-4 w-4 shrink-0" />
-      <span
-        aria-hidden={collapsed}
-        className={cn('overflow-hidden whitespace-nowrap', collapsed && 'w-0 opacity-0')}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
 function SidebarContent({
   collapsed,
   onCollapseToggle,
-  onHelpClick,
   onLogout,
   onNavigate,
   isLoggingOut,
-  publishingDomainReady,
   setupComplete,
   userName,
   userEmail,
@@ -154,10 +123,8 @@ function SidebarContent({
   collapsed?: boolean;
   onCollapseToggle?: () => void;
   isLoggingOut?: boolean;
-  onHelpClick: () => void;
   onLogout: () => void;
   onNavigate?: () => void;
-  publishingDomainReady: boolean;
   setupComplete: boolean;
   userName: string;
   userEmail: string;
@@ -168,7 +135,7 @@ function SidebarContent({
     <div className="flex h-full flex-col">
       <div
         className={cn(
-          'flex h-14 items-center border-b border-ink-200 bg-brand-soft',
+      'flex h-12 items-center border-b border-ink-200 bg-brand-soft',
           collapsed ? 'justify-center px-2' : 'gap-2.5 px-3'
         )}
       >
@@ -180,12 +147,12 @@ function SidebarContent({
             title="Open sidebar"
             type="button"
           >
-            <MagnetsLogoMark className="h-8 w-8" />
+              <MagnetsLogoMark className="h-7 w-7" />
           </button>
         ) : (
           <>
             <Link href="/dashboard" aria-label="Magnets dashboard">
-              <MagnetsLogo markClassName="h-8 w-8" textClassName="text-xl" />
+          <MagnetsLogo className="h-6 w-[7.4rem]" />
             </Link>
             {onCollapseToggle && (
               <button
@@ -208,83 +175,82 @@ function SidebarContent({
           const active = isDashboardRoot
             ? pathname === item.href
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const disabled =
-            Boolean(item.requiresSetup && !setupComplete) ||
-            Boolean(item.requiresDomain && !publishingDomainReady);
+          const disabled = Boolean(item.requiresSetup && !setupComplete);
           return (
-            <SidebarLink
+            <div
               key={item.href}
-              active={active}
-              collapsed={collapsed}
-              disabled={disabled}
-              href={item.href}
-              icon={item.icon}
-              label={item.label}
-              onClick={onNavigate}
-              tooltip={
-                item.requiresDomain && !publishingDomainReady
-                  ? 'Verify and connect your domain on Configure first'
-                  : disabled
-                    ? 'Finish setup on Configure first'
-                    : undefined
-              }
-            />
+              className={cn(item.dividerBefore && 'mt-3 border-t border-ink-200 pt-3')}
+            >
+              <SidebarLink
+                active={active}
+                collapsed={collapsed}
+                disabled={disabled}
+                href={item.href}
+                icon={item.icon}
+                label={item.label}
+                onClick={onNavigate}
+                tooltip={disabled ? 'Choose a Magnets URL in Configure first' : undefined}
+              />
+            </div>
           );
         })}
       </nav>
 
       <div className="border-t border-ink-200 p-2">
-        <div className="mb-2">
-          <SidebarButton
-            collapsed={collapsed}
-            icon={CircleHelp}
-            label="Help"
-            onClick={onHelpClick}
-          />
-        </div>
-        <div
-          className={cn(
-            'mb-2 flex min-h-11 items-center rounded-md bg-brand-soft text-ink-900',
-            collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
-          )}
-          title={collapsed ? `${userName || 'Welcome'} - ${userEmail}` : undefined}
-        >
-          <span
-            aria-hidden
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-950 text-[10px] font-black text-white"
+        <details className="group relative">
+          <summary
+            title={collapsed ? `${userName || 'Welcome'} - ${userEmail}` : undefined}
+            className={cn(
+              'flex min-h-11 w-full cursor-pointer list-none items-center rounded-md bg-brand-soft text-ink-900 transition hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset [&::-webkit-details-marker]:hidden',
+              collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
+            )}
           >
-            {userInitials(userName, userEmail)}
-          </span>
-          <span
-            aria-hidden={collapsed}
-            className={cn('min-w-0 overflow-hidden', collapsed && 'w-0 opacity-0')}
+            <span
+              aria-hidden
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-950 text-[10px] font-semibold text-white"
+            >
+              {userInitials(userName, userEmail)}
+            </span>
+            <span
+              aria-hidden={collapsed}
+              className={cn('min-w-0 overflow-hidden', collapsed && 'w-0 opacity-0')}
+            >
+              <span className="block truncate text-xs font-semibold text-ink-950">{userName || 'Welcome'}</span>
+              <span className="block truncate text-[11px] text-ink-500">{userEmail}</span>
+            </span>
+          </summary>
+
+          <div
+            className={cn(
+              'absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-52 rounded-md border border-ink-200 bg-white p-1.5 shadow-[0_16px_38px_-22px_rgba(17,17,17,0.5)]',
+              collapsed && 'left-1/2 -translate-x-1/2'
+            )}
+            role="menu"
           >
-            <span className="block truncate text-xs font-bold text-ink-950">{userName || 'Welcome'}</span>
-            <span className="block truncate text-[11px] text-ink-500">{userEmail}</span>
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          disabled={isLoggingOut}
-          title={collapsed ? 'Logout' : undefined}
-          className={cn(
-            'flex h-9 w-full items-center rounded-md text-sm text-ink-600 transition hover:bg-ink-50 hover:text-ink-900 disabled:pointer-events-none disabled:opacity-60',
-            collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
-          )}
-        >
-          {isLoggingOut ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <LogOut className="h-4 w-4 shrink-0" />
-          )}
-          <span
-            aria-hidden={collapsed}
-            className={cn('overflow-hidden whitespace-nowrap', collapsed && 'w-0 opacity-0')}
-          >
-            Logout
-          </span>
-        </button>
+            <a
+              href="mailto:hello@camerontrew.com?subject=Magnets%20bug%20report"
+              className="flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
+              role="menuitem"
+            >
+              <Bug className="h-4 w-4 shrink-0" />
+              Report a bug
+            </a>
+            <button
+              type="button"
+              onClick={onLogout}
+              disabled={isLoggingOut}
+              className="flex h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950 disabled:pointer-events-none disabled:opacity-60 sm:h-9"
+              role="menuitem"
+            >
+              {isLoggingOut ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4 shrink-0" />
+              )}
+              Logout
+            </button>
+          </div>
+        </details>
       </div>
     </div>
   );
@@ -292,20 +258,17 @@ function SidebarContent({
 
 export function DashboardLayoutShell({
   children,
-  publishingDomainReady,
   setupComplete,
   userName,
   userEmail,
 }: {
   children: ReactNode;
-  publishingDomainReady: boolean;
   setupComplete: boolean;
   userName: string;
   userEmail: string;
 }) {
   const [open, setOpen] = useState(sidebarOpenPreference);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const toggleSidebar = () => {
@@ -337,10 +300,8 @@ export function DashboardLayoutShell({
           <SidebarContent
             collapsed={!open}
             onCollapseToggle={toggleSidebar}
-            onHelpClick={() => setHelpOpen(true)}
             isLoggingOut={isLoggingOut}
             onLogout={handleLogout}
-            publishingDomainReady={publishingDomainReady}
             setupComplete={setupComplete}
             userName={userName}
             userEmail={userEmail}
@@ -378,13 +339,8 @@ export function DashboardLayoutShell({
                 </div>
                 <SidebarContent
                   isLoggingOut={isLoggingOut}
-                  onHelpClick={() => {
-                    setHelpOpen(true);
-                    setMobileOpen(false);
-                  }}
                   onLogout={handleLogout}
                   onNavigate={() => setMobileOpen(false)}
-                  publishingDomainReady={publishingDomainReady}
                   setupComplete={setupComplete}
                   userName={userName}
                   userEmail={userEmail}
@@ -405,7 +361,7 @@ export function DashboardLayoutShell({
               <Menu className="h-4 w-4" />
             </button>
             <Link href="/dashboard" className="flex items-center gap-2" aria-label="Magnets dashboard">
-              <MagnetsLogo markClassName="h-7 w-7" textClassName="text-lg" />
+              <MagnetsLogo className="h-6 w-[7.4rem]" />
             </Link>
           </header>
 
@@ -423,55 +379,6 @@ export function DashboardLayoutShell({
         </div>
       </div>
 
-      <AnimatePresence>
-        {helpOpen && (
-          <motion.div
-            aria-labelledby="help-video-title"
-            aria-modal="true"
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/55 px-4 py-6"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            role="dialog"
-          >
-            <motion.div
-              className="w-full max-w-4xl overflow-hidden rounded-lg border border-ink-200 bg-white shadow-2xl"
-              initial={{ scale: 0.97, y: 12 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.97, y: 12 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-            >
-              <div className="flex items-center justify-between border-b border-ink-200 bg-brand-soft px-4 py-3">
-                <div>
-                  <h2 id="help-video-title" className="text-sm font-black text-ink-950">
-                    Help walkthrough
-                  </h2>
-                  <p className="mt-0.5 text-xs text-ink-500">A quick Loom guide for setting up Magnets.</p>
-                </div>
-                <button
-                  aria-label="Close help"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-500 transition hover:bg-white hover:text-ink-950"
-                  onClick={() => setHelpOpen(false)}
-                  type="button"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="aspect-video bg-ink-950">
-                <iframe
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  className="h-full w-full"
-                  loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  src={HELP_LOOM_EMBED_URL}
-                  title="Magnets help walkthrough"
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </main>
   );
 }
@@ -486,12 +393,12 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mx-auto mb-6 flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto mb-5 flex max-w-6xl flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-black text-ink-950">{title}</h1>
+        <h1 className="text-xl font-semibold text-ink-950 sm:text-2xl">{title}</h1>
         <p className="mt-1 text-sm text-ink-500">{subtitle}</p>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
     </div>
   );
 }

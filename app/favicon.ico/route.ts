@@ -31,5 +31,5 @@ export async function GET(request: Request) {
   const faviconUrl = account ? leadMagnetFaviconUrl(account) : null;
   const faviconResponse = faviconUrl ? faviconImageResponse(faviconUrl) : null;
 
-  return faviconResponse || NextResponse.redirect(new URL('/icon.svg', request.url), 302);
+  return faviconResponse || NextResponse.redirect(new URL('/brand/magnets-mark-dark.png', request.url), 302);
 }

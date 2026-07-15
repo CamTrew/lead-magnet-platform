@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import {
+  leadMagnetDisplayImageUrl,
   leadMagnetImageSrcSet,
-  optimiseLeadMagnetImageUrl,
 } from '@/lib/lead-magnet-images';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
@@ -37,12 +37,28 @@ function rgbValue(hex: string) {
   return hexToRgb(hex) || '17 17 17';
 }
 
+function remoteImageOrigin(imageUrl: string) {
+  try {
+    const url = new URL(imageUrl);
+    return url.protocol === 'https:' ? url.origin : '';
+  } catch {
+    return '';
+  }
+}
+
 const pageBackground = [
   'radial-gradient(circle at 7% 38%, var(--brand-primary-edge) 0, transparent 34%)',
   'radial-gradient(circle at 93% 42%, var(--brand-primary-edge) 0, transparent 34%)',
   'linear-gradient(180deg, #ffffff 0%, #f8fbff 44%, #ffffff 100%)',
   'linear-gradient(to right, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
   'linear-gradient(to bottom, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
+].join(', ');
+const darkPageBackground = [
+  'radial-gradient(circle at 8% 32%, var(--brand-primary-edge) 0, transparent 32%)',
+  'radial-gradient(circle at 92% 36%, var(--brand-primary-faint) 0, transparent 34%)',
+  'linear-gradient(180deg, #0d0f13 0%, #11151b 48%, #0b0d10 100%)',
+  'linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px)',
+  'linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px)',
 ].join(', ');
 const leadMagnetImageSizes = '(min-width: 1024px) 520px, calc(100vw - 48px)';
 
@@ -62,6 +78,7 @@ export function LeadMagnetPageView({
   const homeHref = account.domain ? `https://${account.domain}` : '#';
   const brandPrimary = account.brand.primary;
   const brandIntensity = account.brand.highlightIntensity;
+  const isDark = account.brand.pageTheme === 'dark';
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const brandStyle: BrandCss = {
     '--brand-primary': brandPrimary,
@@ -69,25 +86,36 @@ export function LeadMagnetPageView({
     '--brand-primary-soft': tone(0.16),
     '--brand-primary-faint': tone(0.08),
     '--brand-primary-edge': tone(0.1),
-    backgroundImage: pageBackground,
+    backgroundColor: isDark ? '#0b0d10' : '#ffffff',
+    backgroundImage: isDark ? darkPageBackground : pageBackground,
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
   };
-  const imageUrl = magnet.imageUrl ? optimiseLeadMagnetImageUrl(magnet.imageUrl) : '';
+  const imageUrl = magnet.imageUrl
+    ? leadMagnetDisplayImageUrl({
+        id: magnet.id,
+        imageUrl: magnet.imageUrl,
+        updatedAt: magnet.updatedAt,
+      })
+    : '';
   const imageSrcSet = magnet.imageUrl ? leadMagnetImageSrcSet(magnet.imageUrl) : undefined;
+  const imageOrigin = remoteImageOrigin(imageUrl);
 
   return (
     <div
-      className="relative flex min-h-screen flex-col bg-white text-zinc-900"
+      className={`magnet-page relative flex min-h-screen flex-col ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`}
       style={brandStyle}
     >
       {imageUrl && (
-        <link
-          rel="preload"
-          as="image"
-          href={imageUrl}
-          imageSrcSet={imageSrcSet}
-          imageSizes={leadMagnetImageSizes}
-        />
+        <>
+          {imageOrigin && <link rel="preconnect" href={imageOrigin} />}
+          <link
+            rel="preload"
+            as="image"
+            href={imageUrl}
+            imageSrcSet={imageSrcSet}
+            imageSizes={leadMagnetImageSizes}
+          />
+        </>
       )}
       <header className="relative z-10">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
@@ -100,19 +128,19 @@ export function LeadMagnetPageView({
       <main className="relative z-10 flex-1">
         <div className="mx-auto max-w-[1280px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
-            className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/95 p-6 backdrop-blur-sm sm:p-9 lg:p-14"
+            className="magnet-page-shell relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-white/95 p-5 backdrop-blur-sm sm:rounded-[24px] sm:p-9 lg:p-14"
             style={{
               boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${tone(0.08)}`,
             }}
           >
             <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-x-14">
               <section className="min-w-0 lg:col-start-1 lg:row-start-1 lg:pt-1">
-                <h1 className="mb-6 max-w-2xl break-words text-4xl font-black leading-[1.08] text-gray-950 sm:text-5xl lg:text-[58px] lg:leading-[1.05]">
+                <h1 className="magnet-page-heading mb-5 max-w-2xl break-words text-[2.15rem] font-semibold leading-[1.08] text-gray-950 sm:mb-6 sm:text-5xl lg:text-[58px] lg:leading-[1.05]">
                   {magnet.title}
                 </h1>
 
                 {magnet.subtitle && (
-                  <p className="mb-10 max-w-2xl text-lg font-medium leading-relaxed text-gray-600">
+                  <p className="magnet-page-muted mb-10 max-w-2xl text-lg font-medium leading-relaxed text-gray-600">
                     {magnet.subtitle}
                   </p>
                 )}
@@ -124,7 +152,7 @@ export function LeadMagnetPageView({
 
               <section className="min-w-0 lg:col-start-1 lg:row-start-2">
                 {magnet.description && (
-                  <div className="mb-11 max-w-2xl space-y-5 text-[15px] leading-relaxed text-gray-600">
+                  <div className="magnet-page-muted mb-11 max-w-2xl space-y-5 text-[15px] leading-relaxed text-gray-600">
                     {magnet.description
                       .split('\n\n')
                       .filter(Boolean)
@@ -137,7 +165,7 @@ export function LeadMagnetPageView({
                 {magnet.bullets.length > 0 && (
                   <div>
                     {magnet.bulletsHeading && (
-                      <p className="mb-6 text-base font-semibold text-gray-700">
+                      <p className="magnet-page-copy mb-6 text-base font-semibold text-gray-700">
                         {magnet.bulletsHeading}
                       </p>
                     )}
@@ -163,7 +191,7 @@ export function LeadMagnetPageView({
                               />
                             </svg>
                           </span>
-                          <span className="text-[15px] leading-7 text-gray-700">{bullet}</span>
+                          <span className="magnet-page-copy text-[15px] leading-7 text-gray-700">{bullet}</span>
                         </li>
                       ))}
                     </ul>
@@ -175,8 +203,8 @@ export function LeadMagnetPageView({
         </div>
       </main>
 
-      <footer className="relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+      <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
+        <div className="magnet-page-muted mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
         </div>
       </footer>
@@ -219,7 +247,7 @@ function BrandLockup({
       <>
         <img src={account.logoUrl} alt="" className="h-8 w-auto max-w-[52px] object-contain sm:h-10" />
         {logoText && (
-          <span className="min-w-0 max-w-[72vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
+          <span className="magnet-page-heading min-w-0 max-w-[72vw] truncate text-[32px] font-semibold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
             {logoText}
           </span>
         )}
@@ -228,7 +256,7 @@ function BrandLockup({
   }
 
   return (
-    <span className="max-w-[82vw] truncate text-[32px] font-extrabold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
+    <span className="magnet-page-heading max-w-[82vw] truncate text-[32px] font-semibold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
       {displayName}
     </span>
   );
@@ -250,12 +278,16 @@ function MediaAndCapture({
 }
 
 function MagnetImage({ magnet }: { magnet: LeadMagnet }) {
-  const imageUrl = optimiseLeadMagnetImageUrl(magnet.imageUrl);
+  const imageUrl = leadMagnetDisplayImageUrl({
+    id: magnet.id,
+    imageUrl: magnet.imageUrl,
+    updatedAt: magnet.updatedAt,
+  });
   const imageSrcSet = leadMagnetImageSrcSet(magnet.imageUrl);
 
   return (
     <div
-      className="group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50"
+      className="magnet-image group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50"
       style={{
         backgroundImage: 'linear-gradient(135deg, #f3f6fb 0%, #ffffff 55%, #eef4fb 100%)',
       }}
@@ -291,7 +323,7 @@ function CaptureCard({
 
   return (
     <div
-      className="rounded-[22px] border bg-white p-6 backdrop-blur-sm sm:p-8"
+      className="magnet-capture rounded-[22px] border bg-white p-6 backdrop-blur-sm sm:p-8"
       style={{
         borderColor: tone(0.28),
         backgroundImage: [
@@ -303,12 +335,12 @@ function CaptureCard({
       }}
     >
       {magnet.formHeading && (
-        <h2 className="mb-2 break-words text-center text-2xl font-black leading-tight text-gray-950 sm:text-[30px]">
+        <h2 className="magnet-page-heading mb-2 break-words text-center text-2xl font-semibold leading-tight text-gray-950 sm:text-[30px]">
           {magnet.formHeading}
         </h2>
       )}
       {magnet.formSubtext && (
-        <p className="mb-7 text-center text-sm leading-6 text-gray-600 sm:mb-8">
+        <p className="magnet-page-muted mb-7 text-center text-sm leading-6 text-gray-600 sm:mb-8">
           {magnet.formSubtext}
         </p>
       )}

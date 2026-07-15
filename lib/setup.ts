@@ -1,7 +1,10 @@
-import { isValidRootDomain, isValidSubdomain, senderMatchesAccountDomain } from './dns-records';
+import { isValidRootDomain, isValidSubdomain } from './dns-records';
+import { isValidPlatformUsername } from './platform-username';
+import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings } from './types';
 
 export type SetupItemKey =
+  | 'username'
   | 'logo'
   | 'domain'
   | 'subdomain'
@@ -21,22 +24,21 @@ export type SetupItem = {
 /**
  * Decide whether the account has completed enough setup to use the rest of the
  * dashboard. We require:
- *  - a logo
- *  - a valid root domain
- *  - a valid page subdomain
- *  - ownership verified (TXT proof passed)
- *  - the subdomain attached to the project so it actually serves traffic
- *  - a sending subdomain chosen
- *  - a parseable sender address
- *  - a Resend API key stored
+ * A platform username is enough to publish. Brand, custom domain, and custom
+ * sender-domain settings remain optional upgrades.
  *
  * We deliberately do NOT require the sending-DNS records (MX/SPF/DKIM) to
  * be verified here, because they take 1–60 minutes to propagate and we
- * don't want to block the user from publishing while DNS catches up. The
- * submit endpoint will surface a 502 if Resend rejects the actual send.
+ * don't want to block the user from publishing while DNS catches up.
  */
 export function setupChecklist(account: AccountSettings): SetupItem[] {
   return [
+    {
+      key: 'username',
+      label: 'Choose your Magnets URL',
+      detail: 'Pick the username that appears in magnets.so/username/page.',
+      done: isValidPlatformUsername(account.username),
+    },
     {
       key: 'domain',
       label: 'Set your root domain',
@@ -69,32 +71,26 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
     },
     {
       key: 'resendKey',
-      label: 'Add a sending key',
-      detail: 'Without this, no email can be sent. Free at resend.com.',
-      done: Boolean(account.resendApiKey),
-    },
-    {
-      key: 'returnPath',
-      label: 'Pick a sending subdomain',
-      detail: 'In Delivery, click "Find a clear subdomain" and save.',
-      done: Boolean(account.resendReturnPath),
-    },
-    {
-      key: 'sender',
-      label: 'Set your sender address',
-      detail: 'In Delivery, pick the local part of your "from" email.',
-      done: Boolean(account.resendFromEmail) && senderMatchesAccountDomain(account),
+      label: account.resendManagedByPlatform
+        ? 'Magnets sending is connected'
+        : account.resendConfigured
+          ? 'Sending connection is ready'
+          : 'Magnets sending is not connected',
+      detail: account.resendManagedByPlatform
+        ? 'Magnets manages Resend for this account.'
+        : account.resendConfigured
+          ? 'This account keeps its existing sending connection.'
+          : 'Contact support to finish connecting Magnets-managed sending.',
+      done: account.resendConfigured,
     },
   ];
 }
 
 export function isSetupComplete(account: AccountSettings) {
-  // Escape hatch for local testing — set MAGNETS_SKIP_SETUP_GATE=1 in .env.local
-  // to access Pages and Signups before finishing Configure. Production deploys
-  // should never set this; the gate exists to stop people from creating magnets
-  // that can't actually send email.
+  // A claimed Magnets URL is enough to create and publish platform-hosted pages.
+  // A custom domain remains an optional alternative for established accounts.
   if (process.env.MAGNETS_SKIP_SETUP_GATE === '1') return true;
-  return setupChecklist(account).every((item) => item.done);
+  return isValidPlatformUsername(account.username) || isPublishingDomainReady(account);
 }
 
 export function isPublishingDomainReady(account: AccountSettings) {
@@ -107,5 +103,17 @@ export function isPublishingDomainReady(account: AccountSettings) {
     isValidSubdomain(account.subdomain) &&
     Boolean(account.domainVerifiedAt) &&
     Boolean(account.domainAttachedHost)
+  );
+}
+
+/**
+ * Sending is intentionally independent from where the page is hosted. An
+ * account can use a verified sending domain while serving its magnet from
+ * magnets.so, so do not require domainAttachedHost here.
+ */
+export function isEmailDeliveryReady(account: AccountSettings) {
+  return (
+    Boolean(resolveResendApiKey(account)) &&
+    Boolean(resolveResendFromEmail(account))
   );
 }

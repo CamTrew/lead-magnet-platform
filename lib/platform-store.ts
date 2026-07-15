@@ -2,6 +2,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import { query, type QueryRunner, withTransaction } from './db';
 import { normaliseBrandHighlightIntensity } from './brand-highlight';
 import { senderMatchesAccountDomain } from './dns-records';
+import { platformUsernameStem } from './platform-username';
+import { hasPlatformResendApiKey } from './platform-resend';
+import { resolveQuizDestination } from './quiz-routing';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from './limits';
 import {
   decryptSecret,
@@ -19,6 +22,11 @@ import type {
   FollowUpStatus,
   LeadMagnet,
   PlatformUser,
+  PostSignupQuizQuestion,
+  PostSignupQuizRoute,
+  PostSignupMode,
+  QuizResponse,
+  SignupQuizAnswer,
   Submission,
 } from './types';
 
@@ -27,6 +35,7 @@ const defaultBrand: BrandSettings = {
   accent: '#FDC957',
   success: '#7FD4DD',
   highlightIntensity: 100,
+  pageTheme: 'light',
 };
 
 export class LeadMagnetLimitError extends Error {
@@ -47,6 +56,7 @@ type UserRow = {
 type AccountRow = {
   id: string;
   owner_user_id: string;
+  username: string;
   subdomain: string;
   domain: string;
   logo_url: string;
@@ -57,6 +67,8 @@ type AccountRow = {
   beehiiv_api_key: string;
   beehiiv_publication_id: string;
   substack_publication: string;
+  slack_webhook_url: string;
+  pipedrive_api_token: string;
   resend_return_path: string;
   calendar_webhook_enabled: boolean;
   calendar_webhook_token: string;
@@ -104,6 +116,17 @@ type LeadMagnetRow = {
   follow_up_stop_on_booking: boolean;
   follow_up_emails: FollowUpEmail[] | string | null;
   resend_follow_up_automation_id: string;
+  post_signup_mode: string;
+  post_signup_redirect_url: string;
+  post_signup_heading: string;
+  post_signup_body: string;
+  post_signup_video_url: string;
+  post_signup_cta_label: string;
+  post_signup_cta_url: string;
+  post_signup_quiz_enabled: boolean;
+  post_signup_quiz_title: string;
+  post_signup_quiz_description: string;
+  post_signup_quiz_questions: unknown | string | null;
   published: boolean;
   created_at: Date;
   updated_at: Date;
@@ -123,6 +146,19 @@ type SubmissionRow = {
   lead_magnet_id: string;
   name: string;
   email: string;
+  created_at: Date;
+};
+
+type QuizResponseRow = {
+  id: string;
+  account_id: string;
+  lead_magnet_id: string;
+  submission_id: string;
+  question_id: string;
+  question: string;
+  option_id: string;
+  option_label: string;
+  destination_url: string;
   created_at: Date;
 };
 
@@ -159,6 +195,7 @@ type DashboardBaseRow = {
   user_updated_at: Date;
   account_id: string;
   account_owner_user_id: string;
+  account_username: string;
   account_subdomain: string;
   account_domain: string;
   account_logo_url: string;
@@ -169,6 +206,8 @@ type DashboardBaseRow = {
   account_beehiiv_api_key: string;
   account_beehiiv_publication_id: string;
   account_substack_publication: string;
+  account_slack_webhook_url: string;
+  account_pipedrive_api_token: string;
   account_resend_return_path: string;
   account_calendar_webhook_enabled: boolean;
   account_calendar_webhook_token: string;
@@ -199,6 +238,10 @@ type PublicLeadMagnetLookupRow = {
   lead_magnet: LeadMagnetRow;
 };
 
+type LeadMagnetJsonRow = {
+  lead_magnet: LeadMagnetRow;
+};
+
 function iso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -218,6 +261,7 @@ function parseBrand(value: AccountRow['brand']): BrandSettings {
     accent: parsed.accent || defaultBrand.accent,
     success: parsed.success || defaultBrand.success,
     highlightIntensity: normaliseBrandHighlightIntensity(parsed.highlightIntensity),
+    pageTheme: parsed.pageTheme === 'dark' ? 'dark' : 'light',
   };
 }
 
@@ -288,6 +332,91 @@ function parseFollowUpEmails(value: LeadMagnetRow['follow_up_emails']): FollowUp
     });
 }
 
+function parsePostSignupQuizConfig(
+  value: LeadMagnetRow['post_signup_quiz_questions']
+): { questions: PostSignupQuizQuestion[]; routes: PostSignupQuizRoute[] } {
+  if (!value) return { questions: [], routes: [] };
+
+  let raw: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      raw = JSON.parse(value);
+    } catch {
+      return { questions: [], routes: [] };
+    }
+  }
+
+  const questionSource = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as Record<string, unknown>).questions)
+      ? (raw as Record<string, unknown>).questions as unknown[]
+      : [];
+
+  const questions = questionSource.slice(0, 5).flatMap((item, questionIndex) => {
+    if (!item || typeof item !== 'object') return [];
+    const source = item as Record<string, unknown>;
+    const options = Array.isArray(source.options) ? source.options : [];
+    const normalisedOptions = options.slice(0, 6).flatMap((option, optionIndex) => {
+      if (!option || typeof option !== 'object') return [];
+      const sourceOption = option as Record<string, unknown>;
+      const label = typeof sourceOption.label === 'string' ? sourceOption.label.trim().slice(0, 160) : '';
+      if (!label) return [];
+      return [{
+        id: typeof sourceOption.id === 'string' && sourceOption.id.trim()
+          ? sourceOption.id.trim().slice(0, 80)
+          : `option-${questionIndex + 1}-${optionIndex + 1}`,
+        label,
+        destinationUrl: typeof sourceOption.destinationUrl === 'string'
+          ? sourceOption.destinationUrl.trim().slice(0, 2048)
+          : '',
+      }];
+    });
+    const prompt = typeof source.prompt === 'string' ? source.prompt.trim().slice(0, 240) : '';
+    if (!prompt || normalisedOptions.length < 2) return [];
+    return [{
+      id: typeof source.id === 'string' && source.id.trim()
+        ? source.id.trim().slice(0, 80)
+        : `question-${questionIndex + 1}`,
+      prompt,
+      options: normalisedOptions,
+    }];
+  });
+
+  const questionIds = new Set(questions.map((question) => question.id));
+  const optionIds = new Map(questions.map((question) => [
+    question.id,
+    new Set(question.options.map((option) => option.id)),
+  ]));
+  const routeSource = raw && typeof raw === 'object' && !Array.isArray(raw)
+    && Array.isArray((raw as Record<string, unknown>).routes)
+    ? (raw as Record<string, unknown>).routes as unknown[]
+    : [];
+  const routes = routeSource.slice(0, 20).flatMap((item, routeIndex) => {
+    if (!item || typeof item !== 'object') return [];
+    const source = item as Record<string, unknown>;
+    const rawConditions = Array.isArray(source.conditions) ? source.conditions : [];
+    const conditions = rawConditions.slice(0, 5).flatMap((condition) => {
+      if (!condition || typeof condition !== 'object') return [];
+      const sourceCondition = condition as Record<string, unknown>;
+      const questionId = typeof sourceCondition.questionId === 'string' ? sourceCondition.questionId.trim().slice(0, 80) : '';
+      const optionId = typeof sourceCondition.optionId === 'string' ? sourceCondition.optionId.trim().slice(0, 80) : '';
+      if (!questionIds.has(questionId) || !optionIds.get(questionId)?.has(optionId)) return [];
+      return [{ questionId, optionId }];
+    });
+    return [{
+      id: typeof source.id === 'string' && source.id.trim()
+        ? source.id.trim().slice(0, 80)
+        : `route-${routeIndex + 1}`,
+      destinationUrl: typeof source.destinationUrl === 'string'
+        ? source.destinationUrl.trim().slice(0, 2048)
+        : '',
+      conditions,
+    }];
+  });
+
+  return { questions, routes };
+}
+
 function isBlobStorageUrl(value: string) {
   if (!value) return false;
 
@@ -299,8 +428,22 @@ function isBlobStorageUrl(value: string) {
   }
 }
 
+function isPrivateBlobStorageUrl(value: string) {
+  if (!isBlobStorageUrl(value)) return false;
+
+  try {
+    return new URL(value).hostname.endsWith('.private.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
 function leadMagnetImageProxyUrl(row: Pick<LeadMagnetRow, 'id' | 'image_url' | 'updated_at'>) {
-  if (!isBlobStorageUrl(row.image_url)) return row.image_url;
+  // Public Blob uploads are already immutable CDN URLs. Routing them through
+  // our server adds a database read and a second Blob fetch before pixels can
+  // reach the browser, which makes the hero image visibly arrive late. Keep
+  // the proxy solely for private uploads, where it enforces access control.
+  if (!isPrivateBlobStorageUrl(row.image_url)) return row.image_url;
   return `/magnet-images/${row.id}?v=${encodeURIComponent(iso(row.updated_at))}`;
 }
 
@@ -316,11 +459,29 @@ function mapUser(row: UserRow): PlatformUser {
 
 function mapAccount(
   row: AccountRow,
-  options: { revealSecrets?: boolean; revealCalendarWebhookToken?: boolean } = {}
+  options: { revealSecrets?: boolean } = {}
 ): AccountSettings {
+  const revealedResendApiKey = options.revealSecrets
+    ? decryptSecret(row.resend_api_key)
+    : '';
+  const hasOwnResendApiKey = options.revealSecrets
+    ? Boolean(revealedResendApiKey)
+    : Boolean(row.resend_api_key);
+  const hasVerifiedOwnSender = Boolean(
+    row.resend_from_email &&
+      row.domain_verified_at &&
+      senderMatchesAccountDomain({
+        domain: row.domain,
+        resendFromEmail: row.resend_from_email,
+        resendReturnPath: row.resend_return_path,
+      })
+  );
+  const resendManagedByPlatform = hasPlatformResendApiKey() && !hasVerifiedOwnSender;
+
   return {
     id: row.id,
     ownerUserId: row.owner_user_id,
+    username: row.username || '',
     subdomain: row.subdomain,
     domain: row.domain,
     logoUrl: row.logo_url,
@@ -328,19 +489,28 @@ function mapAccount(
     brand: parseBrand(row.brand),
     resendFromEmail: row.resend_from_email,
     resendApiKey: options.revealSecrets
-      ? decryptSecret(row.resend_api_key)
+      ? revealedResendApiKey
       : redactSecret(row.resend_api_key),
+    resendConfigured: (hasOwnResendApiKey && hasVerifiedOwnSender) || resendManagedByPlatform,
+    resendManagedByPlatform,
     beehiivApiKey: options.revealSecrets
       ? decryptSecret(row.beehiiv_api_key)
       : redactSecret(row.beehiiv_api_key),
     beehiivPublicationId: row.beehiiv_publication_id,
     substackPublication: row.substack_publication,
+    slackWebhookUrl: options.revealSecrets
+      ? decryptSecret(row.slack_webhook_url)
+      : redactSecret(row.slack_webhook_url),
+    pipedriveApiToken: options.revealSecrets
+      ? decryptSecret(row.pipedrive_api_token)
+      : redactSecret(row.pipedrive_api_token),
     resendReturnPath: row.resend_return_path,
     calendarWebhookEnabled: row.calendar_webhook_enabled,
-    calendarWebhookToken:
-      options.revealSecrets || options.revealCalendarWebhookToken
-        ? decryptSecret(row.calendar_webhook_token)
-        : '',
+    // The webhook token is a server-only credential. It is only needed by
+    // webhook handlers, never by the initial dashboard payload.
+    calendarWebhookToken: options.revealSecrets
+      ? decryptSecret(row.calendar_webhook_token)
+      : '',
     calendarProvider: normaliseCalendarProvider(row.calendar_provider),
     calendarApiKey: options.revealSecrets
       ? decryptSecret(row.calendar_api_key)
@@ -367,6 +537,7 @@ function mapAccount(
 }
 
 function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
+  const postSignupQuiz = parsePostSignupQuizConfig(row.post_signup_quiz_questions);
   return {
     id: row.id,
     accountId: row.account_id,
@@ -388,6 +559,20 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     followUpStopOnBooking: row.follow_up_stop_on_booking,
     followUpEmails: parseFollowUpEmails(row.follow_up_emails),
     resendFollowUpAutomationId: row.resend_follow_up_automation_id,
+    postSignupMode: row.post_signup_mode === 'redirect' || row.post_signup_mode === 'page'
+      ? row.post_signup_mode as PostSignupMode
+      : 'message',
+    postSignupRedirectUrl: row.post_signup_redirect_url || '',
+    postSignupHeading: row.post_signup_heading || '',
+    postSignupBody: row.post_signup_body || '',
+    postSignupVideoUrl: row.post_signup_video_url || '',
+    postSignupCtaLabel: row.post_signup_cta_label || '',
+    postSignupCtaUrl: row.post_signup_cta_url || '',
+    postSignupQuizEnabled: row.post_signup_mode !== 'message' && Boolean(row.post_signup_quiz_enabled),
+    postSignupQuizTitle: row.post_signup_quiz_title || '',
+    postSignupQuizDescription: row.post_signup_quiz_description || '',
+    postSignupQuizQuestions: postSignupQuiz.questions,
+    postSignupQuizRoutes: postSignupQuiz.routes,
     published: row.published,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -405,6 +590,21 @@ function mapSubmission(row: SubmissionRow): Submission {
   };
 }
 
+function mapQuizResponse(row: QuizResponseRow): QuizResponse {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    leadMagnetId: row.lead_magnet_id,
+    submissionId: row.submission_id,
+    questionId: row.question_id,
+    question: row.question,
+    optionId: row.option_id,
+    optionLabel: row.option_label,
+    destinationUrl: row.destination_url,
+    createdAt: iso(row.created_at),
+  };
+}
+
 function mapDashboardBase(row: DashboardBaseRow) {
   return {
     user: mapUser({
@@ -418,6 +618,7 @@ function mapDashboardBase(row: DashboardBaseRow) {
       {
         id: row.account_id,
         owner_user_id: row.account_owner_user_id,
+        username: row.account_username,
         subdomain: row.account_subdomain,
         domain: row.account_domain,
         logo_url: row.account_logo_url,
@@ -428,6 +629,8 @@ function mapDashboardBase(row: DashboardBaseRow) {
         beehiiv_api_key: row.account_beehiiv_api_key,
         beehiiv_publication_id: row.account_beehiiv_publication_id,
         substack_publication: row.account_substack_publication,
+        slack_webhook_url: row.account_slack_webhook_url,
+        pipedrive_api_token: row.account_pipedrive_api_token,
         resend_return_path: row.account_resend_return_path,
         calendar_webhook_enabled: row.account_calendar_webhook_enabled,
         calendar_webhook_token: row.account_calendar_webhook_token,
@@ -448,7 +651,7 @@ function mapDashboardBase(row: DashboardBaseRow) {
         created_at: row.account_created_at,
         updated_at: row.account_updated_at,
       },
-      { revealCalendarWebhookToken: true }
+      {}
     ),
   };
 }
@@ -509,6 +712,7 @@ async function getDashboardBaseByUserId(userId: string) {
         u.updated_at as user_updated_at,
         a.id as account_id,
         a.owner_user_id as account_owner_user_id,
+        a.username as account_username,
         a.subdomain as account_subdomain,
         a.domain as account_domain,
         a.logo_url as account_logo_url,
@@ -519,6 +723,8 @@ async function getDashboardBaseByUserId(userId: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        a.slack_webhook_url as account_slack_webhook_url,
+        a.pipedrive_api_token as account_pipedrive_api_token,
         a.resend_return_path as account_resend_return_path,
         a.calendar_webhook_enabled as account_calendar_webhook_enabled,
         a.calendar_webhook_token as account_calendar_webhook_token,
@@ -595,6 +801,7 @@ async function getDashboardBaseBySessionToken(token: string) {
         u.updated_at as user_updated_at,
         a.id as account_id,
         a.owner_user_id as account_owner_user_id,
+        a.username as account_username,
         a.subdomain as account_subdomain,
         a.domain as account_domain,
         a.logo_url as account_logo_url,
@@ -605,6 +812,8 @@ async function getDashboardBaseBySessionToken(token: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        a.slack_webhook_url as account_slack_webhook_url,
+        a.pipedrive_api_token as account_pipedrive_api_token,
         a.resend_return_path as account_resend_return_path,
         a.calendar_webhook_enabled as account_calendar_webhook_enabled,
         a.calendar_webhook_token as account_calendar_webhook_token,
@@ -983,27 +1192,55 @@ export async function clearDomainAttached(accountId: string) {
 
 export async function completeOnboarding(
   accountId: string,
-  answers: { businessName: string; logoUrl: string; businessType: string; magnetType: string; cadence: string }
+  answers: { businessName: string; businessType: string; magnetType: string; cadence: string }
 ) {
-  const result = await query<AccountRow>(
-    `
-      update public.magnets_accounts
-      set
-        onboarding_completed_at = now(),
-        onboarding_business_name = $2,
-        onboarding_business_type = $3,
-        onboarding_magnet_type = $4,
-        onboarding_cadence = $5,
-        logo_text = case when logo_text = '' then $2 else logo_text end,
-        logo_url = case when logo_url = '' then $6 else logo_url end,
-        updated_at = now()
-      where id = $1
-      returning *
-    `,
-    [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence, answers.logoUrl]
-  );
+  const stem = platformUsernameStem(answers.businessName);
+  const accountSuffix = accountId.replace(/-/g, '').slice(0, 6);
 
-  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `-${attempt === 1 ? accountSuffix : `${accountSuffix}-${attempt}`}`;
+    const username = `${stem.slice(0, Math.max(3, 40 - suffix.length))}${suffix}`;
+
+    try {
+      const result = await query<AccountRow>(
+        `
+          update public.magnets_accounts
+          set
+            username = case when username = '' then $6 else username end,
+            onboarding_completed_at = now(),
+            onboarding_business_name = $2,
+            onboarding_business_type = $3,
+            onboarding_magnet_type = $4,
+            onboarding_cadence = $5,
+            logo_text = case when logo_text = '' then $2 else logo_text end,
+            updated_at = now()
+          where id = $1
+            and (
+              username <> ''
+              or not exists (
+                select 1
+                from public.magnets_accounts existing
+                where lower(existing.username) = lower($6)
+                  and existing.id <> $1
+              )
+            )
+          returning *
+        `,
+        [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence, username]
+      );
+
+      if (result.rows[0]) return mapAccount(result.rows[0]);
+    } catch (error) {
+      const isUsernameCollision =
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === '23505';
+      if (!isUsernameCollision) throw error;
+    }
+  }
+
+  throw new Error('Could not reserve a Magnets URL. Please try onboarding again.');
 }
 
 export async function updateUserPasswordHash(userId: string, passwordHash: string) {
@@ -1015,6 +1252,71 @@ export async function updateUserPasswordHash(userId: string, passwordHash: strin
     `,
     [userId, passwordHash]
   );
+}
+
+/**
+ * Replace any still-active reset link for the user with a fresh one. Only the
+ * SHA-256 digest is stored, so a database read cannot be used as a reset link.
+ */
+export async function createPasswordResetToken(
+  userId: string,
+  tokenHash: string,
+  expiresAt: Date
+) {
+  await query(
+    `
+      with invalidated_tokens as (
+        update public.magnets_password_reset_tokens
+        set used_at = now()
+        where user_id = $1::uuid
+          and used_at is null
+      )
+      insert into public.magnets_password_reset_tokens (
+        user_id,
+        token_hash,
+        expires_at
+      )
+      values ($1::uuid, $2, $3)
+    `,
+    [userId, tokenHash, expiresAt]
+  );
+}
+
+/**
+ * Consumes a reset token and updates the password in the same statement. This
+ * makes the link single-use even if two requests reach the server together.
+ */
+export async function resetPasswordFromToken(tokenHash: string, passwordHash: string) {
+  const result = await query<{ user_id: string }>(
+    `
+      with consumed_token as (
+        update public.magnets_password_reset_tokens
+        set used_at = now()
+        where token_hash = $1
+          and used_at is null
+          and expires_at > now()
+        returning user_id
+      ),
+      updated_credentials as (
+        insert into public.magnets_auth_credentials (user_id, password_hash)
+        select user_id, $2
+        from consumed_token
+        on conflict (user_id) do update
+          set password_hash = excluded.password_hash,
+              updated_at = now()
+        returning user_id
+      ),
+      revoked_sessions as (
+        delete from neon_auth.session
+        where "userId" = (select user_id from consumed_token)
+      )
+      select user_id
+      from updated_credentials
+    `,
+    [tokenHash, passwordHash]
+  );
+
+  return result.rows[0]?.user_id || null;
 }
 
 /**
@@ -1034,6 +1336,11 @@ export async function deleteUserAndAccount(userId: string) {
         delete from public.magnets_auth_credentials
         where user_id = $1::uuid
         returning user_id
+      ),
+      deleted_password_reset_tokens as (
+        delete from public.magnets_password_reset_tokens
+        where user_id = $1::uuid
+        returning id
       ),
       deleted_sessions as (
         delete from neon_auth.session
@@ -1068,6 +1375,12 @@ export async function updateAccount(
   const resendApiKey = isMaskedSecret(updates.resendApiKey)
     ? existingAccount.resend_api_key
     : encryptSecret(updates.resendApiKey);
+  const slackWebhookUrl = isMaskedSecret(updates.slackWebhookUrl)
+    ? existingAccount.slack_webhook_url
+    : encryptSecret(updates.slackWebhookUrl);
+  const pipedriveApiToken = isMaskedSecret(updates.pipedriveApiToken)
+    ? existingAccount.pipedrive_api_token
+    : encryptSecret(updates.pipedriveApiToken);
   const wantsCalendarWebhooks = Boolean(updates.calendarWebhookEnabled);
   const calendarWebhookToken =
     wantsCalendarWebhooks && !existingAccount.calendar_webhook_token
@@ -1125,29 +1438,33 @@ export async function updateAccount(
     `
       update public.magnets_accounts
       set
-        subdomain = $2,
-        domain = $3,
-        logo_url = $4,
-        logo_text = $5,
-        brand = $6::jsonb,
-        resend_from_email = $7,
-        resend_api_key = $8,
-        beehiiv_api_key = $9,
-        beehiiv_publication_id = $10,
-        substack_publication = $11,
-        resend_return_path = $13,
-        calendar_webhook_enabled = $14,
-        calendar_webhook_token = $15,
-        domain_verification_token = $16,
-        domain_verified_at = case when $12::boolean then null else domain_verified_at end,
-        domain_recommended_cname = case when $12::boolean then '' else domain_recommended_cname end,
-        domain_attached_host = case when $12::boolean then '' else domain_attached_host end,
+        username = $2,
+        subdomain = $3,
+        domain = $4,
+        logo_url = $5,
+        logo_text = $6,
+        brand = $7::jsonb,
+        resend_from_email = $8,
+        resend_api_key = $9,
+        beehiiv_api_key = $10,
+        beehiiv_publication_id = $11,
+        substack_publication = $12,
+        slack_webhook_url = $18,
+        pipedrive_api_token = $19,
+        resend_return_path = $14,
+        calendar_webhook_enabled = $15,
+        calendar_webhook_token = $16,
+        domain_verification_token = $17,
+        domain_verified_at = case when $13::boolean then null else domain_verified_at end,
+        domain_recommended_cname = case when $13::boolean then '' else domain_recommended_cname end,
+        domain_attached_host = case when $13::boolean then '' else domain_attached_host end,
         updated_at = now()
       where id = $1
       returning *
     `,
     [
       accountId,
+      updates.username ?? existingAccount.username,
       updates.subdomain,
       updates.domain,
       updates.logoUrl,
@@ -1163,12 +1480,12 @@ export async function updateAccount(
       wantsCalendarWebhooks,
       calendarWebhookToken,
       domainVerificationToken,
+      slackWebhookUrl,
+      pipedriveApiToken,
     ]
   );
 
-  return result.rows[0]
-    ? mapAccount(result.rows[0], { revealCalendarWebhookToken: true })
-    : null;
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
 }
 
 export async function getOrCreateCalendarWebhookToken(accountId: string) {
@@ -1225,9 +1542,7 @@ export async function updateCalendarIntegration(
       `,
       [accountId]
     );
-    return result.rows[0]
-      ? mapAccount(result.rows[0], { revealCalendarWebhookToken: true })
-      : null;
+    return result.rows[0] ? mapAccount(result.rows[0]) : null;
   }
 
   const provider = normaliseCalendarProvider(updates.provider);
@@ -1267,9 +1582,7 @@ export async function updateCalendarIntegration(
     ]
   );
 
-  return result.rows[0]
-    ? mapAccount(result.rows[0], { revealCalendarWebhookToken: true })
-    : null;
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
 }
 
 function slugifyTitle(title: string) {
@@ -1308,11 +1621,36 @@ export async function createLeadMagnet(
   accountId: string,
   title: string,
   slug: string,
-  downloadLink: string
+  downloadLink = '',
+  generatedDraft?: Pick<
+    LeadMagnet,
+    | 'subtitle'
+    | 'description'
+    | 'bullets'
+    | 'bulletsHeading'
+    | 'ctaText'
+    | 'formHeading'
+    | 'formSubtext'
+    | 'emailSubject'
+    | 'emailBody'
+    | 'emailPreview'
+  >
 ) {
   const cleanTitle = title.trim();
   const cleanLink = downloadLink.trim();
   const desiredSlug = slug.trim().toLowerCase();
+  const draft = generatedDraft && {
+    subtitle: generatedDraft.subtitle.trim(),
+    description: generatedDraft.description.trim(),
+    bullets: generatedDraft.bullets.map((bullet) => bullet.trim()).filter(Boolean),
+    bulletsHeading: generatedDraft.bulletsHeading.trim(),
+    ctaText: generatedDraft.ctaText.trim(),
+    formHeading: generatedDraft.formHeading.trim(),
+    formSubtext: generatedDraft.formSubtext.trim(),
+    emailSubject: generatedDraft.emailSubject.trim(),
+    emailBody: generatedDraft.emailBody.trim(),
+    emailPreview: generatedDraft.emailPreview.trim(),
+  };
 
   return withTransaction(async (client) => {
     await client.query('select id from public.magnets_accounts where id = $1 for update', [accountId]);
@@ -1332,10 +1670,6 @@ export async function createLeadMagnet(
     // keyed off the explicit slug instead of the title.
     const finalSlug = await uniqueLeadMagnetSlug(accountId, desiredSlug, client);
 
-    // Brand-new magnets ship with empty fields (just the title + slug + URL).
-    // Bullets, copy, email body all use placeholder hints in the editor; we
-    // intentionally do not pre-fill prose because users were keeping the
-    // canned text and shipping it.
     const result = await client.query<LeadMagnetRow>(
       `
         insert into public.magnets_lead_magnets (
@@ -1363,17 +1697,17 @@ export async function createLeadMagnet(
           $1,
           $2,
           $3,
-          '',
-          '',
-          '[]'::jsonb,
-          '',
-          'Send me the resource',
-          '',
-          '',
           $4,
-          '',
-          '',
-          '',
+          $5,
+          $6::jsonb,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13,
+          $14,
           false,
           true,
           '[]'::jsonb,
@@ -1382,7 +1716,22 @@ export async function createLeadMagnet(
         )
         returning *
       `,
-      [accountId, finalSlug, cleanTitle, cleanLink]
+      [
+        accountId,
+        finalSlug,
+        cleanTitle,
+        draft?.subtitle || '',
+        draft?.description || '',
+        JSON.stringify(draft?.bullets || []),
+        draft?.bulletsHeading || '',
+        draft?.ctaText || 'Send it to me',
+        draft?.formHeading || '',
+        draft?.formSubtext || '',
+        cleanLink,
+        draft?.emailSubject || '',
+        draft?.emailBody || '',
+        draft?.emailPreview || '',
+      ]
     );
 
     return mapLeadMagnet(result.rows[0]);
@@ -1421,7 +1770,18 @@ export async function updateLeadMagnet(
         follow_up_stop_on_booking = $18,
         follow_up_emails = $19::jsonb,
         resend_follow_up_automation_id = $20,
-        published = $21,
+        post_signup_mode = $21,
+        post_signup_redirect_url = $22,
+        post_signup_heading = $23,
+        post_signup_body = $24,
+        post_signup_video_url = $25,
+        post_signup_cta_label = $26,
+        post_signup_cta_url = $27,
+        post_signup_quiz_enabled = $28,
+        post_signup_quiz_title = $29,
+        post_signup_quiz_description = $30,
+        post_signup_quiz_questions = $31::jsonb,
+        published = $32,
         updated_at = now()
       where account_id = $1
         and id = $2
@@ -1448,6 +1808,20 @@ export async function updateLeadMagnet(
       updates.followUpStopOnBooking,
       JSON.stringify(updates.followUpEmails || []),
       updates.resendFollowUpAutomationId,
+      updates.postSignupMode,
+      updates.postSignupRedirectUrl,
+      updates.postSignupHeading,
+      updates.postSignupBody,
+      updates.postSignupVideoUrl,
+      updates.postSignupCtaLabel,
+      updates.postSignupCtaUrl,
+      updates.postSignupQuizEnabled,
+      updates.postSignupQuizTitle,
+      updates.postSignupQuizDescription,
+      JSON.stringify({
+        questions: updates.postSignupQuizQuestions || [],
+        routes: updates.postSignupQuizRoutes || [],
+      }),
       updates.published,
     ]
   );
@@ -1463,7 +1837,8 @@ export async function updateLeadMagnetImageUrl(
   const result = await query<LeadMagnetRow>(
     `
       update public.magnets_lead_magnets
-      set image_url = $3
+      set image_url = $3,
+          updated_at = now()
       where account_id = $1
         and id = $2
       returning *
@@ -1530,6 +1905,32 @@ export async function getLeadMagnetImageSource(leadMagnetId: string) {
     published: row.published,
     updatedAt: iso(row.updated_at),
   };
+}
+
+export async function listLeadMagnetImageSources() {
+  const result = await query<LeadMagnetImageSourceRow>(
+    `
+      select
+        id,
+        account_id,
+        image_url,
+        published,
+        updated_at
+      from public.magnets_lead_magnets
+      where image_url <> ''
+      order by updated_at asc
+    `
+  );
+
+  return result.rows
+    .filter((row) => isBlobStorageUrl(row.image_url))
+    .map((row) => ({
+      id: row.id,
+      accountId: row.account_id,
+      imageUrl: row.image_url,
+      published: row.published,
+      updatedAt: iso(row.updated_at),
+    }));
 }
 
 export async function deleteLeadMagnet(accountId: string, leadMagnetId: string) {
@@ -1634,6 +2035,31 @@ export async function findAccountByAttachedHost(host: string) {
   return result.rows[0] ? mapAccount(result.rows[0]) : null;
 }
 
+export async function findPublishedLeadMagnetByUsername(username: string, slug: string) {
+  const lookup = await query<PublicLeadMagnetLookupRow>(
+    `
+      select
+        row_to_json(a) as account,
+        row_to_json(lm) as lead_magnet
+      from public.magnets_accounts a
+      join public.magnets_lead_magnets lm on lm.account_id = a.id
+      where lower(a.username) = $1
+        and a.username <> ''
+        and lm.slug = $2
+        and lm.published = true
+      limit 1
+    `,
+    [username, slug]
+  );
+  const row = lookup.rows[0];
+  if (!row) return null;
+
+  return {
+    account: mapAccount(row.account),
+    leadMagnet: mapLeadMagnet(row.lead_magnet),
+  };
+}
+
 export async function findPublishedLeadMagnetById(leadMagnetId: string) {
   const lookup = await query<PublicLeadMagnetLookupRow>(
     `
@@ -1696,9 +2122,21 @@ type SignupRow = {
   follow_up_status: FollowUpStatus;
   follow_up_stopped_at: Date | null;
   follow_up_stop_reason: string;
+  quiz_answers: SignupQuizAnswer[] | string | null;
 };
 
 function mapSignup(row: SignupRow): AccountSignup {
+  const quizAnswers = (() => {
+    if (Array.isArray(row.quiz_answers)) return row.quiz_answers;
+    if (typeof row.quiz_answers !== 'string') return [];
+    try {
+      const parsed = JSON.parse(row.quiz_answers) as unknown;
+      return Array.isArray(parsed) ? (parsed as SignupQuizAnswer[]) : [];
+    } catch {
+      return [];
+    }
+  })();
+
   return {
     email: row.email,
     name: row.name,
@@ -1711,6 +2149,7 @@ function mapSignup(row: SignupRow): AccountSignup {
     followUpStatus: row.follow_up_status,
     followUpStoppedAt: row.follow_up_stopped_at ? iso(row.follow_up_stopped_at) : null,
     followUpStopReason: row.follow_up_stop_reason,
+    quizAnswers,
   };
 }
 
@@ -1761,7 +2200,25 @@ export async function listAccountSignups(accountId: string): Promise<AccountSign
           'none'
         ) as follow_up_status,
         run.stopped_at as follow_up_stopped_at,
-        coalesce(run.stop_reason, '') as follow_up_stop_reason
+        coalesce(run.stop_reason, '') as follow_up_stop_reason,
+        (
+          select coalesce(
+            jsonb_agg(
+              jsonb_build_object(
+                'question', response.question,
+                'optionLabel', response.option_label,
+                'destinationUrl', response.destination_url,
+                'createdAt', response.created_at
+              ) order by response.created_at asc
+            ),
+            '[]'::jsonb
+          )
+          from public.magnets_quiz_responses response
+          join public.magnets_submissions response_submission
+            on response_submission.id = response.submission_id
+          where response.account_id = $1::uuid
+            and lower(response_submission.email) = lower(first.email)
+        ) as quiz_answers
       from ranked first
       join ranked latest
         on lower(latest.email) = lower(first.email)
@@ -1807,6 +2264,110 @@ export async function recordSubmission(submission: Omit<Submission, 'id' | 'crea
   );
 
   return mapSubmission(result.rows[0]);
+}
+
+/**
+ * Save an answer only when the submission, magnet, and account belong together.
+ * The public quiz endpoint never receives an account id it can trust.
+ */
+export async function recordQuizResponse(input: {
+  submissionId: string;
+  leadMagnetId: string;
+  questionId: string;
+  optionId: string;
+}): Promise<{ response: QuizResponse; destinationUrl: string } | null> {
+  const context = await query<LeadMagnetJsonRow>(
+    `
+      select
+        row_to_json(lm) as lead_magnet
+      from public.magnets_submissions submission
+      join public.magnets_lead_magnets lm
+        on lm.id = submission.lead_magnet_id
+      where submission.id = $1::uuid
+        and submission.lead_magnet_id = $2::uuid
+        and lm.published = true
+      limit 1
+    `,
+    [input.submissionId, input.leadMagnetId]
+  );
+  const row = context.rows[0];
+  if (!row) return null;
+
+  const leadMagnet = mapLeadMagnet(row.lead_magnet);
+  if (leadMagnet.postSignupMode === 'message' || !leadMagnet.postSignupQuizEnabled) return null;
+
+  const question = leadMagnet.postSignupQuizQuestions.find((item) => item.id === input.questionId);
+  const option = question?.options.find((item) => item.id === input.optionId);
+  if (!question || !option) return null;
+
+  const result = await query<QuizResponseRow>(
+    `
+      insert into public.magnets_quiz_responses (
+        account_id,
+        lead_magnet_id,
+        submission_id,
+        question_id,
+        question,
+        option_id,
+        option_label,
+        destination_url
+      )
+      select
+        submission.account_id,
+        submission.lead_magnet_id,
+        submission.id,
+        $3,
+        $4,
+        $5,
+        $6,
+        ''
+      from public.magnets_submissions submission
+      where submission.id = $1::uuid
+        and submission.lead_magnet_id = $2::uuid
+      on conflict (submission_id, question_id) do update
+      set
+        question = excluded.question,
+        option_id = excluded.option_id,
+        option_label = excluded.option_label,
+        destination_url = excluded.destination_url
+      returning *
+    `,
+    [
+      input.submissionId,
+      input.leadMagnetId,
+      input.questionId,
+      question.prompt,
+      option.id,
+      option.label,
+    ]
+  );
+
+  const saved = result.rows[0];
+  if (!saved) return null;
+
+  const answerRows = await query<Pick<QuizResponseRow, 'question_id' | 'option_id'>>(
+    `
+      select question_id, option_id
+      from public.magnets_quiz_responses
+      where submission_id = $1::uuid
+        and lead_magnet_id = $2::uuid
+    `,
+    [input.submissionId, input.leadMagnetId]
+  );
+  const selectedAnswers = answerRows.rows.map((answer) => ({
+    questionId: answer.question_id,
+    optionId: answer.option_id,
+  }));
+  const completed = leadMagnet.postSignupQuizQuestions.every((quizQuestion) =>
+    selectedAnswers.some((answer) => answer.questionId === quizQuestion.id)
+  );
+
+  return {
+    response: mapQuizResponse(saved),
+    destinationUrl: completed
+      ? resolveQuizDestination(leadMagnet.postSignupQuizQuestions, leadMagnet.postSignupQuizRoutes, selectedAnswers)
+      : '',
+  };
 }
 
 export function followUpSequenceFingerprint(leadMagnet: Pick<LeadMagnet, 'followUpEmails' | 'followUpStopOnBooking'>) {

@@ -98,11 +98,11 @@ export function verifyFollowUpStopToken(token: string): VerifiedFollowUpStopToke
 
 export function followUpStopUrl(account: AccountSettings, leadMagnetId: string, email: string) {
   const attachedHost = account.domainAttachedHost.trim().toLowerCase();
-  const configuredHost =
-    account.subdomain && account.domain ? `${account.subdomain}.${account.domain}`.toLowerCase() : '';
-  const publicHost = attachedHost || configuredHost;
-  const baseUrl = publicHost
-    ? `https://${publicHost}`
+  // Only use a custom host once it has been attached to the project. A
+  // verified sending domain can exist before its page subdomain is live, and
+  // an opt-out link must never send a recipient to that unfinished host.
+  const baseUrl = attachedHost
+    ? `https://${attachedHost}`
     : process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
   const url = new URL('/sequence/stop', baseUrl);
 

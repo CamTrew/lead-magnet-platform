@@ -73,8 +73,19 @@ export function senderMatchesAccountDomain({
 
   const sender = parseSenderEmail(resendFromEmail);
   const expected = expectedSenderDomain(resendReturnPath, domain);
+  if (!sender) return false;
 
-  return Boolean(sender && expected && sender.domain === expected);
+  if (expected) return sender.domain === expected;
+
+  // Older accounts predate the return-path setting. They may already have a
+  // verified Resend sender on the root domain or one of its subdomains. Keep
+  // those senders valid rather than clearing them the next time an account is
+  // saved, while still requiring the account to own the same root domain.
+  const rootDomain = normaliseRootDomain(domain);
+  return Boolean(
+    rootDomain &&
+      (sender.domain === rootDomain || sender.domain.endsWith(`.${rootDomain}`))
+  );
 }
 
 export function buildPageDnsRecords({

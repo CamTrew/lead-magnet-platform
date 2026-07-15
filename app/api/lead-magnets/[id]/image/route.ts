@@ -3,6 +3,7 @@ import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/b
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentDashboardPayload } from '@/lib/auth';
+import { createLeadMagnetDisplayImage } from '@/lib/lead-magnet-display-image';
 import { log } from '@/lib/logger';
 import {
   findLeadMagnetForAccount,
@@ -46,6 +47,21 @@ function isAllowedBlobUrl(value: string) {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' && url.hostname.endsWith('.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
+function isAccountLeadMagnetImageBlobUrl(
+  value: string,
+  accountId: string,
+  leadMagnetId: string
+) {
+  if (!isAllowedBlobUrl(value)) return false;
+
+  try {
+    const pathname = decodeURIComponent(new URL(value).pathname).replace(/^\//, '');
+    return pathname.startsWith(`lead-magnets/${accountId}/${leadMagnetId}/`);
   } catch {
     return false;
   }
@@ -119,8 +135,6 @@ export async function POST(
           throw new UploadRouteError('Invalid uploaded image type', 400);
         }
 
-        await updateLeadMagnetImageUrl(parsed.accountId, parsed.leadMagnetId, blob.url);
-
         log.info('Lead magnet image uploaded', {
           route: ROUTE,
           method: 'POST',
@@ -182,7 +196,14 @@ export async function PUT(
 
     const body = await request.json().catch(() => null);
     const parsed = recordImageSchema.safeParse(body);
-    if (!parsed.success || !isAllowedBlobUrl(parsed.data.imageUrl)) {
+    if (
+      !parsed.success ||
+      !isAccountLeadMagnetImageBlobUrl(
+        parsed.data.imageUrl,
+        payload.account.id,
+        leadMagnetId
+      )
+    ) {
       return NextResponse.json({ error: 'Invalid uploaded image URL' }, { status: 400 });
     }
 
@@ -191,11 +212,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
 
-    const updated = await updateLeadMagnetImageUrl(
-      payload.account.id,
+    const displayImageUrl = await createLeadMagnetDisplayImage({
+      accountId: payload.account.id,
       leadMagnetId,
-      parsed.data.imageUrl
-    );
+      sourceUrl: parsed.data.imageUrl,
+    });
+    const updated = await updateLeadMagnetImageUrl(payload.account.id, leadMagnetId, displayImageUrl);
 
     if (!updated) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });

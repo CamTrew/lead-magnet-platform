@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 function isModifiedClick(event: MouseEvent) {
   return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
@@ -9,8 +9,10 @@ function isModifiedClick(event: MouseEvent) {
 
 export function NavigationProgress() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationKey = `${pathname}?${searchParams.toString()}`;
 
   useEffect(() => {
     function stopSoon() {
@@ -23,7 +25,7 @@ export function NavigationProgress() {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [pathname]);
+  }, [locationKey]);
 
   useEffect(() => {
     function start() {

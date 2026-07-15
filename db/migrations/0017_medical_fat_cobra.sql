@@ -1,0 +1,1 @@
+ALTER TABLE "magnets_accounts" ADD COLUMN "slack_webhook_url" text DEFAULT '' NOT NULL;

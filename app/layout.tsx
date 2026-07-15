@@ -1,14 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { GeistSans } from 'geist/font/sans';
+import { Suspense } from 'react';
+import localFont from 'next/font/local';
 import { GeistMono } from 'geist/font/mono';
 import { NavigationProgress } from '@/components/navigation-progress';
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
 const SITE_NAME = 'Magnets';
-const DEFAULT_TITLE = 'Magnets. free lead-magnet pages on your own domain';
+const DEFAULT_TITLE = 'Magnets. Lead magnets that bring in leads';
 const DEFAULT_DESCRIPTION =
-  'Build branded lead-magnet landing pages, deliver the resource by email, and collect signups. Free forever. Bring your own Resend, Beehiiv, and Substack keys.';
+  'Build branded lead-magnet landing pages, deliver the resource by email, collect signups, and follow up from one place.';
 const DEFAULT_KEYWORDS = [
   'lead magnet',
   'lead magnet platform',
@@ -23,6 +24,13 @@ const DEFAULT_KEYWORDS = [
   'opt-in form',
   'free email collection tool',
 ];
+
+const MagnetsGeist = localFont({
+  src: './fonts/geist-vf.ttf',
+  display: 'swap',
+  variable: '--font-magnets-geist',
+  weight: '100 900',
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -63,7 +71,8 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    icon: [{ url: '/brand/magnets-mark-dark.png', type: 'image/png', sizes: '1024x1024' }],
+    apple: [{ url: '/brand/magnets-mark-dark.png', type: 'image/png', sizes: '1024x1024' }],
   },
   manifest: '/manifest.json',
   category: 'productivity',
@@ -82,9 +91,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${MagnetsGeist.variable} ${GeistMono.variable}`}>
       <body className="antialiased font-sans">
-        <NavigationProgress />
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
         {children}
       </body>
     </html>

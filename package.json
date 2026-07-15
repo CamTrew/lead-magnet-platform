@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "smoke:follow-up": "node scripts/follow-up-smoke.mjs",
     "resync:follow-up-opt-outs": "node scripts/run-tsx.mjs scripts/resync-follow-up-opt-outs.ts",
+    "images:optimise": "node scripts/run-tsx.mjs scripts/migrate-lead-magnet-display-images.ts",
+    "test:quiz-routing": "node scripts/run-tsx.mjs scripts/quiz-routing-smoke.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
@@ -29,6 +31,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^4.0.1",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"
   },

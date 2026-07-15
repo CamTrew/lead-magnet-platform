@@ -7,6 +7,7 @@ import {
 } from '../lib/platform-store';
 import { syncLeadMagnetFollowUpAutomation } from '../lib/follow-up-sequences';
 import { senderMatchesAccountDomain } from '../lib/dns-records';
+import { resolveResendApiKey } from '../lib/platform-resend';
 
 function loadLocalEnvironment() {
   const envPath = resolve(process.cwd(), '.env.local');
@@ -41,9 +42,9 @@ async function main() {
       continue;
     }
 
-    if (!account.resendApiKey) {
+    if (!resolveResendApiKey(account)) {
       failed += 1;
-      console.error(`Skipped ${magnet.id}: no Resend API key is saved for this account.`);
+      console.error(`Skipped ${magnet.id}: sending is not configured for this account.`);
       continue;
     }
 
@@ -53,7 +54,7 @@ async function main() {
         : '';
       console.log({
         accountId: account.id,
-        resendKeySaved: Boolean(account.resendApiKey),
+        resendConfigured: Boolean(resolveResendApiKey(account)),
         domainVerified: Boolean(account.domainVerifiedAt),
         attachedHostMatches: account.domainAttachedHost.toLowerCase() === expectedHost,
         senderConfigured: Boolean(account.resendFromEmail),

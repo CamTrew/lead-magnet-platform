@@ -1,14 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import {
+  BriefcaseBusiness,
   CalendarCheck,
   Check,
+  ChevronDown,
   CircleHelp,
   Copy,
   Globe2,
   Loader2,
   Mail,
+  MessageSquare,
+  Newspaper,
 } from 'lucide-react';
 import {
   AceternityCard,
@@ -27,19 +32,6 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSection = 'publishing' | 'delivery';
 type SectionIcon = typeof Globe2;
 
-function calendarWebhookUrl({
-  accountId,
-  origin,
-  token,
-}: {
-  accountId: string;
-  origin: string;
-  token: string;
-}) {
-  if (!origin || !token) return '';
-  return `${origin}/api/calendar-webhooks/${accountId}?token=${encodeURIComponent(token)}`;
-}
-
 function SectionHeader({
   description,
   icon: Icon,
@@ -55,12 +47,98 @@ function SectionHeader({
         <Icon className="h-4 w-4" />
       </span>
       <div>
-        <h2 className="text-base font-black text-[#111111]">{title}</h2>
+        <h2 className="text-base font-semibold text-[#111111]">{title}</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5c554e]">{description}</p>
       </div>
     </div>
   );
 }
+
+function ConnectionIcon({
+  icon: Icon,
+  tone = 'orange',
+}: {
+  icon: typeof Globe2;
+  tone?: 'aqua' | 'orange' | 'yellow';
+}) {
+  const toneClass = {
+    aqua: 'bg-[#e6f7f8] text-[#167984]',
+    orange: 'bg-[#fff0e9] text-brand-orange',
+    yellow: 'bg-[#fff8df] text-[#9a6400]',
+  }[tone];
+
+  return (
+    <span className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200', toneClass)}>
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
+function BrandConnectionIcon({
+  alt,
+  src,
+  tone,
+}: {
+  alt: string;
+  src: string;
+  tone: 'aqua' | 'green';
+}) {
+  const toneClass = {
+    aqua: 'bg-[#f7f2f8]',
+    green: 'bg-[#edf8f1]',
+  }[tone];
+
+  return (
+    <span
+      className={cn(
+        'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200',
+        toneClass
+      )}
+      title={alt}
+    >
+      <Image
+        alt=""
+        aria-hidden="true"
+        className="h-5 w-5 object-contain"
+        height={20}
+        sizes="20px"
+        src={src}
+        width={20}
+      />
+    </span>
+  );
+}
+
+function ConnectionChevron() {
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
+      <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+function ConnectionStatus({
+  children,
+  tone = 'connected',
+}: {
+  children: React.ReactNode;
+  tone?: 'connected' | 'pending' | 'platform';
+}) {
+  const toneClass = {
+    connected: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    pending: 'border-amber-200 bg-amber-50 text-amber-800',
+    platform: 'border-brand-orange/20 bg-brand-orange/10 text-brand-orange',
+  }[tone];
+
+  return (
+    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', toneClass)}>
+      {children}
+    </span>
+  );
+}
+
+const connectionCardClass =
+  'group overflow-hidden rounded-xl border border-ink-200 bg-ink-50/70 shadow-[0_1px_2px_rgba(17,17,17,0.03)] transition hover:border-ink-300 hover:bg-white hover:shadow-[0_8px_24px_rgba(17,17,17,0.06)] open:bg-white open:shadow-[0_8px_24px_rgba(17,17,17,0.06)]';
 
 function HelpTooltip({ ariaLabel, help, width = 'w-64' }: { ariaLabel: string; help: string; width?: string }) {
   const [open, setOpen] = useState(false);
@@ -182,17 +260,14 @@ function CalendarConnectionSetup({
   onAccountUpdated: (account: AccountSettings) => void;
   resendConfigured: boolean;
 }) {
-  const [origin, setOrigin] = useState('');
   const [provider, setProvider] = useState<CalendarProvider>(account.calendarProvider || 'calendly');
   const [apiKey, setApiKey] = useState(account.calendarApiKey);
   const [webhookSecret, setWebhookSecret] = useState(account.calendarWebhookSecret);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [localError, setLocalError] = useState('');
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookUrlError, setWebhookUrlError] = useState('');
 
   useEffect(() => {
     setProvider(account.calendarProvider || 'calendly');
@@ -206,11 +281,43 @@ function CalendarConnectionSetup({
   ]);
 
   const connected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
-  const webhookUrl = calendarWebhookUrl({
-    accountId: account.id,
-    origin,
-    token: account.calendarWebhookToken,
-  });
+
+  useEffect(() => {
+    if (!connected) {
+      setWebhookUrl('');
+      setWebhookUrlError('');
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch('/api/account/calendar');
+        const data = (await response.json().catch(() => null)) as {
+          webhookUrl?: string;
+          error?: string;
+        } | null;
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Could not load the calendar webhook URL.');
+        }
+
+        if (active) {
+          setWebhookUrl(data?.webhookUrl || '');
+          setWebhookUrlError('');
+        }
+      } catch (err) {
+        if (active) {
+          setWebhookUrl('');
+          setWebhookUrlError(err instanceof Error ? err.message : 'Could not load the calendar webhook URL.');
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [account.id, connected]);
 
   async function copyUrl(value: string) {
     if (!value) return;
@@ -280,39 +387,29 @@ function CalendarConnectionSetup({
   }
 
   return (
-    <details className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
+    <details className={connectionCardClass}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
         <div className="flex min-w-0 gap-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-900">
-            <CalendarCheck className="h-4 w-4" />
-          </span>
+          <ConnectionIcon icon={CalendarCheck} tone="yellow" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink-950">Calendar booking connection</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-ink-950">Calendar booking</p>
+              {connected && <ConnectionStatus>Connected</ConnectionStatus>}
+            </div>
             <p className="mt-0.5 text-xs leading-5 text-ink-600">
               {connected
-                ? `Connected to ${providerLabel(account.calendarProvider)}. Magnet sequences decide whether bookings stop follow-up emails.`
-                : 'Optional. Connect Calendly or Cal.com once, then control booking cancellation inside each magnet.'}
+                ? `Connected to ${providerLabel(account.calendarProvider)}. Stop sequences when a lead books.`
+                : 'Stop sequences after a Calendly or Cal.com booking.'}
             </p>
           </div>
         </div>
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
-          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5">
-            <path
-              d="M4 6l4 4 4-4"
-              fill="none"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-            />
-          </svg>
-        </span>
+        <ConnectionChevron />
       </summary>
 
       <div className="space-y-4 border-t border-ink-200 p-4">
         {!resendConfigured && (
           <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-            Finish your Resend sending key, sender address, and sending domain first.
+            Magnets-managed sending is not available yet. Contact support before connecting a calendar.
           </p>
         )}
 
@@ -325,7 +422,7 @@ function CalendarConnectionSetup({
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Calendar provider">
             <select
-              className="flex h-9 w-full rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition focus:border-brand-orange focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 w-full rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition focus:border-brand-orange focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
               disabled={!resendConfigured || saveState === 'saving'}
               onChange={(event) => {
                 setProvider(event.target.value as CalendarProvider);
@@ -379,26 +476,31 @@ function CalendarConnectionSetup({
           </Field>
         )}
 
-        {connected && webhookUrl && (
+        {connected && (
           <div className="rounded-md border border-ink-200 bg-ink-50 p-3">
-            <p className="text-xs font-semibold uppercase text-ink-500">Account webhook URL</p>
-            <div className="mt-2 flex gap-2">
-              <input
-                className="min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-3 py-2 font-mono text-xs text-ink-700 outline-none"
-                readOnly
-                value={webhookUrl}
-              />
-              <button
-                aria-label="Copy account webhook URL"
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3 text-xs font-medium text-ink-700 transition hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!webhookUrl}
-                onClick={() => copyUrl(webhookUrl)}
-                type="button"
-              >
-                <Copy className="h-4 w-4" />
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
+            <p className="text-xs font-medium text-ink-500">Account webhook URL</p>
+            {webhookUrl ? (
+              <div className="mt-2 flex gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-3 py-2 font-mono text-xs text-ink-700 outline-none"
+                  readOnly
+                  value={webhookUrl}
+                />
+                <button
+                  aria-label="Copy account webhook URL"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3 text-xs font-medium text-ink-700 transition hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => copyUrl(webhookUrl)}
+                  type="button"
+                >
+                  <Copy className="h-4 w-4" />
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs leading-5 text-ink-600">
+                {webhookUrlError || 'Loading connection details.'}
+              </p>
+            )}
           </div>
         )}
 
@@ -437,21 +539,171 @@ function CalendarConnectionSetup({
   );
 }
 
-type SetupItem = {
-  key: string;
-  label: string;
-  detail: string;
-  done: boolean;
-};
+function SlackNotificationsSetup({
+  account,
+  onCommit,
+  onPatch,
+  onTest,
+  saveState,
+  testMessage,
+  testState,
+}: {
+  account: AccountSettings;
+  onCommit: () => void;
+  onPatch: (updates: Partial<AccountSettings>) => void;
+  onTest: () => void;
+  saveState: SaveState;
+  testMessage: string;
+  testState: SaveState;
+}) {
+  const connected = Boolean(account.slackWebhookUrl);
+
+  return (
+    <details className={connectionCardClass}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
+        <div className="flex min-w-0 gap-3">
+          <BrandConnectionIcon
+            alt="Slack"
+            src="/brand/slack.svg"
+            tone="aqua"
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-ink-950">Slack</p>
+              {connected && <ConnectionStatus>Connected</ConnectionStatus>}
+            </div>
+            <p className="mt-0.5 text-xs leading-5 text-ink-600">
+              Get a compact Slack message whenever a new lead signs up.
+            </p>
+          </div>
+        </div>
+        <ConnectionChevron />
+      </summary>
+
+      <div className="space-y-4 border-t border-ink-200 p-4">
+        <Field
+          label="Slack incoming-webhook URL"
+          hint="In Slack, create an Incoming Webhook, choose its channel, then paste the generated hooks.slack.com URL here. Leave it blank to disconnect."
+        >
+          <AceternityInput
+            autoComplete="new-password"
+            onBlur={onCommit}
+            onChange={(event) => onPatch({ slackWebhookUrl: event.target.value })}
+            placeholder="https://hooks.slack.com/services/..."
+            type="password"
+            value={account.slackWebhookUrl}
+          />
+        </Field>
+
+        <div className="flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-ink-500">
+            Slack receives the name, email, lead magnet title, and a link to the page. It never blocks the signup or resource email.
+          </p>
+          <AceternityButton
+            disabled={!connected || saveState === 'saving' || testState === 'saving'}
+            onClick={onTest}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {testState === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
+            Send test
+          </AceternityButton>
+        </div>
+
+        {testMessage && (
+          <p className={testState === 'error' ? 'text-xs font-medium text-red-700' : 'text-xs font-medium text-emerald-700'}>
+            {testMessage}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function PipedriveSetup({
+  account,
+  onCommit,
+  onPatch,
+  onTest,
+  saveState,
+  testMessage,
+  testState,
+}: {
+  account: AccountSettings;
+  onCommit: () => void;
+  onPatch: (updates: Partial<AccountSettings>) => void;
+  onTest: () => void;
+  saveState: SaveState;
+  testMessage: string;
+  testState: SaveState;
+}) {
+  const connected = Boolean(account.pipedriveApiToken);
+
+  return (
+    <details className={connectionCardClass}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
+        <div className="flex min-w-0 gap-3">
+          <BrandConnectionIcon
+            alt="Pipedrive"
+            src="/brand/pipedrive.svg"
+            tone="green"
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-ink-950">Pipedrive</p>
+              {connected && <ConnectionStatus>Connected</ConnectionStatus>}
+            </div>
+            <p className="mt-0.5 text-xs leading-5 text-ink-600">
+              Create or update a person for each signup using their email address.
+            </p>
+          </div>
+        </div>
+        <ConnectionChevron />
+      </summary>
+      <div className="space-y-4 border-t border-ink-200 p-4">
+        <Field
+          label="Pipedrive API token"
+          hint="In Pipedrive, open Personal preferences, then API. Paste the API token here. Leave it blank to disconnect."
+        >
+          <AceternityInput
+            autoComplete="new-password"
+            onBlur={onCommit}
+            onChange={(event) => onPatch({ pipedriveApiToken: event.target.value })}
+            placeholder="Paste your Pipedrive API token"
+            type="password"
+            value={account.pipedriveApiToken}
+          />
+        </Field>
+        <div className="flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-ink-500">
+            Existing contacts are matched by email. Pipedrive sync never blocks the signup or resource email.
+          </p>
+          <AceternityButton
+            disabled={!connected || saveState === 'saving' || testState === 'saving'}
+            onClick={onTest}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {testState === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Test connection
+          </AceternityButton>
+        </div>
+        {testMessage && (
+          <p className={testState === 'error' ? 'text-xs font-medium text-red-700' : 'text-xs font-medium text-emerald-700'}>
+            {testMessage}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
 
 export function DashboardClient({
   initialData,
-  setupChecklist = [],
-  showRedirectNotice = false,
 }: {
   initialData: DashboardPayload;
-  setupChecklist?: SetupItem[];
-  showRedirectNotice?: boolean;
 }) {
   const initialAccount = initialData.account;
   const [account, setAccount] = useState<AccountSettings>(initialAccount);
@@ -461,11 +713,17 @@ export function DashboardClient({
   });
   const [publishingStatusVersion, setPublishingStatusVersion] = useState(0);
   const [error, setError] = useState('');
-  // Once a value is committed (root domain attached, Resend key saved, etc.),
+  const [slackTestState, setSlackTestState] = useState<SaveState>('idle');
+  const [slackTestMessage, setSlackTestMessage] = useState('');
+  const [pipedriveTestState, setPipedriveTestState] = useState<SaveState>('idle');
+  const [pipedriveTestMessage, setPipedriveTestMessage] = useState('');
+  // Once a value is committed (for example, a root domain is attached),
   // we hide the input behind a LockedField. Setting one of these to true
   // re-reveals the input until the next save.
   const [unlockDomain, setUnlockDomain] = useState(false);
-  const [unlockResendKey, setUnlockResendKey] = useState(false);
+  const [customDomainOpen, setCustomDomainOpen] = useState(
+    Boolean(initialAccount.domain && !initialAccount.domainAttachedHost)
+  );
 
   // We commit on blur instead of making the user click Save. The dirty refs
   // tell us whether a section has unsaved edits — without that flag every
@@ -483,8 +741,12 @@ export function DashboardClient({
     setSectionState({ delivery: 'idle', publishing: 'idle' });
     setPublishingStatusVersion((version) => version + 1);
     setError('');
+    setSlackTestState('idle');
+    setSlackTestMessage('');
+    setPipedriveTestState('idle');
+    setPipedriveTestMessage('');
     setUnlockDomain(false);
-    setUnlockResendKey(false);
+    setCustomDomainOpen(Boolean(initialAccount.domain && !initialAccount.domainAttachedHost));
   }, [initialAccount]);
 
   function setSaveState(section: SaveSection, state: SaveState) {
@@ -502,15 +764,6 @@ export function DashboardClient({
     const next = { ...accountRef.current, ...updates };
     accountRef.current = next;
     setAccount(next);
-  }
-
-  function prepareResendKeyEdit() {
-    // Do not mark this as dirty yet. Opening the field must never turn the
-    // masked key into a blank saved value if the user changes their mind.
-    const next = { ...accountRef.current, resendApiKey: '' };
-    accountRef.current = next;
-    setAccount(next);
-    setUnlockResendKey(true);
   }
 
   const commitSection = useCallback(
@@ -536,6 +789,7 @@ export function DashboardClient({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          username: snapshot.username,
           subdomain: snapshot.subdomain,
           domain: snapshot.domain,
           logoUrl: snapshot.logoUrl,
@@ -547,6 +801,8 @@ export function DashboardClient({
           beehiivApiKey: snapshot.beehiivApiKey,
           beehiivPublicationId: snapshot.beehiivPublicationId,
           substackPublication: snapshot.substackPublication,
+          slackWebhookUrl: snapshot.slackWebhookUrl,
+          pipedriveApiToken: snapshot.pipedriveApiToken,
           calendarWebhookEnabled: snapshot.calendarWebhookEnabled,
         }),
       });
@@ -561,232 +817,320 @@ export function DashboardClient({
         attachError?: string | null;
         detachError?: string | null;
       };
+      accountRef.current = data.account;
       setAccount(data.account);
       dirty.current[section] = false;
-      // After a successful save we re-lock the previously-unlocked fields,
-      // so the user has to click Edit again to make further changes.
+      // After a successful publishing save, re-lock the custom-domain fields.
       if (section === 'publishing') {
         setUnlockDomain(false);
         setPublishingStatusVersion((version) => version + 1);
       }
-      if (section === 'delivery') setUnlockResendKey(false);
       setSaveState(section, 'saved');
       if (section === 'publishing' && (data.attachError || data.detachError)) {
         setError(data.attachError || data.detachError || '');
       }
+      return data.account;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setSaveState(section, 'error');
+      return null;
     }
   }
 
+  async function testSlack() {
+    setSlackTestState('saving');
+    setSlackTestMessage('');
+
+    const savedAccount = dirty.current.delivery
+      ? await saveAccount('delivery')
+      : accountRef.current;
+
+    if (!savedAccount) {
+      setSlackTestState('error');
+      setSlackTestMessage('Save the Slack webhook first, then try the test again.');
+      return;
+    }
+
+    if (!savedAccount.slackWebhookUrl) {
+      setSlackTestState('error');
+      setSlackTestMessage('Add a Slack incoming-webhook URL before sending a test.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/account/slack/test', { method: 'POST' });
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error || 'Could not send a Slack test notification.');
+      setSlackTestState('saved');
+      setSlackTestMessage('Test notification sent.');
+    } catch (testError) {
+      setSlackTestState('error');
+      setSlackTestMessage(
+        testError instanceof Error ? testError.message : 'Could not send a Slack test notification.'
+      );
+    }
+  }
+
+  async function testPipedrive() {
+    setPipedriveTestState('saving');
+    setPipedriveTestMessage('');
+    const savedAccount = dirty.current.delivery ? await saveAccount('delivery') : accountRef.current;
+    if (!savedAccount?.pipedriveApiToken) {
+      setPipedriveTestState('error');
+      setPipedriveTestMessage('Add a Pipedrive API token before testing the connection.');
+      return;
+    }
+    try {
+      const response = await fetch('/api/account/pipedrive/test', { method: 'POST' });
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error || 'Could not test the Pipedrive connection.');
+      setPipedriveTestState('saved');
+      setPipedriveTestMessage('Pipedrive is connected.');
+    } catch (testError) {
+      setPipedriveTestState('error');
+      setPipedriveTestMessage(testError instanceof Error ? testError.message : 'Could not test the Pipedrive connection.');
+    }
+  }
+
+  const platformHost = account.username ? `magnets.so/${account.username}` : 'magnets.so/username';
   const pageSubdomain = account.subdomain || 'get';
   const configuredDomain = account.domain.trim();
   const displayDomain = configuredDomain || 'example.com';
   const pageHost = `${pageSubdomain}.${displayDomain}`;
-  const resendConfigured = Boolean(
-    account.resendApiKey &&
-    account.resendFromEmail &&
-    account.resendReturnPath
-  );
+  const resendConfigured = account.resendConfigured;
+  const hasCustomSender = Boolean(account.resendFromEmail.trim());
+  const customSenderConfigured = hasCustomSender && account.resendConfigured;
 
   return (
     <>
-      <PageHeader title="Configure" subtitle="Domain and delivery" />
-      <div className="mx-auto max-w-6xl space-y-4">
-        {setupChecklist.length > 0 && setupChecklist.some((item) => !item.done) && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm font-semibold text-amber-900">
-              {showRedirectNotice
-                ? 'Finish setup first.'
-                : 'A few setup steps to go.'}
-            </p>
-            <p className="mt-1 text-xs leading-5 text-amber-800">
-              {showRedirectNotice
-                ? 'Brand, Pages, and Signups unlock as the items below are completed.'
-                : 'Configure the items below to unlock Brand, Pages, and Signups.'}
-            </p>
-            <ul className="mt-3 space-y-2 text-sm text-amber-900">
-              {setupChecklist.map((item) => (
-                <li key={item.key} className="flex items-start gap-2">
-                  <span
-                    aria-hidden
-                    className={
-                      item.done
-                        ? 'mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white'
-                        : 'mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-amber-400 bg-white text-amber-700'
-                    }
-                  >
-                    {item.done ? (
-                      <svg viewBox="0 0 12 12" className="h-3 w-3">
-                        <path
-                          d="M2.5 6.2l2.4 2.4 4.6-5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : (
-                      <span className="text-[10px] font-bold">!</span>
-                    )}
-                  </span>
-                  <span>
-                    <span className={item.done ? 'font-medium text-amber-900/70 line-through' : 'font-medium'}>
-                      {item.label}
-                    </span>
-                    <span className="ml-2 text-xs text-amber-800/80">{item.detail}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <PageHeader title="Get started" subtitle="Claim your free Magnets link first. Everything else can wait." />
+      <div className="mx-auto max-w-6xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
-        <AceternityCard className="p-6">
-          <div className="space-y-6">
-            <SectionHeader
-              description="Choose where pages will be served and copy the DNS records."
-              icon={Globe2}
-              title="Publishing"
-            />
-
-            <div className="space-y-5">
-              <div className="rounded-lg border border-[#dfd8cf] bg-white p-4 shadow-sm">
-                <p className="text-xs font-bold uppercase text-[#746d64]">
-                  {configuredDomain ? 'Live page host' : 'Example page host'}
-                </p>
-                <p className="mt-1 break-all font-mono text-sm text-[#111111]">{pageHost}</p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Root domain" hint="No https or page paths.">
-                  <LockedField
-                    confirmDescription={
-                      <>
-                        <p>
-                          Changing your root domain disconnects the current one and clears your ownership
-                          verification. Visitors going to{' '}
-                          <span className="font-mono text-ink-900">{account.domainAttachedHost}</span> will
-                          stop seeing your pages until you finish the new setup.
-                        </p>
-                        <p className="mt-2 text-ink-600">You can keep using the dashboard while you switch.</p>
-                      </>
-                    }
-                    confirmTitle="Change your root domain?"
-                    displayValue={account.domain}
-                    locked={Boolean(account.domainAttachedHost) && !unlockDomain}
-                    onConfirmEdit={() => setUnlockDomain(true)}
-                  >
-                    <AceternityInput
-                      value={account.domain}
-                      onBlur={() => commitSection('publishing')}
-                      onChange={(event) =>
-                        patchAccount({
-                          domain: event.target.value
-                            .toLowerCase()
-                            .replace(/^https?:\/\//, '')
-                            .replace(/\/.*/, ''),
-                        }, 'publishing')
-                      }
-                      placeholder="example.com"
-                    />
-                  </LockedField>
-                </Field>
-                <Field label="Page subdomain" hint="Recommended: get">
-                  <LockedField
-                    confirmDescription={
-                      <>
-                        <p>
-                          Changing the subdomain disconnects{' '}
-                          <span className="font-mono text-ink-900">{account.domainAttachedHost}</span> and
-                          requires you to verify the new one. Existing links to your pages will stop working
-                          until the new subdomain is live.
-                        </p>
-                      </>
-                    }
-                    confirmTitle="Change your subdomain?"
-                    displayValue={account.subdomain}
-                    locked={Boolean(account.domainAttachedHost) && !unlockDomain}
-                    onConfirmEdit={() => setUnlockDomain(true)}
-                  >
-                    <AceternityInput
-                      value={account.subdomain}
-                      onBlur={() => commitSection('publishing')}
-                      onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() }, 'publishing')}
-                      placeholder="get"
-                    />
-                  </LockedField>
-                </Field>
-              </div>
-
-              <PublishingWizard
-                hasDomain={Boolean(configuredDomain)}
-                refreshKey={publishingStatusVersion}
-              />
-
-              <SaveStatus state={sectionState.publishing} />
-            </div>
+        <AceternityCard className="overflow-hidden p-0">
+          <div className="border-b border-ink-200 bg-ink-50 px-6 py-4">
+            <p className="text-sm font-semibold text-ink-950">Start here</p>
+            <p className="mt-1 text-sm text-ink-600">Choose the link you will share. You can create a page as soon as this is saved.</p>
           </div>
-        </AceternityCard>
-
-        <AceternityCard className="p-6">
+          <div className="p-6">
           <div className="space-y-6">
             <SectionHeader
-              description="Set the sender. Connect a newsletter if you want signups added to it."
-              icon={Mail}
-              title="Delivery"
+              description="Your pages work on Magnets straight away. A custom domain is an optional upgrade, not a requirement."
+              icon={Globe2}
+              title="Your public page"
             />
 
             <div className="space-y-5">
               <Field
-                label={
-                  <LabelHelp
-                    label="Sending key"
-                    help="Create a Resend API key with Full access. Sending access can deliver the first resource email, but follow-up sequences need Full access to create Resend events, templates, and automations."
-                  />
-                }
-                hint="The key is encrypted at rest and never shown back to you in plaintext."
+                label="Choose your Magnets URL"
+                hint="Lowercase letters, numbers, and hyphens. This is the only required step."
               >
-                <LockedField
-                  confirmDescription={
-                    <>
-                      <p>
-                        Replacing your sending key means any emails in flight, or that we retry after this
-                        point, will use the new one. If you paste an invalid key here, deliveries will fail
-                        until it&apos;s fixed.
-                      </p>
-                      <p className="mt-2 text-ink-600">Make sure you have the new key ready before continuing.</p>
-                    </>
-                  }
-                  confirmTitle="Replace your sending key?"
-                  displayValue={<span className="font-mono text-ink-700">••••••••</span>}
-                  locked={Boolean(account.resendApiKey) && !unlockResendKey}
-                  onConfirmEdit={prepareResendKeyEdit}
-                >
-                  <AceternityInput
-                    value={account.resendApiKey}
-                    onBlur={() => commitSection('delivery')}
-                    onChange={(event) => patchAccount({ resendApiKey: event.target.value }, 'delivery')}
-                    placeholder="re_xxxxxxxxxxxx"
+                <div className="flex h-10 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
+                  <span className="flex shrink-0 items-center border-r border-ink-200 bg-ink-50 px-3 font-mono text-sm text-ink-500">
+                    magnets.so/
+                  </span>
+                  <input
+                    className="min-w-0 flex-1 bg-transparent px-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                    maxLength={40}
+                    onBlur={() => commitSection('publishing')}
+                    onChange={(event) => patchAccount({ username: event.target.value.toLowerCase() }, 'publishing')}
+                    placeholder="your-brand"
+                    value={account.username}
                   />
-                </LockedField>
+                </div>
               </Field>
 
-              <DeliverySection
-                account={{
-                  domain: account.domain,
-                  domainAttachedHost: account.domainAttachedHost,
-                  resendApiKey: account.resendApiKey,
-                  resendFromEmail: account.resendFromEmail,
-                  resendReturnPath: account.resendReturnPath,
-                }}
-                onCommit={() => commitSection('delivery')}
-                onPatch={(updates) => patchAccount(updates, 'delivery')}
-                saveState={sectionState.delivery}
-              />
+              <div className="rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
+                <p className="text-xs font-medium text-ink-500">Your page link</p>
+                <p className="mt-1 break-all font-mono text-sm text-ink-900">
+                  {account.domainAttachedHost ? pageHost : platformHost}
+                </p>
+              </div>
+
+              <details
+                className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white"
+                onToggle={(event) => setCustomDomainOpen(event.currentTarget.open)}
+                open={customDomainOpen}
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
+                  <div className="flex min-w-0 gap-3">
+                    <ConnectionIcon icon={Globe2} tone="aqua" />
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-ink-950">Custom domain</p>
+                        {account.domainAttachedHost && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">Connected</span>}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-5 text-ink-600">
+                        {account.domainAttachedHost
+                          ? `${pageHost} is live and serving your pages.`
+                          : 'Use your own domain whenever you are ready. Your Magnets link already works.'}
+                      </p>
+                    </div>
+                  </div>
+                  <ConnectionChevron />
+                </summary>
+                <div className="space-y-5 border-t border-ink-200 p-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="Root domain" hint="No https or page paths.">
+                      <LockedField
+                        confirmDescription={
+                          <>
+                            <p>
+                              Changing your root domain disconnects the current one and clears your ownership
+                              verification. Visitors going to{' '}
+                              <span className="font-mono text-ink-900">{account.domainAttachedHost}</span> will
+                              stop seeing your pages until you finish the new setup.
+                            </p>
+                            <p className="mt-2 text-ink-600">You can keep using the dashboard while you switch.</p>
+                          </>
+                        }
+                        confirmTitle="Change your root domain?"
+                        displayValue={account.domain}
+                        locked={Boolean(account.domainAttachedHost) && !unlockDomain}
+                        onConfirmEdit={() => setUnlockDomain(true)}
+                      >
+                        <AceternityInput
+                          value={account.domain}
+                          onBlur={() => commitSection('publishing')}
+                          onChange={(event) =>
+                            patchAccount({
+                              domain: event.target.value
+                                .toLowerCase()
+                                .replace(/^https?:\/\//, '')
+                                .replace(/\/.*/, ''),
+                            }, 'publishing')
+                          }
+                          placeholder="example.com"
+                        />
+                      </LockedField>
+                    </Field>
+                    <Field label="Page subdomain" hint="Recommended: get">
+                      <LockedField
+                        confirmDescription={
+                          <>
+                            <p>
+                              Changing the subdomain disconnects{' '}
+                              <span className="font-mono text-ink-900">{account.domainAttachedHost}</span> and
+                              requires you to verify the new one. Existing links to your pages will stop working
+                              until the new subdomain is live.
+                            </p>
+                          </>
+                        }
+                        confirmTitle="Change your subdomain?"
+                        displayValue={account.subdomain}
+                        locked={Boolean(account.domainAttachedHost) && !unlockDomain}
+                        onConfirmEdit={() => setUnlockDomain(true)}
+                      >
+                        <AceternityInput
+                          value={account.subdomain}
+                          onBlur={() => commitSection('publishing')}
+                          onChange={(event) => patchAccount({ subdomain: event.target.value.toLowerCase() }, 'publishing')}
+                          placeholder="get"
+                        />
+                      </LockedField>
+                    </Field>
+                  </div>
+
+                  <PublishingWizard
+                    hasDomain={Boolean(configuredDomain)}
+                    refreshKey={publishingStatusVersion}
+                  />
+                </div>
+              </details>
+
+              <SaveStatus state={sectionState.publishing} />
+            </div>
+          </div>
+          </div>
+        </AceternityCard>
+
+        <AceternityCard className="overflow-hidden p-0">
+          <div className="border-b border-ink-200 bg-[linear-gradient(120deg,#fffaf7_0%,#fff_52%,#f7fbfb_100%)] px-6 py-5">
+            <div className="flex items-start gap-3">
+              <ConnectionIcon icon={BriefcaseBusiness} tone="orange" />
+              <div>
+                <p className="text-sm font-semibold text-ink-950">Optional connections</p>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-600">
+                  Your page and first email work without these. Add a connection only when it helps your workflow.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="p-5 sm:p-6">
+          <div className="space-y-5">
+            <SectionHeader
+              description="Magnets handles the basics. Turn on an integration when you have a real reason to use it."
+              icon={Mail}
+              title="Email delivery and integrations"
+            />
+
+            <div className="space-y-5">
+              <div className="flex items-start gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(17,17,17,0.03)]">
+                <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', account.resendConfigured ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')}>
+                  {account.resendConfigured ? <Check className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-ink-950">
+                      {account.resendManagedByPlatform
+                        ? 'Email sending is ready'
+                        : account.resendConfigured
+                          ? 'Your existing sending connection is ready'
+                          : 'Email sending needs attention'}
+                    </p>
+                    {account.resendConfigured && (
+                      <ConnectionStatus tone={account.resendManagedByPlatform ? 'platform' : 'connected'}>
+                        {account.resendManagedByPlatform ? 'Magnets managed' : 'Configured'}
+                      </ConnectionStatus>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-ink-600">
+                  {account.resendManagedByPlatform
+                    ? 'Magnets sends the resource email from our verified address by default. You can add your own sender domain below when you are ready.'
+                    : account.resendConfigured
+                      ? 'Magnets keeps this connection in place so your verified domain, active emails, and follow-up sequences continue working.'
+                      : 'Contact support to finish connecting Magnets-managed sending.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid items-start gap-3 lg:grid-cols-2">
+              <details className={connectionCardClass}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
+                  <div className="flex min-w-0 gap-3">
+                    <ConnectionIcon icon={Mail} tone="orange" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-ink-950">Your sender domain</p>
+                        {customSenderConfigured && <ConnectionStatus>Configured</ConnectionStatus>}
+                        {hasCustomSender && !customSenderConfigured && <ConnectionStatus tone="pending">Needs verification</ConnectionStatus>}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-5 text-ink-600">
+                        {customSenderConfigured
+                          ? account.resendFromEmail
+                          : hasCustomSender
+                            ? 'Finish verification to send from this address.'
+                            : 'Send from your own address instead of Magnets.'}
+                      </p>
+                    </div>
+                  </div>
+                  <ConnectionChevron />
+                </summary>
+                <div className="border-t border-ink-200 p-4">
+                  <DeliverySection
+                    account={{
+                      domain: account.domain,
+                      domainAttachedHost: account.domainAttachedHost,
+                      resendConfigured: account.resendConfigured,
+                      resendFromEmail: account.resendFromEmail,
+                      resendReturnPath: account.resendReturnPath,
+                    }}
+                    onCommit={() => commitSection('delivery')}
+                    onPatch={(updates) => patchAccount(updates, 'delivery')}
+                    saveState={sectionState.delivery}
+                  />
+                </div>
+              </details>
 
               <CalendarConnectionSetup
                 account={account}
@@ -798,26 +1142,38 @@ export function DashboardClient({
                 resendConfigured={resendConfigured}
               />
 
-              <details className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink-950">Add signups to a newsletter</p>
-                    <p className="mt-0.5 text-xs leading-5 text-ink-600">
-                      Optional. Connect Beehiiv or Substack to forward each signup. Signups are always saved here either way.
-                    </p>
+              <SlackNotificationsSetup
+                account={account}
+                onCommit={() => commitSection('delivery')}
+                onPatch={(updates) => patchAccount(updates, 'delivery')}
+                onTest={() => void testSlack()}
+                saveState={sectionState.delivery}
+                testMessage={slackTestMessage}
+                testState={slackTestState}
+              />
+
+              <PipedriveSetup
+                account={account}
+                onCommit={() => commitSection('delivery')}
+                onPatch={(updates) => patchAccount(updates, 'delivery')}
+                onTest={() => void testPipedrive()}
+                saveState={sectionState.delivery}
+                testMessage={pipedriveTestMessage}
+                testState={pipedriveTestState}
+              />
+
+              <details className={`${connectionCardClass} lg:col-span-2`}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
+                  <div className="flex min-w-0 gap-3">
+                    <ConnectionIcon icon={Newspaper} tone="yellow" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink-950">Newsletter</p>
+                      <p className="mt-0.5 text-xs leading-5 text-ink-600">
+                        Forward signups to Beehiiv or Substack. They are always saved in Magnets too.
+                      </p>
+                    </div>
                   </div>
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
-                    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5">
-                      <path
-                        d="M4 6l4 4 4-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                      />
-                    </svg>
-                  </span>
+                  <ConnectionChevron />
                 </summary>
 
                 <div className="space-y-4 border-t border-ink-200 p-4">
@@ -873,6 +1229,8 @@ export function DashboardClient({
                 </div>
               </details>
             </div>
+          </div>
+          </div>
           </div>
         </AceternityCard>
       </div>

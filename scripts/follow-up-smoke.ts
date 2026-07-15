@@ -22,12 +22,27 @@ import {
   verifyEmailImageToken,
 } from '../lib/email-image-proxy';
 import { verifyFollowUpStopToken } from '../lib/follow-up-opt-out';
-import { renderEmailTextFallback, renderPlainEmailHtml } from '../lib/resend';
+import {
+  renderEmailTextFallback,
+  renderPlainEmailHtml,
+  sendLeadMagnetEmail,
+} from '../lib/resend';
+import { isEmailDeliveryReady, isPublishingDomainReady, isSetupComplete } from '../lib/setup';
+import { resolveResendApiKey, resolveResendFromEmail } from '../lib/platform-resend';
+import { senderMatchesAccountDomain } from '../lib/dns-records';
+import { testPipedriveConnection, upsertPipedrivePerson } from '../lib/pipedrive';
+import {
+  isValidPlatformUsername,
+  normalisePlatformUsername,
+  platformUsernameStem,
+} from '../lib/platform-username';
+import { isValidSlackWebhookUrl, sendSlackSignupNotification } from '../lib/slack';
 import type { AccountSettings, LeadMagnet } from '../lib/types';
 
 type JsonRecord = Record<string, unknown>;
 
 type CapturedRequest = {
+  authorization: string;
   method: string;
   pathname: string;
   body: JsonRecord | null;
@@ -96,8 +111,14 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = new URL(requestUrl(input));
   const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
   const body = parseJsonBody(init?.body);
+  const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
 
-  requests.push({ method, pathname: url.pathname, body });
+  requests.push({
+    authorization: headers.get('authorization') || '',
+    method,
+    pathname: url.pathname,
+    body,
+  });
 
   if (url.origin !== 'https://api.resend.com') {
     return jsonResponse({ message: `Unexpected origin ${url.origin}` }, 500);
@@ -137,6 +158,10 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse({ id: `event_send_${requests.length}` });
   }
 
+  if (method === 'POST' && url.pathname === '/emails') {
+    return jsonResponse({ id: `email_${requests.length}` });
+  }
+
   return jsonResponse({ message: `Unexpected Resend request: ${method} ${url.pathname}` }, 500);
 }) as typeof fetch;
 
@@ -145,6 +170,7 @@ const now = new Date('2026-07-08T10:00:00.000Z').toISOString();
 const account: AccountSettings = {
   id: 'account_smoke',
   ownerUserId: 'user_smoke',
+  username: 'smoke-test',
   subdomain: 'get',
   domain: 'example.com',
   logoUrl: '',
@@ -154,12 +180,17 @@ const account: AccountSettings = {
     accent: '#f8f5ff',
     success: '#22c55e',
     highlightIntensity: 100,
+    pageTheme: 'light',
   },
   resendFromEmail: 'Smoke Test <hello@send.example.com>',
   resendApiKey: 're_smoke_test',
+  resendConfigured: true,
+  resendManagedByPlatform: false,
   beehiivApiKey: '',
   beehiivPublicationId: '',
   substackPublication: '',
+  slackWebhookUrl: '',
+  pipedriveApiToken: '',
   resendReturnPath: 'send',
   calendarWebhookEnabled: true,
   calendarWebhookToken: 'calendar_smoke_token',
@@ -223,12 +254,153 @@ const magnet: LeadMagnet = {
     },
   ],
   resendFollowUpAutomationId: '',
+  postSignupMode: 'message',
+  postSignupRedirectUrl: '',
+  postSignupHeading: '',
+  postSignupBody: '',
+  postSignupVideoUrl: '',
+  postSignupCtaLabel: '',
+  postSignupCtaUrl: '',
+  postSignupQuizEnabled: false,
+  postSignupQuizTitle: '',
+  postSignupQuizDescription: '',
+  postSignupQuizQuestions: [],
+  postSignupQuizRoutes: [],
   published: true,
   createdAt: now,
   updatedAt: now,
 };
 
 async function run() {
+  assert.equal(normalisePlatformUsername('  My-Brand  '), 'my-brand');
+  assert.equal(platformUsernameStem('My Brand & Co.'), 'my-brand-co');
+  assert.equal(platformUsernameStem(''), 'magnet');
+  assert.equal(isValidPlatformUsername('my-brand'), true);
+  assert.equal(isValidPlatformUsername('my_brand'), false);
+  assert.equal(isValidPlatformUsername('dashboard'), false);
+
+  const platformHostedAccount: AccountSettings = {
+    ...account,
+    username: 'my-brand',
+    domainAttachedHost: '',
+  };
+  assert.equal(isSetupComplete(platformHostedAccount), true);
+  assert.equal(isPublishingDomainReady(platformHostedAccount), false);
+  assert.equal(isEmailDeliveryReady(platformHostedAccount), true);
+
+  const customDomainAccount: AccountSettings = {
+    ...account,
+    username: '',
+  };
+  assert.equal(isSetupComplete(customDomainAccount), true);
+  assert.equal(isPublishingDomainReady(customDomainAccount), true);
+
+  const incompleteAccount: AccountSettings = {
+    ...platformHostedAccount,
+    username: '',
+  };
+  assert.equal(isSetupComplete(incompleteAccount), false);
+  assert.equal(
+    isEmailDeliveryReady({ ...platformHostedAccount, domainVerifiedAt: null }),
+    false
+  );
+
+  const originalPlatformKey = process.env.MAGNETS_RESEND_API_KEY;
+  process.env.MAGNETS_RESEND_API_KEY = 're_platform_smoke';
+  const platformManagedAccount = {
+    ...platformHostedAccount,
+    resendApiKey: '',
+    resendConfigured: true,
+    resendManagedByPlatform: true,
+    resendFromEmail: '',
+    resendReturnPath: '',
+    domainVerifiedAt: null,
+  };
+  assert.equal(resolveResendApiKey(platformManagedAccount), 're_platform_smoke');
+  assert.equal(resolveResendFromEmail(platformManagedAccount), 'Magnets <hello@mail.magnets.so>');
+  assert.equal(isEmailDeliveryReady(platformManagedAccount), true);
+
+  resetRequests();
+  const platformEmail = await sendLeadMagnetEmail({
+    account: platformManagedAccount,
+    magnet,
+    to: 'new-user@example.com',
+    name: 'New User',
+  });
+  assert.deepEqual(platformEmail, { messageId: 'email_1' });
+  const platformEmailRequest = findRequest('/emails', 'POST');
+  assert.equal(platformEmailRequest?.authorization, 'Bearer re_platform_smoke');
+  assert.equal(platformEmailRequest?.body?.from, 'Magnets <hello@mail.magnets.so>');
+  assert.equal(platformEmailRequest?.body?.to, 'new-user@example.com');
+
+  const accountKeyWithoutVerifiedSender = {
+    ...platformManagedAccount,
+    resendApiKey: 're_customer_key',
+  };
+  assert.equal(
+    resolveResendApiKey(accountKeyWithoutVerifiedSender),
+    're_platform_smoke',
+    'An unverified customer sender must use the platform key with the platform sender.'
+  );
+  assert.equal(resolveResendApiKey(account), 're_smoke_test');
+
+  resetRequests();
+  const ownedEmail = await sendLeadMagnetEmail({
+    account,
+    magnet,
+    to: 'existing-user@example.com',
+    name: 'Existing User',
+  });
+  assert.deepEqual(ownedEmail, { messageId: 'email_1' });
+  const ownedEmailRequest = findRequest('/emails', 'POST');
+  assert.equal(ownedEmailRequest?.authorization, 'Bearer re_smoke_test');
+  assert.equal(ownedEmailRequest?.body?.from, account.resendFromEmail);
+
+  const legacySenderAccount = {
+    ...account,
+    resendFromEmail: 'Existing sender <hello@example.com>',
+    resendReturnPath: '',
+  };
+  assert.equal(
+    senderMatchesAccountDomain(legacySenderAccount),
+    true,
+    'Existing root-domain senders remain valid when an account predates return paths.'
+  );
+  assert.equal(resolveResendApiKey(legacySenderAccount), 're_smoke_test');
+  assert.equal(resolveResendFromEmail(legacySenderAccount), 'Existing sender <hello@example.com>');
+
+  const legacySubdomainSenderAccount = {
+    ...legacySenderAccount,
+    resendFromEmail: 'Existing sender <hello@mail.example.com>',
+  };
+  assert.equal(senderMatchesAccountDomain(legacySubdomainSenderAccount), true);
+
+  assert.equal(
+    senderMatchesAccountDomain({
+      ...account,
+      resendFromEmail: 'Wrong sender <hello@other-example.com>',
+      resendReturnPath: '',
+    }),
+    false,
+    'Legacy compatibility must not allow a sender outside the owned domain.'
+  );
+
+  assert.equal(
+    senderMatchesAccountDomain({
+      ...account,
+      resendFromEmail: 'Wrong return path <hello@example.com>',
+      resendReturnPath: 'send',
+    }),
+    false,
+    'New return-path settings remain exact.'
+  );
+
+  if (originalPlatformKey === undefined) {
+    delete process.env.MAGNETS_RESEND_API_KEY;
+  } else {
+    process.env.MAGNETS_RESEND_API_KEY = originalPlatformKey;
+  }
+
   const calBookingRequestedPayload = {
     triggerEvent: 'BOOKING_REQUESTED',
     payload: {
@@ -612,7 +784,7 @@ async function run() {
       () => syncLeadMagnetFollowUpAutomation(account, magnet),
       (error) => {
         assert.ok(error instanceof FollowUpSequenceError);
-        assert.match(error.message, /Full access/);
+        assert.match(error.message, /Magnets could not create this follow-up sequence yet/);
         return true;
       }
     );
@@ -620,7 +792,128 @@ async function run() {
     forbiddenPath = '';
   }
 
-  console.log('Follow-up smoke test passed: mocked Resend setup, automation graph, missing automation repair, permission failure, disable flow, manual cancel, and account-level booking cancel.');
+  const platformKeyBeforeSync = process.env.MAGNETS_RESEND_API_KEY;
+  process.env.MAGNETS_RESEND_API_KEY = 're_platform_smoke';
+  resetRequests();
+  try {
+    await syncLeadMagnetFollowUpAutomation(
+      {
+        ...account,
+        resendApiKey: '',
+        resendConfigured: true,
+        resendManagedByPlatform: true,
+        resendFromEmail: '',
+        resendReturnPath: '',
+        domainVerifiedAt: null,
+      },
+      {
+        ...magnet,
+        id: 'magnet_platform_key_smoke',
+        resendFollowUpAutomationId: '',
+        followUpEmails: magnet.followUpEmails.map((email) => ({ ...email, resendTemplateId: '' })),
+      }
+    );
+    const platformRequests: CapturedRequest[] = [...requests];
+    assert.ok(platformRequests.length > 0, 'Expected the platform key to sync a follow-up automation.');
+    assert.ok(
+      platformRequests.every((request) => request.authorization === 'Bearer re_platform_smoke'),
+      'Every Resend request should use the Magnets-managed key when no account key exists.'
+    );
+    const platformTemplate = platformRequests.find(
+      (request) => request.pathname === '/templates' && request.method === 'POST'
+    );
+    assert.equal(platformTemplate?.body?.from, 'Magnets <hello@mail.magnets.so>');
+  } finally {
+    if (platformKeyBeforeSync === undefined) {
+      delete process.env.MAGNETS_RESEND_API_KEY;
+    } else {
+      process.env.MAGNETS_RESEND_API_KEY = platformKeyBeforeSync;
+    }
+  }
+
+  const resendFetch = globalThis.fetch;
+  const integrationRequests: Array<{
+    body: JsonRecord | null;
+    method: string;
+    pathname: string;
+    host: string;
+  }> = [];
+  let existingPipedrivePerson = false;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(requestUrl(input));
+    const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) as JsonRecord : null;
+    integrationRequests.push({ body, method, pathname: url.pathname, host: url.host });
+
+    if (url.hostname === 'hooks.slack.com') {
+      return new Response('', { status: 200 });
+    }
+
+    if (url.hostname === 'api.pipedrive.com') {
+      if (url.pathname === '/api/v1/users/me') return jsonResponse({ success: true, data: { id: 1 } });
+      if (url.pathname === '/api/v2/persons/search') {
+        return jsonResponse({
+          success: true,
+          data: existingPipedrivePerson ? { items: [{ item: { id: 42 } }] } : { items: [] },
+        });
+      }
+      if (url.pathname === '/api/v2/persons' && method === 'POST') {
+        return jsonResponse({ success: true, data: { id: 43 } });
+      }
+      if (url.pathname === '/api/v2/persons/42' && method === 'PATCH') {
+        return jsonResponse({ success: true, data: { id: 42 } });
+      }
+    }
+
+    return jsonResponse({ success: false, error: 'Unexpected integration request' }, 500);
+  }) as typeof fetch;
+
+  try {
+    const integrationAccount: AccountSettings = {
+      ...account,
+      slackWebhookUrl: 'https://hooks.slack.com/services/T00000000/B00000000/secret_value',
+      pipedriveApiToken: 'pipedrive_smoke_token',
+    };
+
+    assert.equal(isValidSlackWebhookUrl(integrationAccount.slackWebhookUrl), true);
+    assert.equal(isValidSlackWebhookUrl('https://example.com/services/T/B/C'), false);
+    await sendSlackSignupNotification({
+      account: integrationAccount,
+      leadMagnet: magnet,
+      email: 'lead@example.com',
+      name: 'Lead <Example>',
+    });
+    await testPipedriveConnection(integrationAccount);
+    assert.deepEqual(
+      await upsertPipedrivePerson({ account: integrationAccount, email: 'lead@example.com', name: 'Lead Example' }),
+      { synced: true, action: 'created' }
+    );
+
+    existingPipedrivePerson = true;
+    assert.deepEqual(
+      await upsertPipedrivePerson({ account: integrationAccount, email: 'lead@example.com', name: 'Lead Updated' }),
+      { synced: true, action: 'updated' }
+    );
+
+    const slackRequest = integrationRequests.find((request) => request.host === 'hooks.slack.com');
+    assert.equal(slackRequest?.method, 'POST');
+    assert.match(String(slackRequest?.body?.text), /New signup for Smoke Test Magnet/);
+    assert.match(JSON.stringify(slackRequest?.body), /Lead &lt;Example&gt;/);
+    assert.ok(
+      integrationRequests.some(
+        (request) => request.pathname === '/api/v2/persons' && request.method === 'POST'
+      )
+    );
+    assert.ok(
+      integrationRequests.some(
+        (request) => request.pathname === '/api/v2/persons/42' && request.method === 'PATCH'
+      )
+    );
+  } finally {
+    globalThis.fetch = resendFetch;
+  }
+
+  console.log('Follow-up smoke test passed: managed Resend sending, automation creation and repair, sequence cancellation, email images, account-level booking cancellation, Slack notifications, and Pipedrive create/update sync.');
 }
 
 run()

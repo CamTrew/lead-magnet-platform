@@ -1,0 +1,1 @@
+ALTER TABLE "magnets_accounts" ADD COLUMN "pipedrive_api_token" text DEFAULT '' NOT NULL;

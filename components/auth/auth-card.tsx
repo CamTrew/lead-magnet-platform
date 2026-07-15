@@ -15,7 +15,7 @@ const copy = {
     error: 'Unable to sign in',
     pending: 'Signing in...',
     switchHref: '/register',
-    switchLabel: 'Create one',
+    switchLabel: 'Create an account',
     switchPrompt: 'New here?',
     title: 'Welcome back',
   },
@@ -31,11 +31,17 @@ const copy = {
   },
 };
 
-function withLoginEntry(path: string) {
-  const url = new URL(path, 'https://magnets.local');
-  if (url.pathname === '/dashboard' && !url.searchParams.has('entry')) {
-    url.searchParams.set('entry', 'login');
+function loginDestination(nextPath?: string) {
+  const url = new URL(nextPath || '/dashboard/pages', 'https://magnets.local');
+
+  // A generic dashboard destination should open the useful first screen. Do
+  // not preserve an old setup query, because it can trap a now-configured
+  // account on Configure. The Pages route still redirects incomplete accounts
+  // to setup on the server.
+  if (url.pathname === '/dashboard') {
+    return '/dashboard/pages';
   }
+
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
@@ -98,8 +104,8 @@ export function AuthCard({
       setIsNavigating(true);
       window.dispatchEvent(new Event('magnets:navigation-start'));
       const destination = mode === 'login'
-        ? withLoginEntry(nextPath || '/dashboard')
-        : '/dashboard';
+        ? loginDestination(nextPath)
+        : '/dashboard/pages';
       window.location.assign(destination);
       return;
     } catch (err) {
@@ -115,8 +121,8 @@ export function AuthCard({
         <div className="mb-8 flex flex-col items-center gap-4">
           <MagnetsLogoMark className="h-12 w-12" />
           <div className="text-center">
-            <h1 className="text-2xl font-black text-ink-950">{activeCopy.title}</h1>
-            <p className="mt-1.5 text-sm text-ink-600">{activeCopy.description}</p>
+            <h1 className="text-2xl font-semibold tracking-normal text-ink-950">{activeCopy.title}</h1>
+            <p className="mt-1.5 text-sm font-normal text-ink-600">{activeCopy.description}</p>
           </div>
         </div>
 
@@ -139,7 +145,7 @@ export function AuthCard({
           )}
 
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink-700">Email</span>
+              <span className="mb-1.5 block text-xs font-medium text-ink-700">Email</span>
             <AceternityInput
               autoComplete="email"
               autoFocus={mode === 'login'}
@@ -153,7 +159,14 @@ export function AuthCard({
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink-700">Password</span>
+            <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-ink-700">
+              Password
+              {mode === 'login' && (
+                <Link className="font-medium text-ink-700 underline-offset-4 hover:text-ink-950 hover:underline" href="/forgot-password">
+                  Forgot password?
+                </Link>
+              )}
+            </span>
             <AceternityInput
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
               disabled={isBusy}
