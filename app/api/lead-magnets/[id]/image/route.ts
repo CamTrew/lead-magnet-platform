@@ -1,6 +1,6 @@
 import { issueSignedToken } from '@vercel/blob';
 import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/blob/client';
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentDashboardPayload } from '@/lib/auth';
 import { createLeadMagnetDisplayImage } from '@/lib/lead-magnet-display-image';
@@ -212,16 +212,38 @@ export async function PUT(
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
 
-    const displayImageUrl = await createLeadMagnetDisplayImage({
-      accountId: payload.account.id,
+    // Attach the original first so a display-image optimization can never make
+    // an otherwise successful upload fail. The original remains the fallback
+    // until the smaller rendition has been created and recorded successfully.
+    const updated = await updateLeadMagnetImageUrl(
+      payload.account.id,
       leadMagnetId,
-      sourceUrl: parsed.data.imageUrl,
-    });
-    const updated = await updateLeadMagnetImageUrl(payload.account.id, leadMagnetId, displayImageUrl);
+      parsed.data.imageUrl
+    );
 
     if (!updated) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
+
+    after(async () => {
+      try {
+        const displayImageUrl = await createLeadMagnetDisplayImage({
+          accountId: payload.account.id,
+          leadMagnetId,
+          sourceUrl: parsed.data.imageUrl,
+        });
+        await updateLeadMagnetImageUrl(payload.account.id, leadMagnetId, displayImageUrl);
+      } catch (optimizationError) {
+        log.warn('Lead magnet display image optimization failed', {
+          route: ROUTE,
+          method: 'PUT',
+          status: 200,
+          userId: payload.user.id,
+          accountId: payload.account.id,
+          extra: { leadMagnetId, error: optimizationError },
+        });
+      }
+    });
 
     log.info('Lead magnet image recorded', {
       route: ROUTE,

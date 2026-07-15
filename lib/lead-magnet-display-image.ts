@@ -54,6 +54,7 @@ export async function createLeadMagnetDisplayImage({
   sourceUrl: string;
 }) {
   const buffer = await readBlob(sourceUrl);
+  const access = blobAccessFromUrl(sourceUrl);
   const pathname = `lead-magnets/${accountId}/${leadMagnetId}/display/${randomUUID()}`;
 
   const displayBuffer = await sharp(buffer, {
@@ -69,7 +70,10 @@ export async function createLeadMagnetDisplayImage({
     .toBuffer();
 
   const blob = await put(`${pathname}.webp`, displayBuffer, {
-    access: 'public',
+    // Blob stores have a fixed access mode. Existing accounts use the private
+    // store, so attempting to create a public rendition there fails. Preserve
+    // the source access and let the image route stream private renditions.
+    access,
     cacheControlMaxAge: YEAR_IN_SECONDS,
     contentType: 'image/webp',
     storeId: blobStoreId(),
