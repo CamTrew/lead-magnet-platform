@@ -24,6 +24,8 @@ export const defaultBrand: BrandSettings = {
   success: '#7FD4DD',
   highlightIntensity: 100,
   pageTheme: 'light',
+  privacyPolicyUrl: '',
+  termsUrl: '',
 };
 
 const defaultBrandSql = sql`'{"primary":"#FE6F34","accent":"#FDC957","success":"#7FD4DD","highlightIntensity":100,"pageTheme":"light"}'::jsonb`;
@@ -147,6 +149,7 @@ export const leadMagnets = pgTable(
     followUpStopOnBooking: boolean('follow_up_stop_on_booking').notNull().default(true),
     followUpEmails: jsonb('follow_up_emails').$type<FollowUpEmail[]>().notNull().default(sql`'[]'::jsonb`),
     resendFollowUpAutomationId: text('resend_follow_up_automation_id').notNull().default(''),
+    resendFollowUpRenderVersion: integer('resend_follow_up_render_version').notNull().default(0),
     postSignupMode: text('post_signup_mode').notNull().default('message'),
     postSignupRedirectUrl: text('post_signup_redirect_url').notNull().default(''),
     postSignupHeading: text('post_signup_heading').notNull().default(''),

@@ -58,6 +58,20 @@ function calendarWebhookOrigin(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const payload = await requireDashboardPayload();
+    await enforceRateLimits([
+      {
+        identifier: payload.user.id,
+        limit: 60,
+        scope: 'account:calendar-read:user',
+        windowSeconds: 60 * 5,
+      },
+      {
+        identifier: requestIp(request),
+        limit: 120,
+        scope: 'account:calendar-read:ip',
+        windowSeconds: 60 * 5,
+      },
+    ]);
     const account = await getAccountWithSecrets(payload.account.id);
 
     if (!account) {
@@ -71,6 +85,10 @@ export async function GET(request: NextRequest) {
     const webhookUrl = `${calendarWebhookOrigin(request)}/api/calendar-webhooks/${account.id}?token=${encodeURIComponent(account.calendarWebhookToken)}`;
     return NextResponse.json({ webhookUrl });
   } catch (err) {
+    if (err instanceof RateLimitError) {
+      return rateLimitResponse(err);
+    }
+
     if (err instanceof CalendarIntegrationError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

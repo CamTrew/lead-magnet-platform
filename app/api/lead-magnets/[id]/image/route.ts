@@ -1,15 +1,23 @@
 import { issueSignedToken } from '@vercel/blob';
-import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/blob/client';
+import { handleUploadPresigned } from '@vercel/blob/client';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getCurrentDashboardPayload } from '@/lib/auth';
+import { getCurrentDashboardBase } from '@/lib/auth';
+import { parsePresignedUploadBody } from '@/lib/blob-upload-request';
 import { createLeadMagnetDisplayImage } from '@/lib/lead-magnet-display-image';
 import { log } from '@/lib/logger';
+import {
+  enforceRateLimits,
+  rateLimitResponse,
+  RateLimitError,
+  requestIp,
+} from '@/lib/rate-limit';
 import {
   findLeadMagnetForAccount,
   updateLeadMagnetImageUrl,
 } from '@/lib/platform-store';
 import { MAX_MAGNET_IMAGE_BYTES } from '@/lib/upload';
+import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
 
 const ROUTE = '/api/lead-magnets/[id]/image';
 
@@ -79,7 +87,7 @@ export async function POST(
   }
   const leadMagnetId = idParse.data;
 
-  const body = (await request.json().catch(() => null)) as HandleUploadPresignedBody | null;
+  const body = parsePresignedUploadBody(await request.json().catch(() => null));
   if (!body) {
     return NextResponse.json({ error: 'Invalid upload request' }, { status: 400 });
   }
@@ -90,10 +98,25 @@ export async function POST(
       request,
       webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
       getSignedToken: async (pathname) => {
-        const payload = await getCurrentDashboardPayload();
+        const payload = await getCurrentDashboardBase();
         if (!payload) {
           throw new UploadRouteError('Not authenticated', 401);
         }
+
+        await enforceRateLimits([
+          {
+            identifier: payload.user.id,
+            limit: 30,
+            scope: 'upload:magnet-image:user',
+            windowSeconds: 60 * 60,
+          },
+          {
+            identifier: requestIp(request),
+            limit: 90,
+            scope: 'upload:magnet-image:ip',
+            windowSeconds: 60 * 60,
+          },
+        ]);
 
         const leadMagnet = await findLeadMagnetForAccount(payload.account.id, leadMagnetId);
         if (!leadMagnet) {
@@ -148,6 +171,8 @@ export async function POST(
 
     return NextResponse.json(response);
   } catch (err) {
+    if (err instanceof RateLimitError) return rateLimitResponse(err);
+
     const missingBlobStore =
       err instanceof Error &&
       (err.message.includes('No blob credentials found') ||
@@ -189,10 +214,25 @@ export async function PUT(
   const leadMagnetId = idParse.data;
 
   try {
-    const payload = await getCurrentDashboardPayload();
+    const payload = await getCurrentDashboardBase();
     if (!payload) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+
+    await enforceRateLimits([
+      {
+        identifier: payload.user.id,
+        limit: 30,
+        scope: 'upload:magnet-image-finalise:user',
+        windowSeconds: 60 * 60,
+      },
+      {
+        identifier: requestIp(request),
+        limit: 90,
+        scope: 'upload:magnet-image-finalise:ip',
+        windowSeconds: 60 * 60,
+      },
+    ]);
 
     const body = await request.json().catch(() => null);
     const parsed = recordImageSchema.safeParse(body);
@@ -224,6 +264,7 @@ export async function PUT(
     if (!updated) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
+    invalidatePublishedLeadMagnetCache();
 
     after(async () => {
       try {
@@ -233,6 +274,7 @@ export async function PUT(
           sourceUrl: parsed.data.imageUrl,
         });
         await updateLeadMagnetImageUrl(payload.account.id, leadMagnetId, displayImageUrl);
+        invalidatePublishedLeadMagnetCache();
       } catch (optimizationError) {
         log.warn('Lead magnet display image optimization failed', {
           route: ROUTE,
@@ -257,6 +299,8 @@ export async function PUT(
 
     return NextResponse.json({ leadMagnet: updated });
   } catch (err) {
+    if (err instanceof RateLimitError) return rateLimitResponse(err);
+
     log.warn('Lead magnet image record failed', {
       route: ROUTE,
       method: 'PUT',

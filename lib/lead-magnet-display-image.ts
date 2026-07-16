@@ -7,6 +7,15 @@ const DISPLAY_HEIGHT = 750;
 const YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
 const MAX_SOURCE_PIXELS = 32 * 1024 * 1024;
 
+export function isLegacyCloudinaryImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'res.cloudinary.com';
+  } catch {
+    return false;
+  }
+}
+
 export function isLeadMagnetDisplayImageUrl(value: string) {
   try {
     const url = new URL(value);
@@ -26,6 +35,23 @@ function blobAccessFromUrl(value: string): 'private' | 'public' {
 }
 
 async function readBlob(url: string) {
+  if (url.startsWith('data:')) {
+    const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([a-z0-9+/=\s]+)$/i.exec(url);
+    if (!match) throw new Error('The legacy image data is invalid.');
+    return Buffer.from(match[2].replace(/\s/g, ''), 'base64');
+  }
+
+  // Older accounts stored their uploads in Cloudinary. Keep that path readable
+  // while the background migration replaces it with a display Blob.
+  if (isLegacyCloudinaryImageUrl(url)) {
+    const response = await fetch(url, {
+      headers: { accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error('The legacy image could not be read.');
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   const blob = await get(url, {
     access: blobAccessFromUrl(url),
     storeId: blobStoreId(),
@@ -54,7 +80,7 @@ export async function createLeadMagnetDisplayImage({
   sourceUrl: string;
 }) {
   const buffer = await readBlob(sourceUrl);
-  const access = blobAccessFromUrl(sourceUrl);
+  const access = sourceUrl.startsWith('data:') ? 'private' : blobAccessFromUrl(sourceUrl);
   const pathname = `lead-magnets/${accountId}/${leadMagnetId}/display/${randomUUID()}`;
 
   const displayBuffer = await sharp(buffer, {

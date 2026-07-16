@@ -83,6 +83,12 @@
       scroll-behavior: auto !important;
       transition-duration: 0.01ms !important;
     }
+
+    /* Loading feedback must remain active instead of freezing after one turn. */
+    .animate-spin {
+      animation-duration: 1s !important;
+      animation-iteration-count: infinite !important;
+    }
   }
 }
 
@@ -106,6 +112,11 @@ textarea,
 select,
 button {
   font-family: inherit;
+}
+
+.dashboard-canvas,
+.dashboard-chrome {
+  background-color: #ffffff;
 }
 
 @layer utilities {
@@ -145,6 +156,16 @@ button {
   }
 
   .inline-edit[data-empty]:focus:before {
+    content: '';
+  }
+
+  .email-rich-editor[data-empty]:before {
+    content: attr(data-placeholder);
+    color: #9d9488;
+    pointer-events: none;
+  }
+
+  .email-rich-editor[data-empty]:focus:before {
     content: '';
   }
 
@@ -217,4 +238,420 @@ button {
 .magnet-page--dark .magnet-page-footer {
   border-color: rgb(255 255 255 / 0.09) !important;
   background-color: rgb(8 10 14 / 0.45) !important;
+}
+
+/* A light magnet preview can sit inside dark dashboard chrome. Keep the
+   customer's selected page appearance isolated from the app preference. */
+.dark .app-theme .magnet-page--light {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
+
+.dark .app-theme .magnet-page--light main {
+  background-color: #ffffff !important;
+  color: inherit;
+}
+
+.dark .app-theme .magnet-page--light .inline-edit:hover {
+  background-color: rgb(247 245 241 / 0.7) !important;
+  color: inherit !important;
+}
+
+.dark .app-theme .magnet-page--light .inline-edit:focus {
+  background-color: #ffffff !important;
+  color: inherit !important;
+  --tw-ring-color: rgb(17 17 17 / 0.35) !important;
+}
+
+.dark .app-theme .magnet-page--light :is(.bg-white, .magnet-capture) {
+  background-color: #ffffff !important;
+}
+
+.dark .app-theme .magnet-page--light :is(.bg-ink-50, .magnet-image) {
+  background-color: #f8fafc !important;
+}
+
+.dark .app-theme .magnet-page--light .magnet-page-heading,
+.dark .app-theme .magnet-page--light :is(.text-ink-950, .text-ink-900, .text-zinc-900) {
+  color: #09090b !important;
+}
+
+.dark .app-theme .magnet-page--light .magnet-page-copy,
+.dark .app-theme .magnet-page--light :is(.text-ink-800, .text-ink-700) {
+  color: #3f3f46 !important;
+}
+
+.dark .app-theme .magnet-page--light .magnet-page-muted,
+.dark .app-theme .magnet-page--light :is(.text-ink-600, .text-ink-500) {
+  color: #60636b !important;
+}
+
+.dark .app-theme .magnet-page--light .magnet-form-input {
+  border-color: rgb(15 23 42 / 0.14) !important;
+  background-color: #ffffff !important;
+  color: #71717a !important;
+}
+
+.dark .app-theme .magnet-page--light .magnet-page-footer {
+  border-color: rgb(15 23 42 / 0.08) !important;
+  background-color: rgb(255 255 255 / 0.72) !important;
+}
+
+/* App chrome dark mode. Public magnet pages are deliberately outside
+   .app-theme because their appearance belongs to the page owner's brand. */
+.dark .app-theme :is(main, .brand-soft-bg) {
+  background-color: #0f0f11;
+  color: #eceae6;
+}
+
+.dark .app-theme .dashboard-canvas {
+  background-color: #0f0f11;
+}
+
+.dark .app-theme .dashboard-chrome {
+  background-color: #18181b;
+}
+
+.dark .app-theme .brand-soft-bg {
+  background-image: linear-gradient(180deg, #151517 0%, #0f0f11 100%);
+}
+
+.dark .app-theme :is(.bg-brand-soft, .bg-brand-soft\/90) {
+  background-color: #0f0f11;
+}
+
+.dark .app-theme .bg-white {
+  background-color: #18181b;
+}
+
+.dark .app-theme .bg-ink-50 {
+  background-color: #202024;
+}
+
+.dark .app-theme .bg-ink-100 {
+  background-color: #29292e;
+}
+
+.dark .app-theme :is(
+  [class~='bg-[#f7f5f1]'],
+  [class~='bg-[#f7f5f1]/70']
+) {
+  background-color: #202024;
+}
+
+.dark .app-theme :is(
+  [class~='bg-[#fff0e9]'],
+  [class~='bg-[#fff8df]']
+) {
+  background-color: #29231f;
+}
+
+.dark .app-theme [class*='bg-[linear-gradient'] {
+  background-image: linear-gradient(120deg, #1c1b1d 0%, #18181b 52%, #151a1b 100%);
+}
+
+.dark .app-theme :is(.text-ink-950, .text-ink-900) {
+  color: #f7f5f1;
+}
+
+.dark .app-theme .text-ink-800 {
+  color: #e7e3dd;
+}
+
+.dark .app-theme .text-ink-700 {
+  color: #d2ccc4;
+}
+
+.dark .app-theme .text-ink-600 {
+  color: #aaa39a;
+}
+
+.dark .app-theme .text-ink-500 {
+  color: #918a82;
+}
+
+.dark .app-theme .text-ink-400 {
+  color: #79736c;
+}
+
+.dark .app-theme :is(
+  [class~='text-[#111111]'],
+  [class~='text-[#1f1d1b]']
+) {
+  color: #f7f5f1;
+}
+
+.dark .app-theme [class~='text-[#746d64]'] {
+  color: #aaa39a;
+}
+
+.dark .app-theme [class~='text-[#9b9388]'] {
+  color: #918a82;
+}
+
+/* Tailwind's arbitrary-value class escaping can make attribute-token
+   selectors inconsistent across development and production builds. Keep
+   direct fallbacks for legacy dashboard components that still use these
+   fixed light-palette classes. */
+.dark .app-theme .text-\[\#111111\],
+.dark .app-theme .text-\[\#1f1d1b\] {
+  color: #f7f5f1 !important;
+}
+
+.dark .app-theme .text-\[\#5c554e\],
+.dark .app-theme .text-\[\#746d64\] {
+  color: #b8b1a8 !important;
+}
+
+.dark .app-theme .text-\[\#9b9388\] {
+  color: #918a82 !important;
+}
+
+.dark .app-theme .bg-\[\#f7f5f1\] {
+  background-color: #202024 !important;
+}
+
+.dark .app-theme .border-\[\#dfd8cf\],
+.dark .app-theme .border-\[\#c9bfb2\] {
+  border-color: #3b3b41 !important;
+}
+
+.dark .app-theme :is(.border-ink-100, .border-ink-200, .border-ink-300) {
+  border-color: #343439;
+}
+
+.dark .app-theme :is(
+  [class~='border-[#dfd8cf]'],
+  [class~='border-[#c9bfb2]']
+) {
+  border-color: #343439;
+}
+
+.dark .app-theme .divide-ink-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #343439;
+}
+
+.dark .app-theme :is(input, textarea, select) {
+  caret-color: #fe6f34;
+}
+
+.dark .app-theme :is(input, textarea, select)::placeholder {
+  color: #77716a;
+}
+
+.dark .app-theme .vercel-dot-bg {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+}
+
+.dark .app-theme .vercel-grid-bg,
+.dark .app-theme .premium-grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+}
+
+.dark .app-theme .shadow-sm,
+.dark .app-theme [class*='shadow-['] {
+  --tw-shadow-color: rgb(0 0 0 / 0.58);
+}
+
+.dark .app-theme :is(.bg-red-50, .bg-emerald-50, .bg-amber-50) {
+  background-color: #21191a;
+}
+
+.dark .app-theme :is(.text-red-700, .text-red-600) {
+  color: #ff9a96;
+}
+
+.dark .app-theme :is(.text-emerald-950, .text-emerald-800, .text-emerald-700) {
+  color: #7ee2b8;
+}
+
+.dark .app-theme :is(.border-red-200, .border-emerald-200, .border-amber-200) {
+  border-color: #513638;
+}
+
+.dark .app-theme .hover\:bg-white:hover {
+  background-color: #202024;
+}
+
+.dark .app-theme .hover\:bg-ink-50:hover {
+  background-color: #252529;
+}
+
+.dark .app-theme .hover\:bg-ink-100:hover {
+  background-color: #2d2d32;
+}
+
+/* Connection cards use opacity and arbitrary-value utilities that are not
+   reliably covered by the generic palette aliases above. Keep their dark
+   surfaces explicit so the configure page remains readable in every build. */
+.dark .app-theme .connection-section-header {
+  background-color: #1d1d21 !important;
+  background-image: none !important;
+}
+
+.dark .app-theme .connection-card {
+  border-color: #3b3b42 !important;
+  background-color: #1d1d21 !important;
+}
+
+.dark .app-theme .connection-card:hover,
+.dark .app-theme .connection-card[open] {
+  border-color: #505058 !important;
+  background-color: #242429 !important;
+}
+
+.dark .app-theme .connection-status-strip {
+  border-color: #3b3b42 !important;
+  background-color: #1d1d21 !important;
+}
+
+.app-theme .status-check-icon {
+  border-color: #6ee7b7 !important;
+  background-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+.app-theme .completion-tick {
+  color: #059669 !important;
+}
+
+.dark .app-theme .status-check-icon {
+  border-color: #275f4d !important;
+  background-color: #15352b !important;
+  color: #83e6bd !important;
+}
+
+.dark .app-theme .completion-tick {
+  color: #83e6bd !important;
+}
+
+.dark .app-theme .connection-chevron {
+  border-color: #46464d !important;
+  background-color: #26262b !important;
+  color: #d8d3cc !important;
+}
+
+.optional-connections-drawer[open] > summary .optional-connections-chevron {
+  transform: rotate(180deg);
+}
+
+.dark .app-theme .connection-icon--aqua {
+  background-color: #153136 !important;
+  color: #7fd4dd !important;
+}
+
+.dark .app-theme .connection-icon--orange {
+  background-color: #39231c !important;
+  color: #ff966d !important;
+}
+
+.dark .app-theme .connection-icon--yellow {
+  background-color: #382e18 !important;
+  color: #f5ca66 !important;
+}
+
+.dark .app-theme .brand-connection-icon--aqua {
+  background-color: #2d2531 !important;
+}
+
+.dark .app-theme .brand-connection-icon--green {
+  background-color: #183128 !important;
+}
+
+.dark .app-theme .connection-status--connected {
+  border-color: #275f4d !important;
+  background-color: #15352b !important;
+  color: #83e6bd !important;
+}
+
+.dark .app-theme .connection-status--pending {
+  border-color: #6b5523 !important;
+  background-color: #392e18 !important;
+  color: #f5ca66 !important;
+}
+
+.dark .app-theme .connection-status--platform {
+  border-color: #75402d !important;
+  background-color: #39231c !important;
+  color: #ff966d !important;
+}
+
+/* The editor is one branded surface. Its appearance follows the lead magnet,
+   independently from the dashboard's light or dark preference. */
+.app-theme .page-editor-frame {
+  border-color: var(--page-editor-brand) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--page-editor-brand) 44%, transparent) !important;
+}
+
+.app-theme .page-editor-frame--light,
+.dark .app-theme .page-editor-frame--light {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  color-scheme: light;
+}
+
+.app-theme .page-editor-frame--light .page-editor-toolbar,
+.dark .app-theme .page-editor-frame--light .page-editor-toolbar {
+  border-color: #e4e4e7 !important;
+  background-color: #ffffff !important;
+}
+
+.app-theme .page-editor-frame--dark,
+.dark .app-theme .page-editor-frame--dark {
+  background-color: #18181b !important;
+  color: #f7f5f1 !important;
+  color-scheme: dark;
+}
+
+.app-theme .page-editor-frame--dark .page-editor-toolbar,
+.dark .app-theme .page-editor-frame--dark .page-editor-toolbar {
+  border-color: #343439 !important;
+  background-color: #18181b !important;
+}
+
+.app-theme .page-editor-frame--dark :is(.bg-white, .bg-ink-50) {
+  background-color: #202024 !important;
+}
+
+.app-theme .page-editor-frame--dark :is(.text-ink-950, .text-ink-900) {
+  color: #f7f5f1 !important;
+}
+
+.app-theme .page-editor-frame--dark :is(.text-ink-700, .text-ink-600) {
+  color: #c1bbb3 !important;
+}
+
+.app-theme .page-editor-frame--dark .text-ink-500 {
+  color: #918a82 !important;
+}
+
+.app-theme .page-editor-frame--dark :is(.border-ink-100, .border-ink-200, .border-ink-300) {
+  border-color: #343439 !important;
+}
+
+.dark .app-theme [class~='hover:bg-[#f7f5f1]']:hover,
+.dark .app-theme [class~='hover:bg-[#f7f5f1]/70']:hover,
+.dark .app-theme [class~='focus:bg-white']:focus {
+  background-color: #252529;
+}
+
+.dark .app-theme [class~='hover:text-[#1f1d1b]']:hover {
+  color: #f7f5f1;
+}
+
+.dark .app-theme .theme-toggle {
+  box-shadow: none;
+}
+
+.dark .app-theme :is(a, button).bg-ink-950 {
+  border-color: #fe6f34;
+  background-color: #fe6f34;
+  color: #111111;
+}
+
+.dark .app-theme footer.bg-ink-950,
+.dark .app-theme section.bg-ink-950 {
+  background-color: #080809;
 }

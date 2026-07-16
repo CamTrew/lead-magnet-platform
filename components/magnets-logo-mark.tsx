@@ -35,12 +35,12 @@ export function MagnetsLogo({
   className,
   markClassName,
   textClassName,
-  variant = 'dark',
+  variant = 'auto',
 }: {
   className?: string;
   markClassName?: string;
   textClassName?: string;
-  variant?: 'dark' | 'light';
+  variant?: 'auto' | 'dark' | 'light';
 }) {
   return (
     <span
@@ -51,14 +51,35 @@ export function MagnetsLogo({
         className
       )}
     >
-      <Image
-        alt="Magnets"
-        className="object-contain object-left"
-        fill
-        priority
-        sizes="160px"
-        src={variant === 'light' ? '/brand/magnets-logo-light.png' : '/brand/magnets-logo-dark.png'}
-      />
+      {variant === 'auto' ? (
+        <>
+          <Image
+            alt="Magnets"
+            className="object-contain object-left dark:hidden"
+            fill
+            priority
+            sizes="160px"
+            src="/brand/magnets-logo-dark.png"
+          />
+          <Image
+            alt="Magnets"
+            className="hidden object-contain object-left dark:block"
+            fill
+            priority
+            sizes="160px"
+            src="/brand/magnets-logo-light.png"
+          />
+        </>
+      ) : (
+        <Image
+          alt="Magnets"
+          className="object-contain object-left"
+          fill
+          priority
+          sizes="160px"
+          src={variant === 'light' ? '/brand/magnets-logo-light.png' : '/brand/magnets-logo-dark.png'}
+        />
+      )}
     </span>
   );
 }

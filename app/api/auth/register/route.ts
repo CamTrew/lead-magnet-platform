@@ -10,13 +10,13 @@ import {
 import { subscribeToPlatformNewsletter } from '@/lib/platform-newsletter';
 
 const schema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(8),
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+  password: z.string().min(8).max(256),
   name: z.string().trim().min(1).max(120),
   acceptedTerms: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the Terms of Service to continue.' }),
   }),
-});
+}).strict();
 
 export async function POST(request: NextRequest) {
   try {

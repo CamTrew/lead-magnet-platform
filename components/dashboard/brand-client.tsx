@@ -12,7 +12,8 @@ import {
   MIN_BRAND_HIGHLIGHT_INTENSITY,
   normaliseBrandHighlightIntensity,
 } from '@/lib/brand-highlight';
-import type { AccountSettings, DashboardPayload, LeadMagnet } from '@/lib/types';
+import type { AccountSettings, DashboardBasePayload, LeadMagnet } from '@/lib/types';
+import { safeLegalUrl } from '@/lib/legal-links';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type BrandPreviewCss = CSSProperties & Record<`--${string}`, string>;
@@ -43,9 +44,10 @@ function sampleMagnet(accountId: string): LeadMagnet {
     emailBody: '',
     emailPreview: '',
     followUpEnabled: false,
-    followUpStopOnBooking: true,
+    followUpStopOnBooking: false,
     followUpEmails: [],
     resendFollowUpAutomationId: '',
+    resendFollowUpRenderVersion: 0,
     postSignupMode: 'message',
     postSignupRedirectUrl: '',
     postSignupHeading: '',
@@ -75,15 +77,19 @@ function safeLogoName(file: File) {
   return `${stem}.${extension}`;
 }
 
-export function BrandClient({ initialData }: { initialData: DashboardPayload }) {
+export function BrandClient({
+  initialData,
+  previewLeadMagnet,
+}: {
+  initialData: DashboardBasePayload;
+  previewLeadMagnet: LeadMagnet | null;
+}) {
   const router = useRouter();
   const [draft, setDraft] = useState<AccountSettings>(initialData.account);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const previewMagnet =
-    initialData.leadMagnets.find((leadMagnet) => leadMagnet.published) ??
-    sampleMagnet(initialData.account.id);
+  const previewMagnet = previewLeadMagnet ?? sampleMagnet(initialData.account.id);
   const saving = saveState === 'saving';
 
   function patch(updates: Partial<AccountSettings>) {
@@ -344,7 +350,7 @@ function SaveStatus({ state }: { state: SaveState }) {
   if (state === 'saved') {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700">
-        <Check className="h-3.5 w-3.5" />
+        <Check className="completion-tick h-3.5 w-3.5" />
         Saved
       </span>
     );
@@ -364,6 +370,8 @@ function BrandPagePreview({
   const brandPrimary = account.brand.primary;
   const brandIntensity = account.brand.highlightIntensity;
   const isDark = account.brand.pageTheme === 'dark';
+  const privacyPolicyUrl = safeLegalUrl(account.brand.privacyPolicyUrl);
+  const termsUrl = safeLegalUrl(account.brand.termsUrl);
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const subtitle = magnet.subtitle.trim();
   const description = magnet.description
@@ -374,10 +382,11 @@ function BrandPagePreview({
 
   return (
     <div
-      className={`magnet-page magnet-brand-preview overflow-hidden rounded-lg border ${isDark ? 'magnet-page--dark' : 'bg-white text-ink-950'}`}
+      className={`magnet-page magnet-brand-preview overflow-hidden rounded-lg border ${isDark ? 'magnet-page--dark' : 'magnet-page--light bg-white text-ink-950'}`}
       style={{
         borderColor: tone(0.16),
         '--brand-primary-rgb': rgbValue(brandPrimary),
+        colorScheme: isDark ? 'dark' : 'light',
         backgroundImage: [
           `radial-gradient(circle at 7% 38%, ${tone(0.16)} 0, transparent 34%)`,
           `radial-gradient(circle at 93% 42%, ${tone(0.16)} 0, transparent 34%)`,
@@ -536,8 +545,18 @@ function BrandPagePreview({
         </div>
       </div>
 
-      <div className="magnet-page-footer magnet-page-muted border-t border-ink-200/70 bg-white/60 px-4 py-5 text-center text-xs text-ink-500">
-        All rights reserved {new Date().getFullYear()}
+      <div className="magnet-page-footer magnet-page-muted flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-ink-200/70 bg-white/60 px-4 py-5 text-center text-xs text-ink-500">
+        <span>All rights reserved {new Date().getFullYear()}</span>
+        {privacyPolicyUrl && (
+          <a className="transition hover:text-ink-900" href={privacyPolicyUrl} rel="noreferrer" target="_blank">
+            Privacy policy
+          </a>
+        )}
+        {termsUrl && (
+          <a className="transition hover:text-ink-900" href={termsUrl} rel="noreferrer" target="_blank">
+            Terms
+          </a>
+        )}
       </div>
     </div>
   );

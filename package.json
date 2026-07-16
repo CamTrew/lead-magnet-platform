@@ -10,6 +10,7 @@
     "smoke:follow-up": "node scripts/follow-up-smoke.mjs",
     "resync:follow-up-opt-outs": "node scripts/run-tsx.mjs scripts/resync-follow-up-opt-outs.ts",
     "images:optimise": "node scripts/run-tsx.mjs scripts/migrate-lead-magnet-display-images.ts",
+    "test:domain-lifecycle": "node scripts/run-tsx.mjs scripts/domain-lifecycle-smoke.ts",
     "test:quiz-routing": "node scripts/run-tsx.mjs scripts/quiz-routing-smoke.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -17,10 +18,12 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@ai-sdk/deepseek": "^3.0.11",
     "@tiptap/extension-placeholder": "^3.26.1",
     "@tiptap/react": "^3.26.1",
     "@tiptap/starter-kit": "^3.26.1",
     "@vercel/blob": "^2.4.1",
+    "ai": "^7.0.28",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "geist": "^1.7.2",

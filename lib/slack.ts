@@ -1,4 +1,5 @@
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
+import { preferredLeadMagnetUrl } from '@/lib/lead-magnet-metadata';
 
 const SLACK_WEBHOOK_HOST = 'hooks.slack.com';
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -45,15 +46,7 @@ function escapeMrkdwn(value: string) {
 }
 
 function publicMagnetUrl(account: AccountSettings, leadMagnet: LeadMagnet) {
-  if (account.domainAttachedHost) {
-    return `https://${account.domainAttachedHost}/${encodeURIComponent(leadMagnet.slug)}`;
-  }
-
-  if (account.username) {
-    return `https://magnets.so/${encodeURIComponent(account.username)}/${encodeURIComponent(leadMagnet.slug)}`;
-  }
-
-  return `https://magnets.so/p/${leadMagnet.id}`;
+  return preferredLeadMagnetUrl(account, leadMagnet);
 }
 
 async function postToSlack(webhookUrl: string, body: Record<string, unknown>) {

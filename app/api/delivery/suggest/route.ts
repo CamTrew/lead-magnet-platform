@@ -43,6 +43,9 @@ export async function GET(request: NextRequest) {
     if (!domain) {
       return NextResponse.json({ error: 'Add a root domain in Publishing first.' }, { status: 400 });
     }
+    if (domain !== payload.account.domain?.trim().toLowerCase()) {
+      return NextResponse.json({ error: 'Save this root domain before checking it.' }, { status: 400 });
+    }
 
     const [subdomainsRaw, dmarcRecords] = await Promise.all([
       probeSubdomains(domain),

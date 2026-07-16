@@ -85,27 +85,47 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
     const { accountId, leadMagnetId, slug, name, email } = schema.parse(body);
+    const normalizedEmail = email.toLowerCase();
 
-    await enforceRateLimits([
-      {
-        identifier: requestIp(request),
-        limit: 40,
-        scope: 'submit:ip',
-        windowSeconds: 15 * 60,
-      },
-      {
-        identifier: `${leadMagnetId}:${email}`,
-        limit: 5,
-        scope: 'submit:lead-magnet-email',
-        windowSeconds: 60 * 60,
-      },
-    ]);
+    await enforceRateLimits([{
+      identifier: requestIp(request),
+      limit: 40,
+      scope: 'submit:ip',
+      windowSeconds: 15 * 60,
+    }]);
 
     const result = await findLeadMagnet(accountId, leadMagnetId);
 
     if (!result || result.leadMagnet.slug !== slug || !result.leadMagnet.published) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
+
+    await enforceRateLimits([
+      {
+        identifier: accountId,
+        limit: 3000,
+        scope: 'submit:account',
+        windowSeconds: 60 * 60,
+      },
+      {
+        identifier: leadMagnetId,
+        limit: 1500,
+        scope: 'submit:lead-magnet',
+        windowSeconds: 60 * 60,
+      },
+      {
+        identifier: `${accountId}:${normalizedEmail}`,
+        limit: 10,
+        scope: 'submit:account-email',
+        windowSeconds: 60 * 60,
+      },
+      {
+        identifier: `${leadMagnetId}:${normalizedEmail}`,
+        limit: 5,
+        scope: 'submit:lead-magnet-email',
+        windowSeconds: 60 * 60,
+      },
+    ]);
 
     const senderReady = isEmailDeliveryReady(result.account);
 
@@ -127,7 +147,7 @@ export async function POST(request: NextRequest) {
       await sendLeadMagnetEmail({
         account: result.account,
         magnet: result.leadMagnet,
-        to: email,
+        to: normalizedEmail,
         name,
       });
     } catch (sendError) {
@@ -153,14 +173,14 @@ export async function POST(request: NextRequest) {
       accountId,
       leadMagnetId,
       name,
-      email,
+      email: normalizedEmail,
     });
 
     after(() =>
       runPostSubmissionWork({
         account: result.account,
         leadMagnet: result.leadMagnet,
-        email,
+        email: normalizedEmail,
         name,
       })
     );

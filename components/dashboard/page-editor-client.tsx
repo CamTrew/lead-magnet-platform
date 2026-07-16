@@ -1,16 +1,18 @@
 'use client';
 
 import type { CSSProperties, ChangeEvent } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { uploadPresigned } from '@vercel/blob/client';
 import {
   ArrowLeft,
   CalendarCheck,
   Check,
+  ChevronDown,
   Clock,
   ExternalLink,
   Image as ImageIcon,
+  Link2,
   ListChecks,
   Loader2,
   Mail,
@@ -22,13 +24,15 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
+import { safeLegalUrl } from '@/lib/legal-links';
 import {
   appendEmailImage,
   parseEmailBodySegments,
   removeEmailBodySegment,
   replaceEmailBodySegment,
 } from '@/lib/email-body-images';
-import type { DashboardPayload, LeadMagnet } from '@/lib/types';
+import { normaliseEmailLinkUrl, renderEmailEditorHtml } from '@/lib/email-body-links';
+import type { DashboardBasePayload, LeadMagnet } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import {
   AceternityButton,
@@ -37,7 +41,12 @@ import {
   AceternityTextarea,
 } from '@/components/ui/aceternity';
 import { ConfirmDialog } from '@/components/dashboard/confirm-dialog';
+import { LeadMagnetCopilot } from '@/components/dashboard/lead-magnet-copilot';
 import { EditableHotspot, InlineParagraphs, InlineText } from '@/components/dashboard/inline-edit';
+import type {
+  LeadMagnetCopilotFollowUpUpdate,
+  LeadMagnetCopilotPatch,
+} from '@/lib/lead-magnet-copilot';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Mode = 'page' | 'email' | 'sequence' | 'after';
@@ -50,6 +59,17 @@ type PendingEmailImage = {
   previewUrl: string;
   progress: number;
 };
+
+const EDITOR_STEPS: Array<{
+  description: string;
+  label: string;
+  mode: Mode;
+}> = [
+  { mode: 'page', label: 'Page', description: 'Design the page' },
+  { mode: 'email', label: 'Delivery', description: 'Send the resource' },
+  { mode: 'sequence', label: 'Follow-up', description: 'Nurture leads' },
+  { mode: 'after', label: 'After signup', description: 'Choose the next step' },
+];
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
 const MAX_FOLLOW_UP_DELAY_MINUTES = 30 * 24 * 60;
@@ -230,11 +250,79 @@ const pageBackground = [
   'linear-gradient(to bottom, rgb(15 23 42 / 0.035) 1px, transparent 1px)',
 ].join(', ');
 
+function preserveEmailImages(currentBody: string, nextBody: string) {
+  const currentImages = parseEmailBodySegments(currentBody)
+    .filter((segment) => segment.kind === 'image')
+    .map((segment) => segment.raw);
+  const missingImages = currentImages.filter((image) => !nextBody.includes(image));
+
+  return [nextBody.trim(), ...missingImages].filter(Boolean).join('\n\n');
+}
+
+function EditorWorkflowNav({
+  mode,
+  onChange,
+}: {
+  mode: Mode;
+  onChange: (mode: Mode) => void;
+}) {
+  return (
+    <nav aria-label="Lead magnet setup steps" className="border-t border-ink-200 pt-3">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-0">
+        {EDITOR_STEPS.map((step, index) => {
+          const active = mode === step.mode;
+
+          return (
+            <div className="contents" key={step.mode}>
+              <button
+                aria-current={active ? 'step' : undefined}
+                className={cn(
+                  'group flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition sm:flex-1 sm:gap-2.5 sm:px-3',
+                  active
+                    ? 'border-brand-orange/50 bg-brand-orange/10'
+                    : 'border-transparent hover:border-ink-200'
+                )}
+                onClick={() => onChange(step.mode)}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition',
+                    active
+                      ? 'border-brand-orange bg-brand-orange text-[#111111]'
+                      : 'border-ink-300 bg-white text-ink-500 group-hover:border-ink-400 group-hover:text-ink-800'
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className={cn(
+                    'block truncate text-xs font-semibold',
+                    active ? 'text-ink-950' : 'text-ink-700'
+                  )}>
+                    {step.label}
+                  </span>
+                  <span className="block truncate text-[10px] leading-4 text-ink-500">
+                    {step.description}
+                  </span>
+                </span>
+              </button>
+              {index < EDITOR_STEPS.length - 1 && (
+                <span aria-hidden="true" className="mx-1 hidden h-px w-4 shrink-0 border-t border-ink-200 sm:block" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 export function PageEditorClient({
   initialData,
   initialLeadMagnet,
 }: {
-  initialData: DashboardPayload;
+  initialData: DashboardBasePayload;
   initialLeadMagnet: LeadMagnet;
 }) {
   const router = useRouter();
@@ -273,6 +361,40 @@ export function PageEditorClient({
         email.id === emailId ? { ...email, ...updates } : email
       ),
     }));
+  };
+
+  const applyCopilotChanges = (
+    updates: LeadMagnetCopilotPatch,
+    followUpUpdates: LeadMagnetCopilotFollowUpUpdate[]
+  ) => {
+    dirtyRef.current = true;
+    setSaveState('idle');
+    setLeadMagnet((current) => {
+      const nextUpdates = {
+        ...updates,
+        ...(updates.emailBody
+          ? { emailBody: preserveEmailImages(current.emailBody, updates.emailBody) }
+          : {}),
+      };
+      const followUpUpdatesById = new Map(followUpUpdates.map((update) => [update.id, update]));
+
+      return {
+        ...current,
+        ...nextUpdates,
+        followUpEmails: current.followUpEmails.map((email) => {
+          const update = followUpUpdatesById.get(email.id);
+          if (!update) return email;
+
+          return {
+            ...email,
+            ...update,
+            ...(update.body
+              ? { body: preserveEmailImages(email.body, update.body) }
+              : {}),
+          };
+        }),
+      };
+    });
   };
 
   // No auto-save. The user explicitly hits Save (or toggles Published) when
@@ -517,6 +639,7 @@ export function PageEditorClient({
   }
 
   const brand = account.brand;
+  const editorIsDark = brand.pageTheme === 'dark';
   const accountLogo = useMemo(() => {
     const fallback = (account.logoText.trim() || 'Your Brand').slice(0, 24);
     return { fallback, hasImage: Boolean(account.logoUrl) };
@@ -551,46 +674,39 @@ export function PageEditorClient({
           </p>
         )}
 
-        <AceternityCard className="overflow-hidden">
-          <div className="flex flex-col gap-3 border-b border-[#dfd8cf] bg-white p-3 sm:p-4">
+        <AceternityCard
+          className={cn(
+            'page-editor-frame overflow-hidden',
+            editorIsDark
+              ? 'magnet-page--dark page-editor-frame--dark'
+              : 'magnet-page--light page-editor-frame--light'
+          )}
+          style={{
+            '--page-editor-brand': brand.primary,
+          } as CSSProperties}
+        >
+          <div className="page-editor-toolbar flex flex-col gap-3 border-b border-[#dfd8cf] bg-white p-3 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <AceternityButton onClick={() => router.push('/dashboard/pages')} variant="secondary">
-                <ArrowLeft className="h-4 w-4" />
-                All pages
-              </AceternityButton>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <AceternityButton onClick={() => router.push('/dashboard/pages')} variant="secondary">
+                  <ArrowLeft className="h-4 w-4" />
+                  All pages
+                </AceternityButton>
 
-              <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm sm:max-w-[12rem] sm:flex-none">
-                <span className="mr-1 font-mono text-xs text-ink-500">/</span>
-                <input
-                  aria-label="Page slug"
-                  className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink-900 outline-none"
-                  onBlur={(event) => patchLeadMagnet({ slug: slugify(event.target.value) || leadMagnet.slug })}
-                  onChange={(event) => patchLeadMagnet({ slug: event.target.value.toLowerCase() })}
-                  spellCheck={false}
-                  value={leadMagnet.slug}
-                />
+                <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm sm:max-w-[12rem] sm:flex-none">
+                  <span className="mr-1 font-mono text-xs text-ink-500">/</span>
+                  <input
+                    aria-label="Page slug"
+                    className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink-900 outline-none"
+                    onBlur={(event) => patchLeadMagnet({ slug: slugify(event.target.value) || leadMagnet.slug })}
+                    onChange={(event) => patchLeadMagnet({ slug: event.target.value.toLowerCase() })}
+                    spellCheck={false}
+                    value={leadMagnet.slug}
+                  />
+                </div>
               </div>
 
-              <div className="flex min-h-10 w-full items-center overflow-x-auto overflow-y-hidden rounded-md border border-ink-200 bg-ink-50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:w-auto">
-                {(['page', 'email', 'sequence', 'after'] as const).map((item) => (
-                  <button
-                    key={item}
-                    className={cn(
-                      'h-7 shrink-0 rounded-sm px-2.5 text-xs font-medium capitalize transition',
-                      mode === item
-                        ? 'bg-ink-950 text-white'
-                        : 'text-ink-500 hover:text-ink-900'
-                    )}
-                    onClick={() => setMode(item)}
-                    type="button"
-                  >
-                    {item === 'after' ? 'After signup' : item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               {saveState === 'error' && (
                 <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700">
                   Could not save
@@ -645,7 +761,10 @@ export function PageEditorClient({
                 {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 {isDeleting ? 'Deleting' : 'Delete'}
               </AceternityButton>
+              </div>
             </div>
+
+            <EditorWorkflowNav mode={mode} onChange={setMode} />
           </div>
 
           {mode === 'page' ? (
@@ -701,10 +820,12 @@ export function PageEditorClient({
 
         {(mode === 'email' || mode === 'sequence') && (
           <p className="text-center text-xs text-ink-500">
-            Tip: in the email body, use <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{name}'}</code> for the recipient name. Use Add image to insert hosted images.
+            Tip: use <code className="rounded bg-ink-100 px-1 font-mono text-[10px] text-ink-800">{'{name}'}</code> for the recipient. Highlight words and choose Add link, or paste a URL directly. Bare URLs become clickable when sent.
           </p>
         )}
       </div>
+
+      <LeadMagnetCopilot leadMagnet={leadMagnet} onApply={applyCopilotChanges} />
     </>
   );
 }
@@ -723,7 +844,7 @@ function PageCanvas({
   onPatch,
   onPickImage,
 }: {
-  account: DashboardPayload['account'];
+  account: DashboardBasePayload['account'];
   accountHasLogo: boolean;
   accountLogoFallback: string;
   brandIntensity: number;
@@ -734,6 +855,8 @@ function PageCanvas({
 }) {
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const isDark = account.brand.pageTheme === 'dark';
+  const privacyPolicyUrl = safeLegalUrl(account.brand.privacyPolicyUrl);
+  const termsUrl = safeLegalUrl(account.brand.termsUrl);
   const previewStyle: PreviewCss = {
     '--brand-primary': brandPrimary,
     '--brand-primary-rgb': hexToRgb(brandPrimary) || '254 111 52',
@@ -754,7 +877,10 @@ function PageCanvas({
   };
 
   return (
-    <div className={`magnet-page relative ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`} style={previewStyle}>
+    <div
+      className={`magnet-page relative ${isDark ? 'magnet-page--dark' : 'magnet-page--light bg-white text-zinc-900'}`}
+      style={{ ...previewStyle, colorScheme: isDark ? 'dark' : 'light' }}
+    >
       <header className="relative z-10">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
           <BrandPreviewLockup
@@ -917,8 +1043,18 @@ function PageCanvas({
       </main>
 
       <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="magnet-page-muted mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+        <div className="magnet-page-muted mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
+          {privacyPolicyUrl && (
+            <a className="transition hover:text-gray-900" href={privacyPolicyUrl} rel="noreferrer" target="_blank">
+              Privacy policy
+            </a>
+          )}
+          {termsUrl && (
+            <a className="transition hover:text-gray-900" href={termsUrl} rel="noreferrer" target="_blank">
+              Terms
+            </a>
+          )}
         </div>
       </footer>
     </div>
@@ -930,7 +1066,7 @@ function BrandPreviewLockup({
   accountHasLogo,
   fallback,
 }: {
-  account: DashboardPayload['account'];
+  account: DashboardBasePayload['account'];
   accountHasLogo: boolean;
   fallback: string;
 }) {
@@ -1143,21 +1279,39 @@ function ImageHotspot({
   );
 }
 
-function EmailBodyEditor({
-  ariaLabel,
-  onChange,
-  pendingImage,
-  value,
-}: {
+type EmailBodyEditorHandle = {
+  openLinkEditor: () => void;
+};
+
+type EmailTextSegmentEditorHandle = {
+  openLinkEditor: () => void;
+};
+
+const EmailBodyEditor = forwardRef<EmailBodyEditorHandle, {
   ariaLabel: string;
   onChange: (value: string) => void;
   pendingImage: PendingEmailImage | null;
   value: string;
-}) {
+}>(function EmailBodyEditor({
+  ariaLabel,
+  onChange,
+  pendingImage,
+  value,
+}, ref) {
   const segments = parseEmailBodySegments(value);
+  const activeTextSegmentRef = useRef(0);
+  const textSegmentRefs = useRef(new Map<number, EmailTextSegmentEditorHandle>());
+
+  useImperativeHandle(ref, () => ({
+    openLinkEditor() {
+      const editor = textSegmentRefs.current.get(activeTextSegmentRef.current)
+        || textSegmentRefs.current.values().next().value;
+      editor?.openLinkEditor();
+    },
+  }), []);
 
   return (
-    <div className="space-y-3 rounded-lg border border-ink-200 bg-white p-3">
+    <div className="space-y-3">
       {segments.map((segment, index) => {
         if (segment.kind === 'image') {
           return (
@@ -1196,13 +1350,19 @@ function EmailBodyEditor({
             {index > 0 && segments[index - 1]?.kind === 'image' && (
               <p className="px-2 text-[11px] font-medium text-ink-400">Text below image</p>
             )}
-            <AceternityTextarea
-              aria-label={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
-              className="min-h-0 resize-y border-0 px-2 py-1 shadow-none focus:ring-0"
-              onChange={(event) => onChange(replaceEmailBodySegment(value, index, event.target.value))}
+            <EmailTextSegmentEditor
+              ariaLabel={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
+              onFocus={() => {
+                activeTextSegmentRef.current = index;
+              }}
+              onChange={(nextText) => onChange(replaceEmailBodySegment(value, index, nextText))}
               placeholder={index === 0
                 ? 'Write the email. Use {name} for the recipient.'
                 : 'Continue writing below the image...'}
+              ref={(editor) => {
+                if (editor) textSegmentRefs.current.set(index, editor);
+                else textSegmentRefs.current.delete(index);
+              }}
               rows={visibleLines}
               value={segment.raw}
             />
@@ -1226,7 +1386,371 @@ function EmailBodyEditor({
       )}
     </div>
   );
+});
+
+type EmailLinkDraft = {
+  error: string;
+  label: string;
+  url: string;
+};
+
+function serializeEmailEditorNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (!(node instanceof HTMLElement)) return '';
+  if (node.tagName === 'BR') return '\n';
+
+  if (node.tagName === 'A') {
+    const label = (node.textContent || '').replace(/\s+/g, ' ').trim();
+    const href = normaliseEmailLinkUrl(node.getAttribute('href') || '');
+    if (!label || !href) return label;
+
+    const labelUrl = /^(?:https?:\/\/|www\.)/i.test(label)
+      ? normaliseEmailLinkUrl(label)
+      : null;
+    if (labelUrl === href) return label;
+
+    const safeLabel = label.replace(/[\[\]]/g, '');
+    return `[${safeLabel}](${href})`;
+  }
+
+  return Array.from(node.childNodes).map(serializeEmailEditorNode).join('');
 }
+
+function extractEmailEditorValue(element: HTMLElement) {
+  let output = '';
+  const children = Array.from(element.childNodes);
+
+  children.forEach((node, index) => {
+    const isBlock = node instanceof HTMLElement && ['DIV', 'P'].includes(node.tagName);
+    if (isBlock && output && !output.endsWith('\n')) output += '\n';
+    output += serializeEmailEditorNode(node);
+    if (isBlock && index < children.length - 1 && !output.endsWith('\n')) output += '\n';
+  });
+
+  return output.replace(/ /g, ' ').replace(/\n{3,}/g, '\n\n');
+}
+
+const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
+  ariaLabel: string;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  placeholder: string;
+  rows: number;
+  value: string;
+}>(function EmailTextSegmentEditor({
+  ariaLabel,
+  onChange,
+  onFocus,
+  placeholder,
+  rows,
+  value,
+}, ref) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const urlInputRef = useRef<HTMLInputElement | null>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+  const lastEmittedRef = useRef('');
+  const [linkDraft, setLinkDraft] = useState<EmailLinkDraft | null>(null);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor || value === lastEmittedRef.current) return;
+    editor.innerHTML = renderEmailEditorHtml(value);
+    lastEmittedRef.current = value;
+  }, [value]);
+
+  function rangeAtEditorEnd() {
+    const editor = editorRef.current;
+    if (!editor) return null;
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    return range;
+  }
+
+  function currentEditorRange() {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return rangeAtEditorEnd();
+
+    const range = selection.getRangeAt(0);
+    if (range.commonAncestorContainer === editor || editor.contains(range.commonAncestorContainer)) {
+      return range;
+    }
+    return rangeAtEditorEnd();
+  }
+
+  function selectRange(range: Range) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
+  function linkContaining(node: Node) {
+    const editor = editorRef.current;
+    const element = node instanceof HTMLElement ? node : node.parentElement;
+    const anchor = element?.closest('a');
+    return editor && anchor && editor.contains(anchor) ? anchor : null;
+  }
+
+  function adjacentLink(range: Range, inputType: string) {
+    if (!range.collapsed || !inputType.startsWith('delete')) return null;
+    const backward = inputType.toLowerCase().includes('backward');
+    const forward = inputType.toLowerCase().includes('forward');
+    if (!backward && !forward) return null;
+
+    const container = range.startContainer;
+    const offset = range.startOffset;
+    let candidate: ChildNode | null = null;
+
+    if (container.nodeType === Node.TEXT_NODE) {
+      if (backward && offset === 0) candidate = container.previousSibling;
+      if (forward && offset === (container.textContent || '').length) candidate = container.nextSibling;
+    } else if (container instanceof HTMLElement) {
+      candidate = backward
+        ? container.childNodes.item(offset - 1)
+        : container.childNodes.item(offset);
+    }
+
+    return candidate ? linkContaining(candidate) : null;
+  }
+
+  function textOffsetWithin(element: HTMLElement, node: Node, offset: number) {
+    const measure = document.createRange();
+    measure.selectNodeContents(element);
+    measure.setEnd(node, offset);
+    return measure.toString().length;
+  }
+
+  function unlinkForMutation(inputType: string) {
+    if (!inputType.startsWith('insert') && !inputType.startsWith('delete')) return;
+
+    const range = currentEditorRange();
+    if (!range) return;
+    const anchor = linkContaining(range.startContainer)
+      || linkContaining(range.endContainer)
+      || adjacentLink(range, inputType);
+    if (!anchor) return;
+
+    const text = anchor.textContent || '';
+    const startInside = range.startContainer === anchor || anchor.contains(range.startContainer);
+    const endInside = range.endContainer === anchor || anchor.contains(range.endContainer);
+    const startOffset = startInside
+      ? textOffsetWithin(anchor, range.startContainer, range.startOffset)
+      : range.startOffset;
+    const endOffset = endInside
+      ? textOffsetWithin(anchor, range.endContainer, range.endOffset)
+      : range.endOffset;
+    const startContainer = range.startContainer;
+    const endContainer = range.endContainer;
+    const textNode = document.createTextNode(text);
+
+    anchor.replaceWith(textNode);
+
+    const nextRange = document.createRange();
+    if (startInside) nextRange.setStart(textNode, Math.min(startOffset, text.length));
+    else nextRange.setStart(startContainer, startOffset);
+    if (endInside) nextRange.setEnd(textNode, Math.min(endOffset, text.length));
+    else nextRange.setEnd(endContainer, endOffset);
+
+    if (range.collapsed && !startInside && !endInside) {
+      const caret = inputType.toLowerCase().includes('backward') ? text.length : 0;
+      nextRange.setStart(textNode, caret);
+      nextRange.collapse(true);
+    }
+
+    selectRange(nextRange);
+  }
+
+  function emitChange() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const nextValue = extractEmailEditorValue(editor);
+    lastEmittedRef.current = nextValue;
+    onChange(nextValue);
+  }
+
+  function insertAtRange(range: Range, node: Node) {
+    range.deleteContents();
+    range.insertNode(node);
+    const nextRange = document.createRange();
+    nextRange.setStartAfter(node);
+    nextRange.collapse(true);
+    selectRange(nextRange);
+    emitChange();
+  }
+
+  function openLinkEditor() {
+    const range = currentEditorRange();
+    if (!range) return;
+    savedRangeRef.current = range.cloneRange();
+
+    setLinkDraft({
+      error: '',
+      label: range.toString(),
+      url: '',
+    });
+    requestAnimationFrame(() => urlInputRef.current?.focus());
+  }
+
+  useImperativeHandle(ref, () => ({ openLinkEditor }));
+
+  function addLink() {
+    if (!linkDraft) return;
+    const label = linkDraft.label.replace(/\s+/g, ' ').replace(/[\[\]]/g, '').trim();
+    const href = normaliseEmailLinkUrl(linkDraft.url);
+
+    if (!label || !href) {
+      setLinkDraft((current) => current
+        ? {
+            ...current,
+            error: current.label.trim()
+              ? 'Paste a valid web or email link.'
+              : 'Enter the words people should click.',
+          }
+        : current);
+      return;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.textContent = label;
+    anchor.style.color = 'inherit';
+    anchor.style.textDecoration = 'underline';
+    anchor.style.textUnderlineOffset = '2px';
+
+    const range = savedRangeRef.current || rangeAtEditorEnd();
+    if (!range) return;
+    insertAtRange(range, anchor);
+    savedRangeRef.current = null;
+    setLinkDraft(null);
+  }
+
+  return (
+    <div className="rounded-lg border border-ink-200 bg-white transition focus-within:border-ink-400 focus-within:ring-1 focus-within:ring-ink-200">
+      <div
+        aria-label={ariaLabel}
+        aria-multiline="true"
+        className="email-rich-editor relative w-full whitespace-pre-wrap break-words px-4 py-3 text-base leading-6 text-ink-900 outline-none sm:text-sm"
+        contentEditable
+        data-empty={!value || undefined}
+        data-placeholder={placeholder}
+        onBeforeInput={(event) => {
+          unlinkForMutation((event.nativeEvent as InputEvent).inputType || '');
+        }}
+        onBlur={emitChange}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest('a')) event.preventDefault();
+        }}
+        onFocus={onFocus}
+        onInput={emitChange}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          unlinkForMutation('insertParagraph');
+          const range = currentEditorRange();
+          if (range) insertAtRange(range, document.createTextNode('\n'));
+        }}
+        onPaste={(event) => {
+          event.preventDefault();
+          unlinkForMutation('insertFromPaste');
+          const pastedText = event.clipboardData.getData('text/plain');
+          const range = currentEditorRange();
+          if (!range) return;
+
+          const pastedUrl = /^(?:https?:\/\/|www\.)\S+$/i.test(pastedText.trim())
+            ? normaliseEmailLinkUrl(pastedText)
+            : null;
+          if (pastedUrl) {
+            const anchor = document.createElement('a');
+            anchor.href = pastedUrl;
+            anchor.textContent = range.collapsed ? pastedText.trim() : range.toString();
+            anchor.style.color = 'inherit';
+            anchor.style.textDecoration = 'underline';
+            anchor.style.textUnderlineOffset = '2px';
+            insertAtRange(range, anchor);
+            return;
+          }
+
+          insertAtRange(range, document.createTextNode(pastedText));
+        }}
+        ref={editorRef}
+        role="textbox"
+        style={{ minHeight: `${Math.max(rows, 2) * 1.5 + 0.5}rem` }}
+        suppressContentEditableWarning
+      />
+
+      {linkDraft && (
+        <div className="m-1 space-y-2 rounded-md border border-ink-200 bg-ink-50 p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-medium text-ink-600">Text to display</span>
+              <AceternityInput
+                onChange={(event) => setLinkDraft((current) => current
+                  ? { ...current, error: '', label: event.target.value }
+                  : current)}
+                placeholder="Read the guide"
+                value={linkDraft.label}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-medium text-ink-600">Link</span>
+              <AceternityInput
+                inputMode="url"
+                onChange={(event) => setLinkDraft((current) => current
+                  ? { ...current, error: '', url: event.target.value }
+                  : current)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addLink();
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setLinkDraft(null);
+                    const range = savedRangeRef.current;
+                    savedRangeRef.current = null;
+                    if (range) requestAnimationFrame(() => selectRange(range));
+                  }
+                }}
+                placeholder="https://example.com"
+                ref={urlInputRef}
+                value={linkDraft.url}
+              />
+            </label>
+          </div>
+          {linkDraft.error && (
+            <p className="text-xs text-red-600" role="alert">{linkDraft.error}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              className="h-8 rounded-md px-2.5 text-xs font-medium text-ink-600 transition hover:bg-white"
+              onClick={() => {
+                const range = savedRangeRef.current;
+                setLinkDraft(null);
+                savedRangeRef.current = null;
+                if (range) requestAnimationFrame(() => selectRange(range));
+              }}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink-950 px-3 text-xs font-semibold text-white transition hover:bg-ink-800"
+              onClick={addLink}
+              type="button"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Add link
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
 
 function EmailCanvas({
   account,
@@ -1236,13 +1760,15 @@ function EmailCanvas({
   onPatch,
   pendingImage,
 }: {
-  account: DashboardPayload['account'];
+  account: DashboardBasePayload['account'];
   isUploadingEmailImage: boolean;
   leadMagnet: LeadMagnet;
   onAddImage: () => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   pendingImage: PendingEmailImage | null;
 }) {
+  const emailBodyEditorRef = useRef<EmailBodyEditorHandle | null>(null);
+
   return (
     <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-2xl space-y-4">
@@ -1283,24 +1809,36 @@ function EmailCanvas({
           <div className="px-6 py-7">
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="text-xs font-medium text-ink-700">Body</span>
-              <button
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
-                disabled={isUploadingEmailImage}
-                onClick={onAddImage}
-                type="button"
-              >
-                {isUploadingEmailImage ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ImageIcon className="h-3.5 w-3.5" />
-                )}
-                {isUploadingEmailImage ? 'Uploading' : 'Add image'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50"
+                  onClick={() => emailBodyEditorRef.current?.openLinkEditor()}
+                  onMouseDown={(event) => event.preventDefault()}
+                  type="button"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Add link
+                </button>
+                <button
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
+                  disabled={isUploadingEmailImage}
+                  onClick={onAddImage}
+                  type="button"
+                >
+                  {isUploadingEmailImage ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ImageIcon className="h-3.5 w-3.5" />
+                  )}
+                  {isUploadingEmailImage ? 'Uploading' : 'Add image'}
+                </button>
+              </div>
             </div>
             <EmailBodyEditor
               ariaLabel="Email body"
               onChange={(value) => onPatch({ emailBody: value })}
               pendingImage={pendingImage}
+              ref={emailBodyEditorRef}
               value={leadMagnet.emailBody}
             />
           </div>
@@ -1319,7 +1857,7 @@ function SequenceCanvas({
   onUpdateEmail,
   pendingImage,
 }: {
-  account: DashboardPayload['account'];
+  account: DashboardBasePayload['account'];
   emailImageUploadTarget: EmailImageTarget | null;
   leadMagnet: LeadMagnet;
   onAddImage: (emailId: string) => void;
@@ -1331,6 +1869,7 @@ function SequenceCanvas({
   pendingImage: PendingEmailImage | null;
 }) {
   const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
+  const emailBodyEditorRefs = useRef(new Map<string, EmailBodyEditorHandle>());
   const resendConfigured = account.resendConfigured;
   const calendarConnected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
   const calendarProviderLabel =
@@ -1360,7 +1899,7 @@ function SequenceCanvas({
   }
 
   function addEmail() {
-    if (leadMagnet.followUpEmails.length >= 10) return;
+    if (!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10) return;
     onPatch({
       followUpEmails: [
         ...leadMagnet.followUpEmails,
@@ -1401,7 +1940,10 @@ function SequenceCanvas({
                   : 'border-ink-200 bg-white text-ink-600'
               )}
               disabled={!resendConfigured}
-              onClick={() => onPatch({ followUpEnabled: !leadMagnet.followUpEnabled })}
+              onClick={() => onPatch({
+                followUpEnabled: !leadMagnet.followUpEnabled,
+                ...(!leadMagnet.followUpEnabled ? {} : { followUpStopOnBooking: false }),
+              })}
               type="button"
             >
               <span
@@ -1416,20 +1958,21 @@ function SequenceCanvas({
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <button
-              aria-pressed={leadMagnet.followUpStopOnBooking}
+              aria-pressed={leadMagnet.followUpEnabled && leadMagnet.followUpStopOnBooking}
               className={cn(
-                'flex min-h-16 items-start gap-3 rounded-lg border p-3 text-left transition',
-                leadMagnet.followUpStopOnBooking
+                'flex min-h-16 items-start gap-3 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50',
+                leadMagnet.followUpEnabled && leadMagnet.followUpStopOnBooking
                   ? 'border-ink-950 bg-ink-950 text-white'
                   : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
               )}
+              disabled={!leadMagnet.followUpEnabled}
               onClick={() => onPatch({ followUpStopOnBooking: !leadMagnet.followUpStopOnBooking })}
               type="button"
             >
               <CalendarCheck className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 <span className="block text-sm font-semibold">Stop when a call is booked</span>
-                <span className={cn('mt-1 block text-xs leading-5', leadMagnet.followUpStopOnBooking ? 'text-white/70' : 'text-ink-500')}>
+                <span className={cn('mt-1 block text-xs leading-5', leadMagnet.followUpEnabled && leadMagnet.followUpStopOnBooking ? 'text-white/70' : 'text-ink-500')}>
                   Calendly and Cal.com booking-created webhooks stop this magnet&apos;s sequence for that email.
                 </span>
               </span>
@@ -1543,27 +2086,38 @@ function SequenceCanvas({
                     />
                   </label>
 
-                  <label className="block">
+                  <div className="block">
                     <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-ink-700">
                       Body
-                      <button
-                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
-                        disabled={Boolean(emailImageUploadTarget)}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onAddImage(email.id);
-                        }}
-                        type="button"
-                      >
-                        {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <ImageIcon className="h-3.5 w-3.5" />
-                        )}
-                        {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id
-                          ? 'Uploading'
-                          : 'Add image'}
-                      </button>
+                      <span className="flex items-center gap-2">
+                        <button
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50"
+                          onClick={() => emailBodyEditorRefs.current.get(email.id)?.openLinkEditor()}
+                          onMouseDown={(event) => event.preventDefault()}
+                          type="button"
+                        >
+                          <Link2 className="h-3.5 w-3.5" />
+                          Add link
+                        </button>
+                        <button
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
+                          disabled={Boolean(emailImageUploadTarget)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            onAddImage(email.id);
+                          }}
+                          type="button"
+                        >
+                          {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <ImageIcon className="h-3.5 w-3.5" />
+                          )}
+                          {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id
+                            ? 'Uploading'
+                            : 'Add image'}
+                        </button>
+                      </span>
                     </span>
                     <EmailBodyEditor
                       ariaLabel={`Body for email ${index + 1}`}
@@ -1571,9 +2125,13 @@ function SequenceCanvas({
                       pendingImage={pendingImage?.target.kind === 'follow-up' && pendingImage.target.emailId === email.id
                         ? pendingImage
                         : null}
+                      ref={(editor) => {
+                        if (editor) emailBodyEditorRefs.current.set(email.id, editor);
+                        else emailBodyEditorRefs.current.delete(email.id);
+                      }}
                       value={email.body}
                     />
-                  </label>
+                  </div>
                 </div>
               </div>
             );
@@ -1582,8 +2140,9 @@ function SequenceCanvas({
 
         <div className="flex justify-end">
           <AceternityButton
-            disabled={leadMagnet.followUpEmails.length >= 10}
+            disabled={!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10}
             onClick={addEmail}
+            title={!leadMagnet.followUpEnabled ? 'Enable the follow-up sequence first.' : undefined}
             type="button"
             variant="secondary"
           >
@@ -1605,6 +2164,7 @@ function AfterSignupCanvas({
 }) {
   const quizQuestions = leadMagnet.postSignupQuizQuestions;
   const quizRoutes = leadMagnet.postSignupQuizRoutes;
+  const [routingOpen, setRoutingOpen] = useState(quizRoutes.length > 0);
 
   function patchQuestion(questionIndex: number, updates: Partial<LeadMagnet['postSignupQuizQuestions'][number]>) {
     onPatch({
@@ -1663,27 +2223,32 @@ function AfterSignupCanvas({
                 className={cn(
                   'rounded-lg border p-4 text-left transition',
                   leadMagnet.postSignupMode === mode
-                    ? 'border-ink-950 bg-ink-950 text-white'
+                    ? 'border-ink-950 bg-ink-950 text-white dark:text-[#111111]'
                     : 'border-ink-200 bg-white text-ink-800 hover:bg-ink-50'
                 )}
                 key={mode}
                 onClick={() => onPatch({
                   postSignupMode: mode,
-                  ...(mode === 'message' ? { postSignupQuizEnabled: false } : {}),
+                  ...(mode !== 'page' ? { postSignupQuizEnabled: false } : {}),
                 })}
                 type="button"
               >
                 <span className="block text-sm font-semibold">{title}</span>
-                <span className={cn('mt-1 block text-xs leading-5', leadMagnet.postSignupMode === mode ? 'text-white/70' : 'text-ink-500')}>
+                <span className={cn(
+                  'mt-1 block text-xs leading-5',
+                  leadMagnet.postSignupMode === mode
+                    ? 'text-white/70 dark:text-[#4a2518]'
+                    : 'text-ink-500'
+                )}>
                   {description}
                 </span>
               </button>
             ))}
           </div>
 
-          {leadMagnet.postSignupMode === 'message' && (
+          {leadMagnet.postSignupMode !== 'page' && (
             <p className="mt-3 text-xs leading-5 text-ink-500">
-              Quick qualifier is available with Send them elsewhere or Custom next step.
+              A quiz funnel is available with Custom next step.
             </p>
           )}
 
@@ -1752,7 +2317,7 @@ function AfterSignupCanvas({
           )}
         </div>
 
-        {leadMagnet.postSignupMode !== 'message' && (
+        {leadMagnet.postSignupMode === 'page' && (
           <div className="rounded-lg border border-ink-200 bg-white p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
@@ -1760,9 +2325,9 @@ function AfterSignupCanvas({
                   <ListChecks className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-ink-950">Add a quick qualifier</h2>
+                  <h2 className="text-sm font-semibold text-ink-950">Add a quiz funnel</h2>
                   <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
-                    Ask a simple question after signup. Answers are saved with the signup, then you can optionally route people after the final answer.
+                    Ask a short series of questions after signup. Save every answer, then optionally route people based on their responses.
                   </p>
                 </div>
               </div>
@@ -1789,132 +2354,164 @@ function AfterSignupCanvas({
 
             {leadMagnet.postSignupQuizEnabled && (
               <div className="mt-5 space-y-4 border-t border-ink-100 pt-5">
-                <div className="rounded-md border border-ink-200 bg-ink-50 px-3 py-2.5 text-xs leading-5 text-ink-600">
-                  <span className="font-medium text-ink-900">All questions are always completed first.</span>{' '}
-                  Add an optional route below when a particular combination of answers should see a tailored next step. Otherwise, people continue to the confirmation you chose above.
-                </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Small heading</span>
-                  <AceternityInput
-                    onChange={(event) => onPatch({ postSignupQuizTitle: event.target.value })}
-                    placeholder="One quick question"
-                    value={leadMagnet.postSignupQuizTitle}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink-700">Supporting text</span>
-                  <AceternityInput
-                    onChange={(event) => onPatch({ postSignupQuizDescription: event.target.value })}
-                    placeholder="Help us point you in the right direction."
-                    value={leadMagnet.postSignupQuizDescription}
-                  />
-                </label>
-              </div>
-
-              {quizQuestions.map((question, questionIndex) => (
-                <div className="rounded-lg border border-ink-200 bg-ink-50 p-4" key={question.id}>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium text-ink-500">Question {questionIndex + 1}</p>
-                    <button
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 transition hover:bg-red-50"
-                      onClick={() => onPatch({
-                        postSignupQuizQuestions: quizQuestions.filter((_, index) => index !== questionIndex),
-                        postSignupQuizRoutes: quizRoutes.map((route) => ({
-                          ...route,
-                          conditions: route.conditions.filter((condition) => condition.questionId !== question.id),
-                        })),
-                      })}
-                      type="button"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove
-                    </button>
+                <section>
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-ink-950">Quiz intro</h3>
+                    <p className="mt-0.5 text-xs text-ink-500">Shown before the first question.</p>
                   </div>
-                  <label className="mt-3 block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Question</span>
-                    <AceternityInput
-                      onChange={(event) => patchQuestion(questionIndex, { prompt: event.target.value })}
-                      value={question.prompt}
-                    />
-                  </label>
-                  <div className="mt-3 space-y-3">
-                    {question.options.map((option, optionIndex) => (
-                      <div className="rounded-md border border-ink-200 bg-white p-3" key={option.id}>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-medium text-ink-700">Answer {optionIndex + 1}</span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-ink-700">Heading</span>
+                      <AceternityInput
+                        onChange={(event) => onPatch({ postSignupQuizTitle: event.target.value })}
+                        placeholder="A couple of quick questions"
+                        value={leadMagnet.postSignupQuizTitle}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-ink-700">Supporting text</span>
+                      <AceternityInput
+                        onChange={(event) => onPatch({ postSignupQuizDescription: event.target.value })}
+                        placeholder="Help us point you in the right direction"
+                        value={leadMagnet.postSignupQuizDescription}
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="border-t border-ink-100 pt-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink-950">Questions</h3>
+                      <p className="mt-0.5 text-xs text-ink-500">Everyone answers these in order.</p>
+                    </div>
+                    {quizQuestions.length < 5 && (
+                      <AceternityButton
+                        onClick={() => onPatch({ postSignupQuizQuestions: [...quizQuestions, newQuizQuestion()] })}
+                        type="button"
+                        variant="secondary"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add question
+                      </AceternityButton>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    {quizQuestions.map((question, questionIndex) => (
+                      <div className="rounded-lg border border-ink-200 bg-white p-4" key={question.id}>
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-950 text-xs font-semibold text-white">
+                            {questionIndex + 1}
+                          </span>
+                          <AceternityInput
+                            aria-label={`Question ${questionIndex + 1}`}
+                            className="flex-1"
+                            onChange={(event) => patchQuestion(questionIndex, { prompt: event.target.value })}
+                            placeholder="Write your question"
+                            value={question.prompt}
+                          />
                           <button
-                            aria-label={`Remove answer ${optionIndex + 1}`}
-                            className="inline-flex h-7 items-center justify-center rounded-md px-1.5 text-red-600 transition hover:bg-red-50 disabled:opacity-40"
-                            disabled={question.options.length <= 2}
-                          onClick={() => onPatch({
-                            postSignupQuizQuestions: quizQuestions.map((currentQuestion, index) => index === questionIndex
-                              ? { ...currentQuestion, options: question.options.filter((_, currentOptionIndex) => currentOptionIndex !== optionIndex) }
-                              : currentQuestion),
-                            postSignupQuizRoutes: quizRoutes.map((route) => ({
-                              ...route,
-                              conditions: route.conditions.filter((condition) => condition.optionId !== option.id),
-                            })),
-                          })}
+                            aria-label={`Remove question ${questionIndex + 1}`}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                            disabled={quizQuestions.length <= 1}
+                            onClick={() => onPatch({
+                              postSignupQuizQuestions: quizQuestions.filter((_, index) => index !== questionIndex),
+                              postSignupQuizRoutes: quizRoutes.map((route) => ({
+                                ...route,
+                                conditions: route.conditions.filter((condition) => condition.questionId !== question.id),
+                              })),
+                            })}
                             type="button"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span className="ml-1 text-xs">Remove</span>
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
-                        <div className="mt-2">
-                          <label className="block">
-                            <span className="mb-1 block text-xs text-ink-500">Answer text</span>
-                            <AceternityInput
-                              aria-label={`Answer ${optionIndex + 1}`}
-                              onChange={(event) => patchOption(questionIndex, optionIndex, { label: event.target.value })}
-                              placeholder="For example: I am just getting started"
-                              value={option.label}
-                            />
-                          </label>
+
+                        <div className="ml-0 mt-3 space-y-2 sm:ml-10">
+                          {question.options.map((option, optionIndex) => (
+                            <div className="flex items-center gap-2" key={option.id}>
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-50 text-xs font-medium text-ink-500">
+                                {String.fromCharCode(65 + optionIndex)}
+                              </span>
+                              <AceternityInput
+                                aria-label={`Answer ${optionIndex + 1}`}
+                                className="flex-1"
+                                onChange={(event) => patchOption(questionIndex, optionIndex, { label: event.target.value })}
+                                placeholder={`Answer ${optionIndex + 1}`}
+                                value={option.label}
+                              />
+                              <button
+                                aria-label={`Remove answer ${optionIndex + 1}`}
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                                disabled={question.options.length <= 2}
+                                onClick={() => onPatch({
+                                  postSignupQuizQuestions: quizQuestions.map((currentQuestion, index) => index === questionIndex
+                                    ? { ...currentQuestion, options: question.options.filter((_, currentOptionIndex) => currentOptionIndex !== optionIndex) }
+                                    : currentQuestion),
+                                  postSignupQuizRoutes: quizRoutes.map((route) => ({
+                                    ...route,
+                                    conditions: route.conditions.filter((condition) => condition.optionId !== option.id),
+                                  })),
+                                })}
+                                type="button"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          {question.options.length < 6 && (
+                            <button
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-ink-600 transition hover:bg-ink-50 hover:text-ink-900"
+                              onClick={() => patchQuestion(questionIndex, {
+                                options: [...question.options, {
+                                  id: `${question.id}-option-${Date.now()}`,
+                                  label: 'Another option',
+                                  destinationUrl: '',
+                                }],
+                              })}
+                              type="button"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Add answer
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
-                  {question.options.length < 6 && (
-                    <button
-                      className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100"
-                      onClick={() => patchQuestion(questionIndex, {
-                        options: [...question.options, {
-                          id: `${question.id}-option-${Date.now()}`,
-                          label: 'Another option',
-                          destinationUrl: '',
-                        }],
-                      })}
-                      type="button"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add answer
-                    </button>
-                  )}
-                </div>
-              ))}
+                </section>
 
-              {quizQuestions.length < 5 && (
-                <AceternityButton onClick={() => onPatch({ postSignupQuizQuestions: [...quizQuestions, newQuizQuestion()] })} type="button" variant="secondary">
-                  <Plus className="h-4 w-4" />
-                  Add question
-                </AceternityButton>
-              )}
-
-              <div className="rounded-lg border border-ink-200 bg-white p-4">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <section className="overflow-hidden rounded-lg border border-ink-200 bg-white">
+                  <button
+                    aria-expanded={routingOpen}
+                    className="flex w-full items-center justify-between gap-4 p-4 text-left transition hover:bg-ink-50"
+                    onClick={() => setRoutingOpen((current) => !current)}
+                    type="button"
+                  >
                   <div>
-                    <h3 className="text-sm font-semibold text-ink-950">Route after the final answer</h3>
-                    <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
-                      Optional. Use this only when a combination of answers should go to a specific URL. The first complete match wins.
-                    </p>
-                  </div>
-                </div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-ink-950">Outcome routing</h3>
+                        {quizRoutes.length > 0 && (
+                          <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-medium text-ink-600">
+                            {quizRoutes.length} {quizRoutes.length === 1 ? 'route' : 'routes'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-600">
+                        Optional. Send matching answer combinations to a different URL.
+                      </p>
+                    </div>
+                    <ChevronDown className={cn('h-4 w-4 shrink-0 text-ink-500 transition-transform', routingOpen && 'rotate-180')} />
+                  </button>
 
-                <div className="mt-4 space-y-3">
-                  {quizRoutes.map((route, routeIndex) => (
-                    <div className="rounded-md border border-ink-200 bg-ink-50 p-3" key={route.id}>
+                  {routingOpen && (
+                    <div className="space-y-3 border-t border-ink-100 p-4">
+                      <p className="text-xs leading-5 text-ink-500">
+                        A route only runs when every selected answer matches. If nothing matches, people see the custom next step above.
+                      </p>
+                      {quizRoutes.map((route, routeIndex) => (
+                        <div className="rounded-md border border-ink-200 bg-ink-50 p-3" key={route.id}>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-xs font-medium text-ink-700">Route {routeIndex + 1}</p>
                         <button
@@ -1957,21 +2554,25 @@ function AfterSignupCanvas({
                       {!route.destinationUrl.trim() || route.conditions.length === 0 ? (
                         <p className="mt-2 text-xs text-ink-500">Add a destination and select at least one answer to activate this route.</p>
                       ) : null}
-                    </div>
-                  ))}
-                </div>
+                        </div>
+                      ))}
 
-                {quizRoutes.length < 20 && (
-                  <button
-                    className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100"
-                    onClick={() => onPatch({ postSignupQuizRoutes: [...quizRoutes, newQuizRoute()] })}
-                    type="button"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add route
-                  </button>
-                )}
-              </div>
+                      {quizRoutes.length < 20 && (
+                        <button
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50"
+                        onClick={() => {
+                          onPatch({ postSignupQuizRoutes: [...quizRoutes, newQuizRoute()] });
+                          setRoutingOpen(true);
+                        }}
+                          type="button"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Add route
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </section>
             </div>
             )}
           </div>

@@ -18,10 +18,11 @@ import {
 import { log } from '@/lib/logger';
 
 const ROUTE = '/api/calendar-webhooks/[accountId]/[leadMagnetId]';
+const MAX_WEBHOOK_BODY_BYTES = 512 * 1024;
 const paramsSchema = z.object({
   accountId: z.string().uuid(),
   leadMagnetId: z.string().uuid(),
-});
+}).strict();
 
 function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
@@ -45,20 +46,12 @@ export async function POST(
     accountId = parsedParams.data.accountId;
     leadMagnetId = parsedParams.data.leadMagnetId;
 
-    await enforceRateLimits([
-      {
-        identifier: requestIp(request),
-        limit: 240,
-        scope: 'calendar-webhook:ip',
-        windowSeconds: 60 * 5,
-      },
-      {
-        identifier: `${accountId}:${leadMagnetId}`,
-        limit: 240,
-        scope: 'calendar-webhook:magnet',
-        windowSeconds: 60 * 5,
-      },
-    ]);
+    await enforceRateLimits([{
+      identifier: requestIp(request),
+      limit: 240,
+      scope: 'calendar-webhook:ip',
+      windowSeconds: 60 * 5,
+    }]);
 
     const token = request.nextUrl.searchParams.get('token') || '';
     const lookup = await findLeadMagnet(accountId, leadMagnetId);
@@ -73,7 +66,24 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid webhook token' }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => null);
+    await enforceRateLimits([{
+      identifier: `${accountId}:${leadMagnetId}`,
+      limit: 240,
+      scope: 'calendar-webhook:magnet',
+      windowSeconds: 60 * 5,
+    }]);
+
+    const bodyText = await request.text();
+    if (Buffer.byteLength(bodyText, 'utf8') > MAX_WEBHOOK_BODY_BYTES) {
+      return NextResponse.json({ error: 'Webhook payload is too large' }, { status: 413 });
+    }
+
+    let body: unknown = null;
+    try {
+      body = bodyText ? JSON.parse(bodyText) as unknown : null;
+    } catch {
+      return NextResponse.json({ error: 'Invalid webhook payload' }, { status: 400 });
+    }
     const eventType = extractCalendarEventType(body);
     if (!isCalendarBookingEvent(body)) {
       return NextResponse.json({ ok: true, ignored: true, eventType });

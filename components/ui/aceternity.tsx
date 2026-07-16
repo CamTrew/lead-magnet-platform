@@ -82,16 +82,15 @@ AceternityTextarea.displayName = 'AceternityTextarea';
 export function AceternityCard({
   children,
   className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  ...props
+}: React.ComponentProps<'section'>) {
   return (
     <section
       className={cn(
         'relative overflow-hidden rounded-lg border border-ink-200 bg-white shadow-[0_1px_2px_rgba(17,17,17,0.025)]',
         className
       )}
+      {...props}
     >
       {children}
     </section>

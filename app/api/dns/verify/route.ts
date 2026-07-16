@@ -14,7 +14,7 @@ import {
   type DnsRecordDefinition,
 } from '@/lib/dns-records';
 import { getAccountWithSecrets } from '@/lib/platform-store';
-import { hasPlatformResendApiKey, resolveResendApiKey } from '@/lib/platform-resend';
+import { resolveResendApiKey, usesPlatformResendAccount } from '@/lib/platform-resend';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -375,8 +375,7 @@ export async function POST(request: NextRequest) {
       // to have completed our ownership TXT check before it can create or
       // inspect a sending domain there. This prevents a user from consuming
       // the shared account's domain quota with a domain they do not control.
-      const usingMagnetsManagedResend =
-        !accountWithSecrets.resendApiKey && hasPlatformResendApiKey();
+      const usingMagnetsManagedResend = usesPlatformResendAccount(accountWithSecrets);
       if (usingMagnetsManagedResend && !accountWithSecrets.domainVerifiedAt) {
         return NextResponse.json(
           { error: 'Verify that you own this domain before setting up email sending.' },

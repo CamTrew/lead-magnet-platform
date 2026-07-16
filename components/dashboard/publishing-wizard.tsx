@@ -211,7 +211,7 @@ export function PublishingWizard({
   if (stage === 'live') {
     return (
       <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <CheckCircle2 className="completion-tick mt-0.5 h-4 w-4 shrink-0" />
         <div>
           <p className="text-sm font-semibold text-emerald-950">Domain is live</p>
           <p className="mt-0.5 text-xs leading-5 text-emerald-800">
@@ -258,7 +258,7 @@ export function PublishingWizard({
             )}
             {ownershipDone && (
               <p className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+                <CheckCircle2 className="completion-tick h-3.5 w-3.5" />
                 Ownership verified
               </p>
             )}
@@ -302,7 +302,7 @@ export function PublishingWizard({
                   color: routingDone ? '#047857' : '#92400e',
                 }}
               >
-                {routingDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                {routingDone ? <CheckCircle2 className="completion-tick h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
                 {routingDone
                   ? 'Live and serving'
                   : needsPlatformVerification
@@ -396,7 +396,7 @@ function StepCard({
           aria-hidden
           className={cn(
             'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold',
-            done ? 'border-emerald-300 bg-emerald-500 text-white' : 'border-ink-300 bg-white text-ink-700'
+            done ? 'status-check-icon border-emerald-300 bg-emerald-500 text-white' : 'border-ink-300 bg-white text-ink-700'
           )}
         >
           {done ? <Check className="h-3.5 w-3.5" /> : index}

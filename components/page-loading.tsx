@@ -7,7 +7,7 @@ export function PageLoading({ fullPage = false }: { fullPage?: boolean }) {
       aria-busy="true"
       aria-label="Loading"
       className={cn(
-        'flex items-center justify-center bg-brand-soft px-4 text-ink-900',
+        'flex items-center justify-center bg-white px-4 text-ink-900',
         fullPage ? 'min-h-screen' : 'min-h-[18rem]'
       )}
       role="status"

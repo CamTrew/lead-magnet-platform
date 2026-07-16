@@ -10,6 +10,7 @@ import {
 } from '@/lib/rate-limit';
 
 const ROUTE = '/sequence/stop';
+const MAX_FORM_BYTES = 16 * 1024;
 
 function escapeHtml(value: string) {
   return value
@@ -144,8 +145,21 @@ export async function POST(request: NextRequest) {
       },
     ]);
 
-    const formData = await request.formData().catch(() => null);
-    const token = String(formData?.get('token') || '');
+    const contentType = request.headers.get('content-type')?.split(';')[0]?.trim();
+    if (contentType !== 'application/x-www-form-urlencoded') return invalidPage();
+
+    const formBody = await request.text();
+    if (Buffer.byteLength(formBody, 'utf8') > MAX_FORM_BYTES) {
+      return htmlResponse(
+        pageHtml({
+          title: 'Request too large',
+          body: '<h1>Request too large</h1><p>Open the stop link from your email and try again.</p>',
+        }),
+        413
+      );
+    }
+
+    const token = new URLSearchParams(formBody).get('token') || '';
     const verified = verifyFollowUpStopToken(token);
 
     if (!verified) return invalidPage();

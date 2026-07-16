@@ -17,9 +17,13 @@ function hashIdentifier(identifier: string) {
 }
 
 export function requestIp(request: Request) {
+  const vercelForwardedFor = request.headers
+    .get('x-vercel-forwarded-for')
+    ?.split(',')[0]
+    ?.trim();
   const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   const realIp = request.headers.get('x-real-ip')?.trim();
-  return forwardedFor || realIp || 'unknown';
+  return vercelForwardedFor || forwardedFor || realIp || 'unknown';
 }
 
 type RateLimitInput = {

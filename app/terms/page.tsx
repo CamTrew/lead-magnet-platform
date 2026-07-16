@@ -11,6 +11,13 @@ export const metadata: Metadata = {
     title: 'Magnets - Terms of Service',
     description: 'The terms covering use of Magnets.',
     url: `${SITE_URL}/terms`,
+    images: ['/landing-dashboard.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Magnets - Terms of Service',
+    description: 'The terms covering use of Magnets.',
+    images: ['/landing-dashboard.png'],
   },
 };
 

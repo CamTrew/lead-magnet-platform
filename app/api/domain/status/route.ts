@@ -141,13 +141,13 @@ export async function GET(request: NextRequest) {
     await enforceRateLimits([
       {
         identifier: payload.user.id,
-        limit: 120,
+        limit: 20,
         scope: 'domain:status:user',
         windowSeconds: 60,
       },
       {
         identifier: requestIp(request),
-        limit: 240,
+        limit: 60,
         scope: 'domain:status:ip',
         windowSeconds: 60,
       },

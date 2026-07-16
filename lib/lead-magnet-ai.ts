@@ -1,8 +1,7 @@
+import { createDeepSeek } from '@ai-sdk/deepseek';
+import { APICallError, generateText, Output } from 'ai';
 import { z } from 'zod';
 import type { AccountSettings } from '@/lib/types';
-
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODEL = 'deepseek-v4-pro';
 
 export const generatedLeadMagnetSchema = z.object({
   title: z.string().trim().min(1).max(120),
@@ -25,16 +24,6 @@ export class LeadMagnetAiError extends Error {
     super(message);
     this.name = 'LeadMagnetAiError';
   }
-}
-
-function cleanJson(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('```')) return trimmed;
-
-  return trimmed
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim();
 }
 
 function slugifyTitle(title: string) {
@@ -90,62 +79,40 @@ export async function generateLeadMagnetCopy({
     throw new LeadMagnetAiError('AI writing is not configured yet. Add DEEPSEEK_API_KEY and try again.', 503);
   }
 
-  let response: Response;
+  const deepseek = createDeepSeek({ apiKey });
+  let output: GeneratedLeadMagnet | undefined;
   try {
-    response = await fetch(DEEPSEEK_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: 'You write concise, credible conversion copy and always return valid JSON.' },
-          { role: 'user', content: promptFor({ account, brief }) },
-        ],
-        thinking: { type: 'disabled' },
-        response_format: { type: 'json_object' },
-        max_tokens: 2200,
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(45_000),
+    const result = await generateText({
+      model: deepseek(process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat'),
+      instructions: 'You write concise, credible conversion copy. Follow the requested schema exactly.',
+      prompt: promptFor({ account, brief }),
+      output: Output.object({ schema: generatedLeadMagnetSchema }),
+      maxOutputTokens: 2200,
+      temperature: 0.35,
+      abortSignal: AbortSignal.timeout(45_000),
     });
-  } catch {
+    output = result.output;
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    const statusCode = APICallError.isInstance(error) ? error.statusCode : undefined;
+    if (statusCode === 401 || statusCode === 403 || message.includes('api key')) {
+      throw new LeadMagnetAiError('AI writing is not configured correctly yet. Check DEEPSEEK_API_KEY.', 503);
+    }
+    if (statusCode === 429) {
+      throw new LeadMagnetAiError('AI writing is busy right now. Wait a moment and try again.', 503);
+    }
+    if (message.includes('timeout') || message.includes('aborted')) {
+      throw new LeadMagnetAiError('AI writing took too long to respond. Please try again.', 504);
+    }
     throw new LeadMagnetAiError('AI writing is unavailable right now. Please try again.', 503);
   }
 
-  const responseBody = await response.json().catch(() => null) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    error?: { message?: string };
-  } | null;
-
-  if (!response.ok) {
-    const detail = response.status === 401 || response.status === 403
-      ? 'AI writing is not configured correctly yet. Check DEEPSEEK_API_KEY.'
-      : 'AI writing is unavailable right now. Please try again.';
-    throw new LeadMagnetAiError(detail, response.status >= 400 && response.status < 500 ? 400 : 503);
-  }
-
-  const content = responseBody?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new LeadMagnetAiError('AI writing returned an empty response. Please try again.');
-  }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(cleanJson(content));
-  } catch {
-    throw new LeadMagnetAiError('AI writing returned an unusable draft. Please try again.');
-  }
-
-  const parsed = generatedLeadMagnetSchema.safeParse(raw);
-  if (!parsed.success) {
+  if (!output) {
     throw new LeadMagnetAiError('AI writing returned an incomplete draft. Please try again.');
   }
 
   return {
-    ...parsed.data,
-    slug: slugifyTitle(parsed.data.title),
+    ...output,
+    slug: slugifyTitle(output.title),
   };
 }

@@ -251,7 +251,8 @@ export async function getDomainConfig(host: string) {
 
 /**
  * Reconcile Vercel project domains with the host the user just saved.
- * - If the host changed, attach the new one and detach the old one.
+ * - If the host changed, detach the old one before attaching the new one.
+ * - Never attach replacements when an old hostname could not be removed.
  * - Returns a partial status report — never throws to the caller.
  */
 export async function syncProjectDomain({
@@ -276,6 +277,25 @@ export async function syncProjectDomain({
   const detached: string[] = [];
   const errors: string[] = [];
 
+  for (const host of toDetach) {
+    try {
+      const removed = await removeDomain(host);
+      // A Vercel 404 means the hostname is already absent and is therefore
+      // successfully reconciled, even though removeDomain returns false.
+      if (removed) detached.push(host);
+    } catch (error) {
+      if (error instanceof VercelApiError) {
+        errors.push(`Detach ${host}: ${error.message}`);
+      } else {
+        errors.push(`Detach ${host}: ${(error as Error).message}`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { configured: true, attached, detached, errors };
+  }
+
   for (const host of toAttach) {
     try {
       const result = await attachDomain(host);
@@ -285,19 +305,6 @@ export async function syncProjectDomain({
         errors.push(`Attach ${host}: ${error.message}`);
       } else {
         errors.push(`Attach ${host}: ${(error as Error).message}`);
-      }
-    }
-  }
-
-  for (const host of toDetach) {
-    try {
-      const removed = await removeDomain(host);
-      if (removed) detached.push(host);
-    } catch (error) {
-      if (error instanceof VercelApiError) {
-        errors.push(`Detach ${host}: ${error.message}`);
-      } else {
-        errors.push(`Detach ${host}: ${(error as Error).message}`);
       }
     }
   }

@@ -1,8 +1,15 @@
 import { issueSignedToken } from '@vercel/blob';
-import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/blob/client';
+import { handleUploadPresigned } from '@vercel/blob/client';
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentDashboardPayload } from '@/lib/auth';
+import { getCurrentDashboardBase } from '@/lib/auth';
+import { parsePresignedUploadBody } from '@/lib/blob-upload-request';
 import { log } from '@/lib/logger';
+import {
+  enforceRateLimits,
+  rateLimitResponse,
+  RateLimitError,
+  requestIp,
+} from '@/lib/rate-limit';
 import { MAX_LOGO_BYTES } from '@/lib/upload';
 
 const ROUTE = '/api/account/logo';
@@ -18,7 +25,7 @@ class UploadRouteError extends Error {
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as HandleUploadPresignedBody | null;
+  const body = parsePresignedUploadBody(await request.json().catch(() => null));
   if (!body) return NextResponse.json({ error: 'Invalid upload request.' }, { status: 400 });
 
   try {
@@ -27,8 +34,23 @@ export async function POST(request: NextRequest) {
       request,
       webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
       getSignedToken: async (pathname) => {
-        const payload = await getCurrentDashboardPayload();
+        const payload = await getCurrentDashboardBase();
         if (!payload) throw new UploadRouteError('Not authenticated.', 401);
+
+        await enforceRateLimits([
+          {
+            identifier: payload.user.id,
+            limit: 20,
+            scope: 'upload:logo:user',
+            windowSeconds: 60 * 60,
+          },
+          {
+            identifier: requestIp(request),
+            limit: 60,
+            scope: 'upload:logo:ip',
+            windowSeconds: 60 * 60,
+          },
+        ]);
 
         const expectedPrefix = `brand-logos/${payload.account.id}/`;
         if (!pathname.startsWith(expectedPrefix)) {
@@ -50,10 +72,16 @@ export async function POST(request: NextRequest) {
         };
       },
       onUploadCompleted: async ({ blob }) => {
-        if (
-          !blob.url.includes('.blob.vercel-storage.com') ||
-          (blob.contentType && !allowedContentTypes.includes(blob.contentType))
-        ) {
+        let isAllowedUrl = false;
+        try {
+          const url = new URL(blob.url);
+          isAllowedUrl =
+            url.protocol === 'https:' && url.hostname.endsWith('.blob.vercel-storage.com');
+        } catch {
+          isAllowedUrl = false;
+        }
+
+        if (!isAllowedUrl || (blob.contentType && !allowedContentTypes.includes(blob.contentType))) {
           throw new UploadRouteError('Invalid logo upload.', 400);
         }
       },
@@ -61,6 +89,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
+    if (error instanceof RateLimitError) return rateLimitResponse(error);
+
     const message = error instanceof UploadRouteError
       ? error.message
       : 'Logo storage is not available on this deployment yet. Try again after the next deploy, or contact support.';

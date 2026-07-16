@@ -20,6 +20,7 @@ import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
+export const FOLLOW_UP_RENDER_VERSION = 1;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
@@ -134,6 +135,7 @@ function hasSyncableFollowUpEmails(magnet: LeadMagnet) {
 
 function needsInitialFollowUpSync(magnet: LeadMagnet) {
   if (!magnet.followUpEnabled || !hasSyncableFollowUpEmails(magnet)) return false;
+  if (Number(magnet.resendFollowUpRenderVersion || 0) < FOLLOW_UP_RENDER_VERSION) return true;
   if (!magnet.resendFollowUpAutomationId) return true;
   return normaliseFollowUpEmails(magnet.followUpEmails)
     .filter((email) => email.subject && email.body)
@@ -448,6 +450,7 @@ export async function syncLeadMagnetFollowUpAutomation(
     return {
       automationId: magnet.resendFollowUpAutomationId,
       emails,
+      renderVersion: FOLLOW_UP_RENDER_VERSION,
     };
   }
 
@@ -484,6 +487,7 @@ export async function syncLeadMagnetFollowUpAutomation(
   return {
     automationId,
     emails: syncedEmails,
+    renderVersion: FOLLOW_UP_RENDER_VERSION,
   };
 }
 
@@ -496,7 +500,8 @@ async function syncAndPersistFollowUpAutomation(
   const automationId = synced.automationId || magnet.resendFollowUpAutomationId;
   const changed =
     automationId !== magnet.resendFollowUpAutomationId ||
-    followUpEmailsChanged(synced.emails, magnet.followUpEmails);
+    followUpEmailsChanged(synced.emails, magnet.followUpEmails) ||
+    magnet.resendFollowUpRenderVersion !== synced.renderVersion;
 
   if (!changed) {
     return magnet;
@@ -505,12 +510,14 @@ async function syncAndPersistFollowUpAutomation(
   const updated = await store.updateLeadMagnetFollowUpSync(account.id, magnet.id, {
     followUpEmails: synced.emails,
     resendFollowUpAutomationId: automationId,
+    resendFollowUpRenderVersion: synced.renderVersion,
   });
 
   return updated || {
     ...magnet,
     followUpEmails: synced.emails,
     resendFollowUpAutomationId: automationId,
+    resendFollowUpRenderVersion: synced.renderVersion,
   };
 }
 

@@ -170,7 +170,7 @@ export function DeliverySection({
         {dnsLocked ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
             <div className="flex items-center gap-2 text-sm text-emerald-900">
-              <Check className="h-3.5 w-3.5" />
+              <Check className="completion-tick h-3.5 w-3.5" />
               Verified
             </div>
             <button
@@ -203,7 +203,7 @@ export function DeliverySection({
           )}
         >
           {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {saveState === 'saved' && <Check className="h-3.5 w-3.5" />}
+          {saveState === 'saved' && <Check className="completion-tick h-3.5 w-3.5" />}
           {saveState === 'saving'
             ? 'Saving…'
             : saveState === 'saved'
@@ -247,7 +247,7 @@ function Step({
           aria-hidden
           className={cn(
             'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold',
-            done ? 'border-emerald-300 bg-emerald-500 text-white' : 'border-ink-300 bg-white text-ink-700'
+            done ? 'status-check-icon border-emerald-300 bg-emerald-500 text-white' : 'border-ink-300 bg-white text-ink-700'
           )}
         >
           {done ? <Check className="h-3.5 w-3.5" /> : index}
@@ -576,7 +576,6 @@ function SendingDnsChecker({
   const [overall, setOverall] = useState<'idle' | 'verified' | 'missing' | 'error'>('idle');
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState('');
-  const [autoChecked, setAutoChecked] = useState(false);
   const [providerVerification, setProviderVerification] = useState<DnsVerifyResponse['providerVerification']>(null);
 
   const check = useCallback(async () => {
@@ -632,18 +631,6 @@ function SendingDnsChecker({
     const providerReady = !providerVerification || providerVerification.status === 'verified';
     onVerifiedChange(overall === 'verified' && providerReady);
   }, [overall, onVerifiedChange, providerVerification]);
-
-  // Auto-check on mount so the user sees the verified state without having
-  // to click. Only runs once per mount; the user clicks the button to recheck.
-  useEffect(() => {
-    if (autoChecked) return;
-    if (!account.resendFromEmail || !account.resendConfigured) return;
-    setAutoChecked(true);
-    void check();
-    // We intentionally do NOT depend on `check` — the callback's deps include
-    // `checking` which would re-fire the effect after the request completes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account.resendFromEmail, account.resendConfigured, autoChecked]);
 
   return (
     <div className="space-y-3">

@@ -1,8 +1,20 @@
 import type { MetadataRoute } from 'next';
+import { headers } from 'next/headers';
+import { cleanHostname, isPlatformHost } from '@/lib/favicon';
+import { publicOriginForHost } from '@/lib/lead-magnet-metadata';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
+export const dynamic = 'force-dynamic';
 
-export default function robots(): MetadataRoute.Robots {
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so').replace(/\/$/, '');
+
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const requestHeaders = await headers();
+  const requestHost = requestHeaders.get('host') || '';
+  const hostname = cleanHostname(requestHost);
+  const origin = hostname && !isPlatformHost(hostname)
+    ? publicOriginForHost(requestHost)
+    : SITE_URL;
+
   return {
     rules: [
       {
@@ -11,7 +23,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/dashboard/'],
       },
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
-    host: SITE_URL,
+    sitemap: `${origin}/sitemap.xml`,
+    host: origin,
   };
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "magnets_lead_magnets" ADD COLUMN "resend_follow_up_render_version" integer DEFAULT 0 NOT NULL;

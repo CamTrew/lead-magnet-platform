@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description:
     'Create a free Magnets account and start publishing branded lead-magnet pages on your own domain. No credit card.',
   alternates: { canonical: `${SITE_URL}/register` },
+  robots: { index: false, follow: true },
   openGraph: {
     title: 'Create your free Magnets account',
     description:

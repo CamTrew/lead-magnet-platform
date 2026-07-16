@@ -181,24 +181,25 @@ export function SignupsClient({
         </div>
 
         <AceternityCard className="overflow-hidden">
-          <div className="flex flex-col gap-3 border-b border-ink-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+          <div className="flex flex-col gap-4 border-b border-ink-200 bg-white p-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 xl:max-w-sm">
               <h2 className="text-base font-semibold text-ink-950">All signups</h2>
               <p className="mt-1 text-sm text-ink-500">
                 One row per email, deduplicated across every magnet on this account.
               </p>
             </div>
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              <div className="relative w-full sm:w-auto">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto xl:flex-nowrap xl:justify-end">
+              <div className="relative w-full sm:w-auto xl:w-52">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <AceternityInput
-                  className="pl-8 sm:w-64"
+                  className="pl-8 sm:w-64 xl:w-52"
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search email, name, or magnet"
                   value={search}
                 />
               </div>
               <AceternityButton
+                className="shrink-0"
                 disabled={!hasMagnets}
                 onClick={() => setManualOpen(true)}
                 size="md"
@@ -209,6 +210,7 @@ export function SignupsClient({
                 Add manually
               </AceternityButton>
               <AceternityButton
+                className="shrink-0"
                 disabled={!hasMagnets}
                 onClick={() => setImportOpen(true)}
                 size="md"
@@ -222,8 +224,8 @@ export function SignupsClient({
                 aria-disabled={totalCount === 0}
                 className={
                   totalCount === 0
-                    ? 'pointer-events-none inline-flex h-9 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60'
-                    : 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800'
+                    ? 'pointer-events-none inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60'
+                    : 'inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800'
                 }
                 href="/api/signups/export"
                 download
@@ -245,23 +247,32 @@ export function SignupsClient({
             </p>
           )}
 
-          <div className="md:overflow-x-auto">
-            <table className="block w-full text-left text-sm md:table md:min-w-[960px]">
-              <thead className="hidden border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase text-ink-500 md:table-header-group">
+          <div className="w-full overflow-hidden">
+            <table className="block w-full text-left text-sm xl:table xl:table-fixed">
+              <colgroup className="hidden xl:table-column-group">
+                <col className="w-[22%]" />
+                <col className="w-[10%]" />
+                <col className="w-[24%]" />
+                <col className="w-[12%]" />
+                <col className="w-[7%]" />
+                <col className="w-[9%]" />
+                <col className="w-[16%]" />
+              </colgroup>
+              <thead className="hidden border-b border-ink-200 bg-ink-50 text-xs font-medium uppercase text-ink-500 xl:table-header-group">
                 <tr>
-                  <th className="px-5 py-3">Email</th>
-                  <th className="px-5 py-3">Name</th>
-                  <th className="px-5 py-3">First magnet</th>
-                  <th className="px-5 py-3">First signup</th>
-                  <th className="px-5 py-3">Signups</th>
-                  <th className="px-5 py-3">Sequence</th>
-                  <th className="w-28 px-5 py-3 text-right">Actions</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">First magnet</th>
+                  <th className="px-4 py-3">First signup</th>
+                  <th className="px-4 py-3">Signups</th>
+                  <th className="px-4 py-3">Sequence</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="block divide-y divide-ink-200 md:table-row-group">
+              <tbody className="block divide-y divide-ink-200 xl:table-row-group">
                 {filtered.length === 0 ? (
-                  <tr className="block bg-white md:table-row">
-                    <td colSpan={7} className="block px-5 py-12 text-center md:table-cell">
+                  <tr className="block bg-white xl:table-row">
+                    <td colSpan={7} className="block px-5 py-12 text-center xl:table-cell">
                       <p className="font-semibold text-ink-950">
                         {totalCount === 0 ? 'No signups yet' : 'No matches'}
                       </p>
@@ -274,15 +285,15 @@ export function SignupsClient({
                   </tr>
                 ) : (
                   filtered.map((signup) => (
-                    <tr key={signup.email} className="block bg-white px-5 py-4 transition hover:bg-ink-50 md:table-row md:px-0 md:py-0">
-                      <td className="block py-0 md:table-cell md:px-5 md:py-3">
+                    <tr key={signup.email} className="block bg-white px-5 py-4 transition hover:bg-ink-50 xl:table-row xl:px-0 xl:py-0">
+                      <td className="block min-w-0 py-0 xl:table-cell xl:px-4 xl:py-3">
                         <p className="truncate font-medium text-ink-950">{signup.email}</p>
                       </td>
-                      <td className="mt-2 block text-ink-700 md:mt-0 md:table-cell md:px-5 md:py-3">
-                        {signup.name && <><span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">Name</span>{signup.name}</>}
+                      <td className="mt-2 block min-w-0 text-ink-700 xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
+                        {signup.name && <><span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Name</span><span className="break-words">{signup.name}</span></>}
                       </td>
-                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-3">
-                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">First magnet</span>
+                      <td className="mt-3 block min-w-0 xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">First magnet</span>
                         <p className="truncate text-ink-700">{signup.firstLeadMagnetTitle}</p>
                         <p className="truncate font-mono text-xs text-ink-500">/{signup.firstLeadMagnetSlug}</p>
                         {signup.quizAnswers.length > 0 && (
@@ -301,26 +312,26 @@ export function SignupsClient({
                           </details>
                         )}
                       </td>
-                      <td className="mt-3 block text-ink-600 md:mt-0 md:table-cell md:px-5 md:py-3">
-                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">First signup</span>
+                      <td className="mt-3 block text-ink-600 xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">First signup</span>
                         {formatDate(signup.firstSignupAt)}
                       </td>
-                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-3">
-                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">Signups</span>
+                      <td className="mt-3 block xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Signups</span>
                         <span className="inline-flex rounded-md border border-ink-200 bg-ink-50 px-2 py-0.5 text-xs font-medium text-ink-800">
                           {signup.signupCount}
                         </span>
                       </td>
-                      <td className="mt-3 block md:mt-0 md:table-cell md:px-5 md:py-3">
-                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 md:hidden">Sequence</span>
+                      <td className="mt-3 block xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
+                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Sequence</span>
                         <SequenceStatus signup={signup} />
                       </td>
-                      <td className="mt-4 block md:mt-0 md:table-cell md:px-5 md:py-3">
-                        <div className="flex gap-1 md:justify-end">
+                      <td className="mt-4 block xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
+                        <div className="flex gap-1 xl:justify-end">
                           {signup.followUpStatus === 'active' && (
                             <button
                               aria-label={`Stop sequence for ${signup.email}`}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-900 disabled:opacity-50"
+                              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100 hover:text-ink-950 disabled:opacity-50"
                               disabled={stoppingEmail === signup.email}
                               onClick={() => stopSequence(signup)}
                               title="Stop follow-up sequence"
@@ -331,6 +342,7 @@ export function SignupsClient({
                               ) : (
                                 <Square className="h-4 w-4" />
                               )}
+                              {stoppingEmail === signup.email ? 'Stopping' : 'Stop sequence'}
                             </button>
                           )}
                           <button

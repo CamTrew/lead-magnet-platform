@@ -12,6 +12,8 @@ export interface BrandSettings {
   success: string;
   highlightIntensity: number;
   pageTheme: 'light' | 'dark';
+  privacyPolicyUrl: string;
+  termsUrl: string;
 }
 
 export interface OnboardingAnswers {
@@ -140,6 +142,7 @@ export interface LeadMagnet {
   followUpStopOnBooking: boolean;
   followUpEmails: FollowUpEmail[];
   resendFollowUpAutomationId: string;
+  resendFollowUpRenderVersion: number;
   postSignupMode: PostSignupMode;
   postSignupRedirectUrl: string;
   postSignupHeading: string;
@@ -156,6 +159,13 @@ export interface LeadMagnet {
   createdAt: string;
   updatedAt: string;
 }
+
+export type LeadMagnetSummary = Pick<
+  LeadMagnet,
+  'id' | 'accountId' | 'slug' | 'title' | 'subtitle' | 'imageUrl' | 'published' | 'createdAt' | 'updatedAt'
+>;
+
+export type LeadMagnetOption = Pick<LeadMagnet, 'id' | 'title' | 'slug'>;
 
 export type FollowUpStatus = 'none' | 'active' | 'stopped' | 'completed' | 'failed';
 
@@ -197,8 +207,11 @@ export interface PlatformData {
   submissions: Submission[];
 }
 
-export interface DashboardPayload {
+export interface DashboardBasePayload {
   user: PlatformUser;
   account: AccountSettings;
+}
+
+export interface DashboardPayload extends DashboardBasePayload {
   leadMagnets: LeadMagnet[];
 }

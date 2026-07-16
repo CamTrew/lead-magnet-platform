@@ -21,13 +21,13 @@ export async function GET(request: NextRequest) {
     await enforceRateLimits([
       {
         identifier: payload.user.id,
-        limit: 60,
+        limit: 20,
         scope: 'vercel:status:user',
         windowSeconds: 60,
       },
       {
         identifier: requestIp(request),
-        limit: 120,
+        limit: 60,
         scope: 'vercel:status:ip',
         windowSeconds: 60,
       },
@@ -41,6 +41,18 @@ export async function GET(request: NextRequest) {
     const host = url.searchParams.get('host')?.trim().toLowerCase();
     if (!host || !host.includes('.')) {
       return NextResponse.json({ error: 'Pass ?host=' }, { status: 400 });
+    }
+
+    const configuredHost = payload.account.domain && payload.account.subdomain
+      ? `${payload.account.subdomain}.${payload.account.domain}`.toLowerCase()
+      : '';
+    const allowedHosts = new Set<string>();
+    if (configuredHost) allowedHosts.add(configuredHost);
+    if (payload.account.domainAttachedHost) {
+      allowedHosts.add(payload.account.domainAttachedHost.toLowerCase());
+    }
+    if (!allowedHosts.has(host)) {
+      return NextResponse.json({ error: 'Publishing domain not found' }, { status: 404 });
     }
 
     const status = await getDomainStatus(host);

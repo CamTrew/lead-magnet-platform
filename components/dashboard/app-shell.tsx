@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
@@ -13,12 +13,12 @@ import {
   LogOut,
   Menu,
   Palette,
-  PanelLeftClose,
   Settings,
   Users,
   X,
 } from 'lucide-react';
-import { MagnetsLogo, MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { MagnetsLogo } from '@/components/magnets-logo-mark';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -35,8 +35,6 @@ const navItems = [
   { href: '/dashboard/account', icon: Settings, label: 'Account', requiresSetup: false },
 ];
 
-let sidebarOpenPreference = true;
-
 function userInitials(name: string, email: string) {
   const source = name.trim() || email.trim();
   const parts = source.split(/\s+/).filter(Boolean);
@@ -47,7 +45,6 @@ function userInitials(name: string, email: string) {
 
 function SidebarLink({
   active,
-  collapsed,
   disabled,
   href,
   icon: Icon,
@@ -56,7 +53,6 @@ function SidebarLink({
   tooltip,
 }: {
   active: boolean;
-  collapsed?: boolean;
   disabled?: boolean;
   href: string;
   icon: typeof LayoutDashboard;
@@ -65,10 +61,9 @@ function SidebarLink({
   tooltip?: string;
 }) {
   const baseClassName = cn(
-    'group flex min-h-11 items-center rounded-md text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset lg:min-h-9',
-    collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
+    'group flex min-h-11 items-center gap-2.5 rounded-md px-2.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset lg:min-h-9',
     active
-      ? 'bg-ink-100 text-ink-950 font-medium'
+      ? 'bg-[#fff0e9] text-ink-950 font-medium'
       : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900',
     disabled && 'cursor-not-allowed text-ink-400 hover:bg-transparent hover:text-ink-400'
   );
@@ -76,12 +71,7 @@ function SidebarLink({
   const content = (
     <>
       <Icon className="h-4 w-4 shrink-0" />
-      <span
-        aria-hidden={collapsed}
-        className={cn('overflow-hidden whitespace-nowrap', collapsed && 'w-0 opacity-0')}
-      >
-        {label}
-      </span>
+      <span className="overflow-hidden whitespace-nowrap">{label}</span>
     </>
   );
 
@@ -91,7 +81,7 @@ function SidebarLink({
         type="button"
         aria-disabled
         className={baseClassName}
-        title={tooltip || (collapsed ? label : undefined)}
+        title={tooltip}
       >
         {content}
       </button>
@@ -102,7 +92,7 @@ function SidebarLink({
     <Link
       href={href}
       onClick={onClick}
-      title={tooltip || (collapsed ? label : undefined)}
+      title={tooltip}
       className={baseClassName}
     >
       {content}
@@ -111,8 +101,6 @@ function SidebarLink({
 }
 
 function SidebarContent({
-  collapsed,
-  onCollapseToggle,
   onLogout,
   onNavigate,
   isLoggingOut,
@@ -120,8 +108,6 @@ function SidebarContent({
   userName,
   userEmail,
 }: {
-  collapsed?: boolean;
-  onCollapseToggle?: () => void;
   isLoggingOut?: boolean;
   onLogout: () => void;
   onNavigate?: () => void;
@@ -130,43 +116,41 @@ function SidebarContent({
   userEmail: string;
 }) {
   const pathname = usePathname();
+  const accountMenuRef = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    function closeAccountMenu({ restoreFocus = false } = {}) {
+      const menu = accountMenuRef.current;
+      if (!menu?.open) return;
+      menu.removeAttribute('open');
+      if (restoreFocus) menu.querySelector('summary')?.focus();
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const menu = accountMenuRef.current;
+      if (!menu?.open || menu.contains(event.target as Node)) return;
+      closeAccountMenu();
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      closeAccountMenu({ restoreFocus: true });
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
-      <div
-        className={cn(
-      'flex h-12 items-center border-b border-ink-200 bg-brand-soft',
-          collapsed ? 'justify-center px-2' : 'gap-2.5 px-3'
-        )}
-      >
-        {collapsed ? (
-          <button
-            aria-label="Open sidebar"
-            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md transition hover:bg-white lg:flex"
-            onClick={onCollapseToggle}
-            title="Open sidebar"
-            type="button"
-          >
-              <MagnetsLogoMark className="h-7 w-7" />
-          </button>
-        ) : (
-          <>
-            <Link href="/dashboard" aria-label="Magnets dashboard">
-          <MagnetsLogo className="h-6 w-[7.4rem]" />
-            </Link>
-            {onCollapseToggle && (
-              <button
-                aria-label="Close sidebar"
-                className="ml-auto hidden h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-900 lg:flex"
-                onClick={onCollapseToggle}
-                title="Close sidebar"
-                type="button"
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </button>
-            )}
-          </>
-        )}
+      <div className="dashboard-chrome flex h-11 items-center gap-2.5 border-b border-ink-200 px-3">
+        <Link href="/dashboard" aria-label="Magnets dashboard">
+          <MagnetsLogo className="h-5 w-[6.6rem]" />
+        </Link>
       </div>
 
       <nav className="flex-1 space-y-1 px-2 py-3">
@@ -183,7 +167,6 @@ function SidebarContent({
             >
               <SidebarLink
                 active={active}
-                collapsed={collapsed}
                 disabled={disabled}
                 href={item.href}
                 icon={item.icon}
@@ -197,13 +180,9 @@ function SidebarContent({
       </nav>
 
       <div className="border-t border-ink-200 p-2">
-        <details className="group relative">
+        <details className="group relative" ref={accountMenuRef}>
           <summary
-            title={collapsed ? `${userName || 'Welcome'} - ${userEmail}` : undefined}
-            className={cn(
-              'flex min-h-11 w-full cursor-pointer list-none items-center rounded-md bg-brand-soft text-ink-900 transition hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset [&::-webkit-details-marker]:hidden',
-              collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
-            )}
+            className="dashboard-chrome flex min-h-11 w-full cursor-pointer list-none items-center gap-2.5 rounded-md px-2.5 text-ink-900 transition hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset [&::-webkit-details-marker]:hidden"
           >
             <span
               aria-hidden
@@ -211,22 +190,20 @@ function SidebarContent({
             >
               {userInitials(userName, userEmail)}
             </span>
-            <span
-              aria-hidden={collapsed}
-              className={cn('min-w-0 overflow-hidden', collapsed && 'w-0 opacity-0')}
-            >
+            <span className="min-w-0 overflow-hidden">
               <span className="block truncate text-xs font-semibold text-ink-950">{userName || 'Welcome'}</span>
               <span className="block truncate text-[11px] text-ink-500">{userEmail}</span>
             </span>
           </summary>
 
           <div
-            className={cn(
-              'absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-52 rounded-md border border-ink-200 bg-white p-1.5 shadow-[0_16px_38px_-22px_rgba(17,17,17,0.5)]',
-              collapsed && 'left-1/2 -translate-x-1/2'
-            )}
+            className="absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-52 rounded-md border border-ink-200 bg-white p-1.5 shadow-[0_16px_38px_-22px_rgba(17,17,17,0.5)]"
             role="menu"
           >
+            <ThemeToggle
+              className="h-9 w-full justify-start border-transparent bg-transparent px-2.5 shadow-none"
+              showLabel
+            />
             <a
               href="mailto:hello@camerontrew.com?subject=Magnets%20bug%20report"
               className="flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
@@ -267,17 +244,8 @@ export function DashboardLayoutShell({
   userName: string;
   userEmail: string;
 }) {
-  const [open, setOpen] = useState(sidebarOpenPreference);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  const toggleSidebar = () => {
-    setOpen((current) => {
-      const next = !current;
-      sidebarOpenPreference = next;
-      return next;
-    });
-  };
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -289,17 +257,10 @@ export function DashboardLayoutShell({
   };
 
   return (
-    <main className="min-h-screen bg-brand-soft text-ink-900">
+    <main className="dashboard-canvas min-h-screen text-ink-900">
       <div className="flex min-h-screen">
-        <aside
-          className={cn(
-            'sticky top-0 hidden h-screen shrink-0 border-r border-ink-200 bg-white lg:block',
-            open ? 'w-[232px]' : 'w-[64px]'
-          )}
-        >
+        <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 border-r border-ink-200 bg-white lg:block">
           <SidebarContent
-            collapsed={!open}
-            onCollapseToggle={toggleSidebar}
             isLoggingOut={isLoggingOut}
             onLogout={handleLogout}
             setupComplete={setupComplete}
@@ -351,7 +312,7 @@ export function DashboardLayoutShell({
         </AnimatePresence>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-ink-200 bg-brand-soft/90 px-4 backdrop-blur sm:px-6 lg:hidden lg:px-8">
+          <header className="dashboard-chrome sticky top-0 z-30 flex h-11 items-center gap-3 border-b border-ink-200 px-4 backdrop-blur sm:px-6 lg:hidden lg:px-8">
             <button
               aria-label="Open navigation"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700"
@@ -361,13 +322,13 @@ export function DashboardLayoutShell({
               <Menu className="h-4 w-4" />
             </button>
             <Link href="/dashboard" className="flex items-center gap-2" aria-label="Magnets dashboard">
-              <MagnetsLogo className="h-6 w-[7.4rem]" />
+              <MagnetsLogo className="h-5 w-[6.6rem]" />
             </Link>
           </header>
 
-          <div className="flex-1 bg-brand-soft px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+          <div className="dashboard-canvas flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</div>
 
-          <footer className="border-t border-ink-200 bg-brand-soft px-4 py-4 text-xs text-ink-500 sm:px-6 lg:px-8">
+          <footer className="dashboard-canvas border-t border-ink-200 px-4 py-4 text-xs text-ink-500 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>Magnets</span>
               <div className="flex gap-3">

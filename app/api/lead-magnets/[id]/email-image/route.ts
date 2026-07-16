@@ -1,13 +1,21 @@
 import { issueSignedToken } from '@vercel/blob';
-import { handleUploadPresigned, type HandleUploadPresignedBody } from '@vercel/blob/client';
+import { handleUploadPresigned } from '@vercel/blob/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getCurrentDashboardPayload } from '@/lib/auth';
+import { getCurrentDashboardBase } from '@/lib/auth';
+import { parsePresignedUploadBody } from '@/lib/blob-upload-request';
 import {
   isAccountEmailImageBlobUrl,
   publicEmailImageUrl,
 } from '@/lib/email-image-proxy';
 import { log } from '@/lib/logger';
+import { accountOwnsLeadMagnet } from '@/lib/platform-store';
+import {
+  enforceRateLimits,
+  rateLimitResponse,
+  RateLimitError,
+  requestIp,
+} from '@/lib/rate-limit';
 import { MAX_MAGNET_IMAGE_BYTES } from '@/lib/upload';
 
 const ROUTE = '/api/lead-magnets/[id]/email-image';
@@ -63,7 +71,7 @@ export async function POST(
   }
   const leadMagnetId = idParse.data;
 
-  const body = (await request.json().catch(() => null)) as HandleUploadPresignedBody | null;
+  const body = parsePresignedUploadBody(await request.json().catch(() => null));
   if (!body) {
     return NextResponse.json({ error: 'Invalid upload request' }, { status: 400 });
   }
@@ -74,12 +82,27 @@ export async function POST(
       request,
       webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
       getSignedToken: async (pathname) => {
-        const payload = await getCurrentDashboardPayload();
+        const payload = await getCurrentDashboardBase();
         if (!payload) {
           throw new UploadRouteError('Not authenticated', 401);
         }
 
-        if (!payload.leadMagnets.some((leadMagnet) => leadMagnet.id === leadMagnetId)) {
+        await enforceRateLimits([
+          {
+            identifier: payload.user.id,
+            limit: 60,
+            scope: 'upload:email-image:user',
+            windowSeconds: 60 * 60,
+          },
+          {
+            identifier: requestIp(request),
+            limit: 180,
+            scope: 'upload:email-image:ip',
+            windowSeconds: 60 * 60,
+          },
+        ]);
+
+        if (!await accountOwnsLeadMagnet(payload.account.id, leadMagnetId)) {
           throw new UploadRouteError('Lead magnet not found', 404);
         }
 
@@ -131,6 +154,8 @@ export async function POST(
 
     return NextResponse.json(response);
   } catch (err) {
+    if (err instanceof RateLimitError) return rateLimitResponse(err);
+
     const missingBlobStore =
       err instanceof Error &&
       (err.message.includes('No blob credentials found') ||
@@ -170,11 +195,25 @@ export async function PUT(
   const leadMagnetId = idParse.data;
 
   try {
-    const payload = await getCurrentDashboardPayload();
+    const payload = await getCurrentDashboardBase();
     if (!payload) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
-    if (!payload.leadMagnets.some((leadMagnet) => leadMagnet.id === leadMagnetId)) {
+    await enforceRateLimits([
+      {
+        identifier: payload.user.id,
+        limit: 60,
+        scope: 'upload:email-image-finalise:user',
+        windowSeconds: 60 * 60,
+      },
+      {
+        identifier: requestIp(request),
+        limit: 180,
+        scope: 'upload:email-image-finalise:ip',
+        windowSeconds: 60 * 60,
+      },
+    ]);
+    if (!await accountOwnsLeadMagnet(payload.account.id, leadMagnetId)) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
 
@@ -202,6 +241,8 @@ export async function PUT(
 
     return NextResponse.json({ imageUrl });
   } catch (err) {
+    if (err instanceof RateLimitError) return rateLimitResponse(err);
+
     log.warn('Email image finalisation failed', {
       route: ROUTE,
       method: 'PUT',

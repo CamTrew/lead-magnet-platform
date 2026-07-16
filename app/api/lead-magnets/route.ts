@@ -11,6 +11,7 @@ import {
 import { log } from '@/lib/logger';
 import { isSetupComplete } from '@/lib/setup';
 import { generatedLeadMagnetSchema } from '@/lib/lead-magnet-ai';
+import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
 
 const ROUTE = '/api/lead-magnets';
 
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
       downloadLink,
       generatedDraft
     );
+    invalidatePublishedLeadMagnetCache();
 
     log.info('Lead magnet created', {
       route: ROUTE,

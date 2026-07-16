@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { parseEmailImageLine } from './email-body-images';
+import { renderEmailInlineHtml, renderEmailInlineText } from './email-body-links';
 import { log } from './logger';
 import {
   platformResendApiKey,
@@ -31,7 +32,7 @@ export function renderEmailTextFallback(text: string) {
       .split('\n')
       .map((line) => {
         const image = parseEmailImageLine(line);
-        return image ? `${image.alt}: ${image.url}` : line;
+        return image ? `${image.alt}: ${image.url}` : renderEmailInlineText(line);
       })
       .join('\n')
   );
@@ -47,7 +48,7 @@ function renderEmailBodyHtml(text: string) {
     if (!textChunk) return;
 
     chunks.push(
-      `<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${escapeHtml(textChunk)}</div>`
+      `<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${renderEmailInlineHtml(textChunk)}</div>`
     );
   };
 

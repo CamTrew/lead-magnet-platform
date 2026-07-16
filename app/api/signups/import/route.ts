@@ -36,7 +36,7 @@ const manualSchema = z.object({
   leadMagnetId: z.string().uuid(),
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254),
-});
+}).strict();
 
 const csvSchema = z.object({
   type: z.literal('csv'),
@@ -45,7 +45,7 @@ const csvSchema = z.object({
   hasHeader: z.boolean().default(true),
   emailColumn: columnIndexSchema,
   nameColumn: columnIndexSchema.nullable(),
-});
+}).strict();
 
 const bodySchema = z.discriminatedUnion('type', [manualSchema, csvSchema]);
 

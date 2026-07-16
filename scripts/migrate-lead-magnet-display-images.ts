@@ -35,7 +35,7 @@ async function main() {
   const pending = sources.filter((source) => !isLeadMagnetDisplayImageUrl(source.imageUrl));
 
   console.log(
-    `${pending.length} of ${sources.length} Blob-backed lead magnet images ${
+    `${pending.length} of ${sources.length} stored lead magnet images ${
       dryRun ? 'would be' : 'will be'
     } converted to public display renditions.`
   );

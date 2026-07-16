@@ -2,14 +2,20 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { clearSession, requireDashboardPayload } from '@/lib/auth';
 import { verifyPassword } from '@/lib/passwords';
-import { deleteUserAndAccount, getPasswordHashForUser } from '@/lib/platform-store';
+import {
+  AccountDomainMutationInProgressError,
+  deleteUserAndAccount,
+  getAccountWithSecrets,
+  getPasswordHashForUser,
+  withAccountDomainMutationLock,
+} from '@/lib/platform-store';
 import {
   enforceRateLimits,
   rateLimitResponse,
   RateLimitError,
   requestIp,
 } from '@/lib/rate-limit';
-import { removeDomain } from '@/lib/vercel';
+import { isVercelConfigured, removeDomain } from '@/lib/vercel';
 import { log } from '@/lib/logger';
 
 const ROUTE = '/api/account/delete';
@@ -66,33 +72,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password is incorrect.' }, { status: 401 });
     }
 
-    // Detach the account's hostname from the project before we drop the row so
-    // the hostname is reusable by another account in the future. We only ever
-    // attach the subdomain (e.g. get.example.com), not the apex.
-    const attachedHost = payload.account.domainAttachedHost;
-    if (attachedHost) {
-      try {
-        await removeDomain(attachedHost);
-      } catch (detachErr) {
-        log.warn('Detach during account delete failed (non-fatal)', {
-          route: ROUTE,
-          method: 'POST',
-          userId,
-          accountId,
-          extra: { error: detachErr },
-        });
+    return await withAccountDomainMutationLock(payload.account.id, async () => {
+      const currentAccount = await getAccountWithSecrets(payload.account.id);
+      if (!currentAccount) {
+        return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
       }
-    }
 
-    await deleteUserAndAccount(payload.user.id);
-    await clearSession();
+      // Deletion is deliberately blocked when cleanup cannot be confirmed. If
+      // we deleted the row anyway, the only reference to the billable Vercel
+      // hostname would be lost and it could remain attached indefinitely.
+      const attachedHost = currentAccount.domainAttachedHost;
+      if (attachedHost) {
+        if (!isVercelConfigured()) {
+          return NextResponse.json(
+            { error: 'We could not remove your publishing domain. Try again or contact support.' },
+            { status: 503 }
+          );
+        }
+        try {
+          await removeDomain(attachedHost);
+        } catch (detachErr) {
+          log.error('Detach blocked account deletion', {
+            route: ROUTE,
+            method: 'POST',
+            status: 502,
+            userId,
+            accountId,
+            extra: { host: attachedHost, error: detachErr },
+          });
+          return NextResponse.json(
+            { error: 'We could not remove your publishing domain, so the account was not deleted. Try again.' },
+            { status: 502 }
+          );
+        }
+      }
 
-    log.info('Account deleted', { route: ROUTE, method: 'POST', status: 200, userId, accountId });
+      await deleteUserAndAccount(payload.user.id);
+      await clearSession();
 
-    return NextResponse.json({ success: true });
+      log.info('Account deleted', { route: ROUTE, method: 'POST', status: 200, userId, accountId });
+      return NextResponse.json({ success: true });
+    });
   } catch (err) {
     if (err instanceof RateLimitError) {
       return rateLimitResponse(err);
+    }
+    if (err instanceof AccountDomainMutationInProgressError) {
+      return NextResponse.json(
+        { error: 'Another domain change is already in progress. Wait a moment and try again.' },
+        { status: 409 }
+      );
     }
     log.error('Account delete failed', {
       route: ROUTE,

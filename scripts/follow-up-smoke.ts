@@ -17,6 +17,11 @@ import {
   replaceEmailBodySegment,
 } from '../lib/email-body-images';
 import {
+  insertEmailLink,
+  normaliseEmailLinkUrl,
+  renderEmailEditorHtml,
+} from '../lib/email-body-links';
+import {
   proxyEmailImagesInBody,
   publicEmailImageUrl,
   verifyEmailImageToken,
@@ -28,7 +33,11 @@ import {
   sendLeadMagnetEmail,
 } from '../lib/resend';
 import { isEmailDeliveryReady, isPublishingDomainReady, isSetupComplete } from '../lib/setup';
-import { resolveResendApiKey, resolveResendFromEmail } from '../lib/platform-resend';
+import {
+  resolveResendApiKey,
+  resolveResendFromEmail,
+  usesPlatformResendAccount,
+} from '../lib/platform-resend';
 import { senderMatchesAccountDomain } from '../lib/dns-records';
 import { testPipedriveConnection, upsertPipedrivePerson } from '../lib/pipedrive';
 import {
@@ -181,6 +190,8 @@ const account: AccountSettings = {
     success: '#22c55e',
     highlightIntensity: 100,
     pageTheme: 'light',
+    privacyPolicyUrl: '',
+    termsUrl: '',
   },
   resendFromEmail: 'Smoke Test <hello@send.example.com>',
   resendApiKey: 're_smoke_test',
@@ -240,7 +251,7 @@ const magnet: LeadMagnet = {
       delayHours: 0,
       subject: 'First follow-up for {name}',
       preview: 'First preview',
-      body: 'Hi {name}, here is the link again:\n\n![Audit preview](https://cdn.example.com/audit-preview.png)\n\n{download_link}',
+      body: 'Hi {name}, [book a call](https://example.com/book) or use the link below.\n\n![Audit preview](https://cdn.example.com/audit-preview.png)\n\n{download_link}',
       resendTemplateId: '',
     },
     {
@@ -254,6 +265,7 @@ const magnet: LeadMagnet = {
     },
   ],
   resendFollowUpAutomationId: '',
+  resendFollowUpRenderVersion: 0,
   postSignupMode: 'message',
   postSignupRedirectUrl: '',
   postSignupHeading: '',
@@ -317,6 +329,7 @@ async function run() {
     domainVerifiedAt: null,
   };
   assert.equal(resolveResendApiKey(platformManagedAccount), 're_platform_smoke');
+  assert.equal(usesPlatformResendAccount(platformManagedAccount), true);
   assert.equal(resolveResendFromEmail(platformManagedAccount), 'Magnets <hello@mail.magnets.so>');
   assert.equal(isEmailDeliveryReady(platformManagedAccount), true);
 
@@ -342,12 +355,29 @@ async function run() {
     're_platform_smoke',
     'An unverified customer sender must use the platform key with the platform sender.'
   );
+  assert.equal(
+    usesPlatformResendAccount(accountKeyWithoutVerifiedSender),
+    true,
+    'An unverified customer key still falls back to the protected platform workspace.'
+  );
   assert.equal(resolveResendApiKey(account), 're_smoke_test');
+  assert.equal(usesPlatformResendAccount(account), false);
+
+  const unreadableCustomerKeyAccount = {
+    ...account,
+    resendApiKey: '',
+  };
+  assert.equal(resolveResendApiKey(unreadableCustomerKeyAccount), 're_platform_smoke');
+  assert.equal(resolveResendFromEmail(unreadableCustomerKeyAccount), 'Magnets <hello@mail.magnets.so>');
+  assert.equal(usesPlatformResendAccount(unreadableCustomerKeyAccount), true);
 
   resetRequests();
   const ownedEmail = await sendLeadMagnetEmail({
     account,
-    magnet,
+    magnet: {
+      ...magnet,
+      emailBody: 'Hi {name}, read [the guide](https://example.com/guide).\n\n![Guide preview](https://cdn.example.com/guide-preview.png)\n\nOr use {download_link}.',
+    },
     to: 'existing-user@example.com',
     name: 'Existing User',
   });
@@ -355,6 +385,10 @@ async function run() {
   const ownedEmailRequest = findRequest('/emails', 'POST');
   assert.equal(ownedEmailRequest?.authorization, 'Bearer re_smoke_test');
   assert.equal(ownedEmailRequest?.body?.from, account.resendFromEmail);
+  assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/example\.com\/guide"[^>]*>the guide<\/a>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<img src="https:\/\/cdn\.example\.com\/guide-preview\.png"/);
+  assert.match(String(ownedEmailRequest?.body?.text), /the guide \(https:\/\/example\.com\/guide\)/);
+  assert.match(String(ownedEmailRequest?.body?.text), /Guide preview: https:\/\/cdn\.example\.com\/guide-preview\.png/);
 
   const legacySenderAccount = {
     ...account,
@@ -440,6 +474,7 @@ async function run() {
   assert.equal(typeof templateBody.html, 'string');
   assert.match(String(templateBody.html), /\{\{\{NAME\}\}\}/);
   assert.match(String(templateBody.html), /<img src="https:\/\/cdn\.example\.com\/audit-preview\.png"/);
+  assert.match(String(templateBody.html), /href="https:\/\/example\.com\/book"[^>]*>book a call<\/a>/);
   assert.match(String(templateBody.html), /alt="Audit preview"/);
   assert.match(String(templateBody.html), /Stop this sequence/);
   assert.match(String(templateBody.html), /\{\{\{STOP_SEQUENCE_URL\}\}\}/);
@@ -450,6 +485,28 @@ async function run() {
   const normalEmailBody = 'Here is the screenshot:\n\n![Screenshot](https://cdn.example.com/screenshot.jpg)\n\nDone.';
   assert.match(renderPlainEmailHtml(normalEmailBody, 'Preview'), /<img src="https:\/\/cdn\.example\.com\/screenshot\.jpg"/);
   assert.match(renderEmailTextFallback(normalEmailBody), /Screenshot: https:\/\/cdn\.example\.com\/screenshot\.jpg/);
+
+  const linkedEmailBody = 'Read [the guide](https://example.com/guide) or visit https://example.com/help.';
+  const linkedEmailHtml = renderPlainEmailHtml(linkedEmailBody, 'Preview');
+  const linkedEditorHtml = renderEmailEditorHtml(linkedEmailBody);
+  assert.match(linkedEmailHtml, /href="https:\/\/example\.com\/guide"[^>]*>the guide<\/a>/);
+  assert.match(linkedEmailHtml, /href="https:\/\/example\.com\/help"[^>]*>https:\/\/example\.com\/help<\/a>\./);
+  assert.match(linkedEditorHtml, /href="https:\/\/example\.com\/guide"[^>]*>the guide<\/a>/);
+  assert.doesNotMatch(linkedEditorHtml, /\[the guide\]/);
+  assert.equal(
+    renderEmailTextFallback(linkedEmailBody),
+    'Read the guide (https://example.com/guide) or visit https://example.com/help.'
+  );
+  assert.equal(normaliseEmailLinkUrl('example.com/guide'), 'https://example.com/guide');
+  assert.equal(normaliseEmailLinkUrl('javascript:alert(1)'), null);
+  assert.deepEqual(insertEmailLink('Read the guide', 5, 14, 'the guide', 'example.com/guide'), {
+    cursor: 43,
+    text: 'Read [the guide](https://example.com/guide)',
+  });
+  assert.doesNotMatch(
+    renderPlainEmailHtml('[unsafe](javascript:alert(1))', ''),
+    /href="javascript:/
+  );
 
   const originalBody = 'First paragraph.\n\nSecond paragraph that must stay.';
   const bodyWithFirstImage = appendEmailImage(originalBody, 'https://cdn.example.com/first.png');
@@ -532,6 +589,7 @@ async function run() {
       ...magnet,
       followUpEmails: synced.emails,
       resendFollowUpAutomationId: synced.automationId,
+      resendFollowUpRenderVersion: synced.renderVersion,
     },
     email: 'Lead@Example.com',
     name: 'Lead',
@@ -590,6 +648,47 @@ async function run() {
     leadMagnetId: magnet.id,
     email: 'lead@example.com',
   });
+
+  resetRequests();
+  let savedRenderVersion = -1;
+  const staleRenderResult = await startLeadMagnetFollowUpSequence({
+    account,
+    magnet: {
+      ...magnet,
+      followUpEmails: synced.emails,
+      resendFollowUpAutomationId: synced.automationId,
+      resendFollowUpRenderVersion: 0,
+    },
+    email: 'existing-template@example.com',
+    name: 'Existing Template',
+    store: {
+      createFollowUpRun: async () => ({ created: false, runId: null }),
+      markFollowUpRunFailed: async () => undefined,
+      hasActiveFollowUpRunForEmail: async () => false,
+      stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+      listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+      stopFollowUpRunsForAccountEmail: async () => ({
+        stopped: false,
+        stoppedCount: 0,
+        leadMagnetIds: [],
+      }),
+      updateLeadMagnetFollowUpSync: async (_accountId, _leadMagnetId, updates) => {
+        savedRenderVersion = updates.resendFollowUpRenderVersion;
+        return {
+          ...magnet,
+          followUpEmails: updates.followUpEmails,
+          resendFollowUpAutomationId: updates.resendFollowUpAutomationId,
+          resendFollowUpRenderVersion: updates.resendFollowUpRenderVersion,
+        };
+      },
+    },
+  });
+  assert.deepEqual(staleRenderResult, { started: false, reason: 'duplicate' });
+  assert.equal(savedRenderVersion, synced.renderVersion);
+  assert.ok(findRequest('/templates/tmpl_1', 'PATCH'));
+  assert.ok(findRequest('/templates/tmpl_2', 'PATCH'));
+  assert.ok(findRequest('/automations/auto_1', 'PATCH'));
+  assert.deepEqual(eventSendBodies(), []);
 
   resetRequests();
   await syncLeadMagnetFollowUpAutomation(account, {

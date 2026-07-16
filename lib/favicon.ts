@@ -9,7 +9,7 @@ export function isPlatformHost(host: string) {
   const hostname = cleanHostname(host);
   return (
     hostname === 'magnets.so' ||
-    hostname === 'www.magnets.so' ||
+    hostname.endsWith('.magnets.so') ||
     hostname === 'localhost' ||
     hostname.startsWith('127.') ||
     hostname.endsWith('.vercel.app')

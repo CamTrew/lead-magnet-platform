@@ -3,6 +3,7 @@ import {
   isSafeQuizDestination,
   resolveQuizDestination,
 } from '../lib/quiz-routing';
+import { validateQuizConfiguration } from '../lib/lead-magnet-validation';
 
 const questions = [
   {
@@ -67,6 +68,41 @@ assert.equal(
     [{ questionId: 'goal', optionId: 'positioning' }]
   ),
   'https://example.com/positioning'
+);
+
+assert.deepEqual(
+  validateQuizConfiguration({
+    published: true,
+    questions,
+    routes: [{
+      id: 'valid-route',
+      destinationUrl: 'https://example.com/next',
+      conditions: [{ questionId: 'goal', optionId: 'pipeline' }],
+    }],
+  }),
+  []
+);
+
+const invalidRouteIssues = validateQuizConfiguration({
+  published: true,
+  questions,
+  routes: [{
+    id: 'invalid-route',
+    destinationUrl: '',
+    conditions: [{ questionId: 'goal', optionId: 'deleted-option' }],
+  }],
+});
+assert.equal(invalidRouteIssues.some((issue) => issue.message.includes('destination URL')), true);
+assert.equal(invalidRouteIssues.some((issue) => issue.message.includes('no longer exists')), true);
+
+assert.equal(
+  validateQuizConfiguration({
+    published: false,
+    questions,
+    routes: [{ id: 'draft-route', destinationUrl: '', conditions: [] }],
+  }).length,
+  0,
+  'Incomplete routes must remain valid while the page is a draft.'
 );
 
 console.log('Quiz routing smoke test passed.');

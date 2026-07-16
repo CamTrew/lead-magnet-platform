@@ -13,9 +13,11 @@ import {
 } from 'lucide-react';
 import { HeroDashboard } from '@/components/landing/hero-dashboard';
 import { ScrollReveal } from '@/components/landing/scroll-reveal';
+import { safeJsonLd } from '@/lib/lead-magnet-metadata';
 import { MagnetsLogo, MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { ThemeToggle } from '@/components/theme-toggle';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so').replace(/\/$/, '');
 
 export const metadata: Metadata = {
   title: 'Lead Magnet Builder for Landing Pages and Email Capture',
@@ -99,13 +101,44 @@ const structuredData = {
   '@context': 'https://schema.org',
   '@graph': [
     {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'Magnets',
+      url: SITE_URL,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${SITE_URL}/brand/magnets-mark-dark.png`,
+      },
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      name: 'Magnets',
+      url: SITE_URL,
+      publisher: { '@id': `${SITE_URL}/#organization` },
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'WebPage',
+      '@id': `${SITE_URL}/#webpage`,
+      name: 'Lead Magnet Builder for Landing Pages and Email Capture',
+      description:
+        'Create lead magnet landing pages, capture emails, deliver resources instantly, and follow up automatically.',
+      url: SITE_URL,
+      isPartOf: { '@id': `${SITE_URL}/#website` },
+      about: { '@id': `${SITE_URL}/#software` },
+      inLanguage: 'en',
+    },
+    {
       '@type': 'SoftwareApplication',
+      '@id': `${SITE_URL}/#software`,
       name: 'Magnets',
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web',
       url: SITE_URL,
       description:
         'A lead magnet builder for landing pages, email capture, resource delivery, and follow-up email sequences.',
+      provider: { '@id': `${SITE_URL}/#organization` },
       featureList: [
         'Lead magnet landing pages',
         'Email capture forms',
@@ -136,9 +169,9 @@ const structuredData = {
 
 export default function HomePage() {
   return (
-    <main className="overflow-hidden bg-[#f7f5f1] text-ink-950">
+    <main className="overflow-hidden bg-brand-soft text-ink-950">
       <script
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(structuredData) }}
         type="application/ld+json"
       />
       <header className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
@@ -151,6 +184,7 @@ export default function HomePage() {
           <a className="transition hover:text-ink-950" href="#integrations">Integrations</a>
         </nav>
         <div className="flex items-center gap-2">
+          <ThemeToggle className="shrink-0" />
           <Link className="hidden h-10 items-center px-3 text-sm font-medium text-ink-700 transition hover:text-ink-950 sm:inline-flex" href="/login">
             Sign in
           </Link>
@@ -168,7 +202,7 @@ export default function HomePage() {
             Lead capture without the setup tax
           </div>
           <h1 className="mx-auto mt-7 max-w-4xl text-5xl font-semibold leading-[1.02] text-ink-950 sm:text-6xl lg:text-7xl">
-            Build lead magnets that turn attention into conversations.
+            Build lead magnets that turn attention into conversations
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-ink-600 sm:text-xl">
             Create the page. Capture the email. Deliver the resource. Follow up while the problem is still top of mind.
@@ -240,7 +274,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="bg-[#f7f5f1] py-20 sm:py-28" id="integrations">
+      <section className="bg-brand-soft py-20 sm:py-28" id="integrations">
         <div className="mx-auto grid max-w-7xl items-start gap-12 px-5 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20 lg:px-10">
           <ScrollReveal>
             <p className="text-sm font-medium text-brand-coral">Use your stack when you need it</p>
@@ -285,7 +319,7 @@ export default function HomePage() {
           <h2 className="mt-4 text-4xl font-semibold leading-[1.08] sm:text-5xl">The useful answers.</h2>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {faqs.map((faq) => (
-              <article className="border border-ink-200 bg-[#f7f5f1] p-5" key={faq.question}>
+              <article className="border border-ink-200 bg-brand-soft p-5" key={faq.question}>
                 <h3 className="text-base font-semibold text-ink-950">{faq.question}</h3>
                 <p className="mt-3 text-sm leading-6 text-ink-600">{faq.answer}</p>
               </article>
@@ -297,7 +331,7 @@ export default function HomePage() {
       <section className="border-t border-ink-200 bg-white px-5 py-20 sm:px-8 sm:py-28 lg:px-10">
         <ScrollReveal className="mx-auto flex max-w-4xl flex-col items-center text-center">
           <MagnetsLogoMark className="h-14 w-14" />
-          <h2 className="mt-6 text-4xl font-semibold leading-[1.08] sm:text-5xl">Make the thing people are happy to give their email for.</h2>
+          <h2 className="mt-6 text-4xl font-semibold leading-[1.08] sm:text-5xl">Make the thing people are happy to give their email for</h2>
           <p className="mt-4 max-w-xl text-lg leading-8 text-ink-600">Build the page, share the link, and let Magnets handle the first response every time someone opts in.</p>
           <Link className="mt-8 inline-flex h-12 items-center gap-2 rounded-md bg-ink-950 px-5 text-base font-semibold text-white transition hover:bg-brand-orange hover:text-ink-950" href="/register">
             Start free <ArrowRight className="h-4 w-4" />
@@ -308,7 +342,7 @@ export default function HomePage() {
       <footer className="border-t border-ink-950 bg-ink-950">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-white/60 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
           <MagnetsLogo markClassName="h-7" variant="light" />
-          <div className="flex gap-5">
+          <div className="flex flex-wrap items-center gap-5">
             <Link className="transition hover:text-white" href="/privacy">Privacy</Link>
             <Link className="transition hover:text-white" href="/terms">Terms</Link>
             <Link className="transition hover:text-white" href="/login">Sign in</Link>

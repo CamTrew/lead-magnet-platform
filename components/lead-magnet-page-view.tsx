@@ -7,6 +7,12 @@ import {
   leadMagnetDisplayImageUrl,
   leadMagnetImageSrcSet,
 } from '@/lib/lead-magnet-images';
+import {
+  absoluteMetadataUrl,
+  preferredLeadMagnetUrl,
+  safeJsonLd,
+} from '@/lib/lead-magnet-metadata';
+import { safeLegalUrl } from '@/lib/legal-links';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 type BrandCss = CSSProperties & Record<`--${string}`, string>;
@@ -68,9 +74,11 @@ const leadMagnetImageSizes = '(min-width: 1024px) 520px, calc(100vw - 48px)';
  */
 export function LeadMagnetPageView({
   account,
+  canonicalUrl,
   leadMagnet: magnet,
 }: {
   account: AccountSettings;
+  canonicalUrl?: string;
   leadMagnet: LeadMagnet;
 }) {
   const brandName = account.logoText.trim();
@@ -79,6 +87,8 @@ export function LeadMagnetPageView({
   const brandPrimary = account.brand.primary;
   const brandIntensity = account.brand.highlightIntensity;
   const isDark = account.brand.pageTheme === 'dark';
+  const privacyPolicyUrl = safeLegalUrl(account.brand.privacyPolicyUrl);
+  const termsUrl = safeLegalUrl(account.brand.termsUrl);
   const tone = (opacity: number) => alpha(brandPrimary, brandHighlightOpacity(opacity, brandIntensity));
   const brandStyle: BrandCss = {
     '--brand-primary': brandPrimary,
@@ -89,6 +99,7 @@ export function LeadMagnetPageView({
     backgroundColor: isDark ? '#0b0d10' : '#ffffff',
     backgroundImage: isDark ? darkPageBackground : pageBackground,
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
+    colorScheme: isDark ? 'dark' : 'light',
   };
   const imageUrl = magnet.imageUrl
     ? leadMagnetDisplayImageUrl({
@@ -99,6 +110,14 @@ export function LeadMagnetPageView({
     : '';
   const imageSrcSet = magnet.imageUrl ? leadMagnetImageSrcSet(magnet.imageUrl) : undefined;
   const imageOrigin = remoteImageOrigin(imageUrl);
+  const pageUrl = canonicalUrl || preferredLeadMagnetUrl(account, magnet);
+  const siteUrl = absoluteMetadataUrl('/', pageUrl);
+  const structuredImageUrl = imageUrl ? absoluteMetadataUrl(imageUrl, siteUrl) : undefined;
+  const structuredLogoUrl = account.domainAttachedHost
+    ? absoluteMetadataUrl('/favicon.ico', siteUrl)
+    : account.logoUrl.startsWith('http://') || account.logoUrl.startsWith('https://')
+      ? account.logoUrl
+      : undefined;
 
   return (
     <div
@@ -204,27 +223,56 @@ export function LeadMagnetPageView({
       </main>
 
       <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
-        <div className="magnet-page-muted mx-auto flex max-w-[1280px] items-center justify-center px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
+        <div className="magnet-page-muted mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
+          {privacyPolicyUrl && (
+            <a className="transition hover:text-gray-900" href={privacyPolicyUrl} rel="noreferrer" target="_blank">
+              Privacy policy
+            </a>
+          )}
+          {termsUrl && (
+            <a className="transition hover:text-gray-900" href={termsUrl} rel="noreferrer" target="_blank">
+              Terms
+            </a>
+          )}
         </div>
       </footer>
 
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: safeJsonLd({
             '@context': 'https://schema.org',
             '@type': 'WebPage',
+            '@id': `${pageUrl}#webpage`,
+            url: pageUrl,
             name: magnet.title,
             description: magnet.subtitle || magnet.description,
             inLanguage: 'en',
-            isPartOf: account.domain
-              ? { '@type': 'WebSite', name: displayName, url: `https://${account.domain}` }
+            datePublished: magnet.createdAt,
+            dateModified: magnet.updatedAt,
+            primaryImageOfPage: structuredImageUrl
+              ? { '@type': 'ImageObject', url: structuredImageUrl }
               : undefined,
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': `${siteUrl}#website`,
+              name: displayName,
+              url: siteUrl,
+            },
             publisher: {
               '@type': 'Organization',
+              '@id': `${siteUrl}#organization`,
               name: displayName,
-              ...(account.logoUrl ? { logo: account.logoUrl } : {}),
+              url: siteUrl,
+              ...(structuredLogoUrl
+                ? {
+                    logo: {
+                      '@type': 'ImageObject',
+                      url: structuredLogoUrl,
+                    },
+                  }
+                : {}),
             },
           }),
         }}
@@ -347,10 +395,4 @@ function CaptureCard({
       <LeadMagnetForm accountId={account.id} magnet={magnet} />
     </div>
   );
-}
-
-export function leadMagnetMetadataSnippet(value: string, max = 160) {
-  const clean = value.replace(/\s+/g, ' ').trim();
-  if (clean.length <= max) return clean;
-  return `${clean.slice(0, max - 1).trimEnd()}…`;
 }

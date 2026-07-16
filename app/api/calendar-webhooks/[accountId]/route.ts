@@ -18,9 +18,10 @@ import {
 import { log } from '@/lib/logger';
 
 const ROUTE = '/api/calendar-webhooks/[accountId]';
+const MAX_WEBHOOK_BODY_BYTES = 512 * 1024;
 const paramsSchema = z.object({
   accountId: z.string().uuid(),
-});
+}).strict();
 
 function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
@@ -57,20 +58,12 @@ export async function POST(
     }
     accountId = parsedParams.data.accountId;
 
-    await enforceRateLimits([
-      {
-        identifier: requestIp(request),
-        limit: 240,
-        scope: 'calendar-webhook:ip',
-        windowSeconds: 60 * 5,
-      },
-      {
-        identifier: accountId,
-        limit: 240,
-        scope: 'calendar-webhook:account',
-        windowSeconds: 60 * 5,
-      },
-    ]);
+    await enforceRateLimits([{
+      identifier: requestIp(request),
+      limit: 240,
+      scope: 'calendar-webhook:ip',
+      windowSeconds: 60 * 5,
+    }]);
 
     const token = request.nextUrl.searchParams.get('token') || '';
     const account = await getAccountWithSecrets(accountId);
@@ -85,7 +78,17 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid webhook token' }, { status: 401 });
     }
 
+    await enforceRateLimits([{
+      identifier: accountId,
+      limit: 240,
+      scope: 'calendar-webhook:account',
+      windowSeconds: 60 * 5,
+    }]);
+
     const bodyText = await request.text();
+    if (Buffer.byteLength(bodyText, 'utf8') > MAX_WEBHOOK_BODY_BYTES) {
+      return NextResponse.json({ error: 'Webhook payload is too large' }, { status: 413 });
+    }
     const signature = request.headers.get('x-cal-signature-256') || '';
     if (
       account.calendarProvider === 'calcom' &&

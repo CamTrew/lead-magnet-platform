@@ -37,16 +37,28 @@ function hasVerifiedAccountSender(account: ResendAccount) {
   );
 }
 
+function hasUsableAccountKey(account: ResendAccount) {
+  const accountKey = account.resendApiKey?.trim() || '';
+  return Boolean(accountKey && !isMaskedSecret(accountKey));
+}
+
+function usesAccountResendWorkspace(account: ResendAccount) {
+  return hasUsableAccountKey(account) && hasVerifiedAccountSender(account);
+}
+
 export function resolveResendApiKey(account: ResendAccount) {
   const accountKey = account.resendApiKey?.trim() || '';
-  const hasAccountKey = Boolean(accountKey && !isMaskedSecret(accountKey));
 
   // A Resend API key can only send from domains verified in that same Resend
   // account. Use an account-owned key only with its verified account sender.
   // Otherwise, use the Magnets key and Magnets sender together.
-  if (hasAccountKey && hasVerifiedAccountSender(account)) return accountKey;
+  if (usesAccountResendWorkspace(account)) return accountKey;
 
-  return platformResendApiKey() || (hasAccountKey ? accountKey : '');
+  return platformResendApiKey() || (hasUsableAccountKey(account) ? accountKey : '');
+}
+
+export function usesPlatformResendAccount(account: ResendAccount) {
+  return Boolean(platformResendApiKey()) && !usesAccountResendWorkspace(account);
 }
 
 /**
@@ -57,7 +69,7 @@ export function resolveResendApiKey(account: ResendAccount) {
 export function resolveResendFromEmail(
   account: ResendAccount
 ) {
-  if (hasVerifiedAccountSender(account)) {
+  if (usesAccountResendWorkspace(account)) {
     return account.resendFromEmail.trim();
   }
 

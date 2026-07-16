@@ -1,6 +1,9 @@
 {
   "name": "Magnets",
   "short_name": "Magnets",
+  "description": "Build lead-magnet pages, capture emails, deliver resources, and follow up from one place.",
+  "start_url": "/dashboard/pages",
+  "scope": "/",
   "icons": [
     {
       "src": "/brand/magnets-mark-dark.png",

@@ -14,6 +14,7 @@ import {
   Mail,
   MessageSquare,
   Newspaper,
+  ScrollText,
 } from 'lucide-react';
 import {
   AceternityCard,
@@ -25,7 +26,7 @@ import { PageHeader } from '@/components/dashboard/app-shell';
 import { DeliverySection } from '@/components/dashboard/delivery-section';
 import { LockedField } from '@/components/dashboard/locked-field';
 import { PublishingWizard } from '@/components/dashboard/publishing-wizard';
-import type { AccountSettings, CalendarProvider, DashboardPayload } from '@/lib/types';
+import type { AccountSettings, CalendarProvider, DashboardBasePayload } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -43,12 +44,12 @@ function SectionHeader({
 }) {
   return (
     <div className="flex gap-3">
-      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#c9bfb2] bg-white text-[#1f1d1b] shadow-sm">
+      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-900 shadow-sm">
         <Icon className="h-4 w-4" />
       </span>
       <div>
-        <h2 className="text-base font-semibold text-[#111111]">{title}</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5c554e]">{description}</p>
+        <h2 className="text-base font-semibold text-ink-950">{title}</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-600">{description}</p>
       </div>
     </div>
   );
@@ -62,13 +63,13 @@ function ConnectionIcon({
   tone?: 'aqua' | 'orange' | 'yellow';
 }) {
   const toneClass = {
-    aqua: 'bg-[#e6f7f8] text-[#167984]',
-    orange: 'bg-[#fff0e9] text-brand-orange',
-    yellow: 'bg-[#fff8df] text-[#9a6400]',
+    aqua: 'connection-icon--aqua bg-[#e6f7f8] text-[#167984]',
+    orange: 'connection-icon--orange bg-[#fff0e9] text-brand-orange',
+    yellow: 'connection-icon--yellow bg-[#fff8df] text-[#9a6400]',
   }[tone];
 
   return (
-    <span className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200', toneClass)}>
+    <span className={cn('connection-icon mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200', toneClass)}>
       <Icon className="h-4 w-4" />
     </span>
   );
@@ -84,14 +85,14 @@ function BrandConnectionIcon({
   tone: 'aqua' | 'green';
 }) {
   const toneClass = {
-    aqua: 'bg-[#f7f2f8]',
-    green: 'bg-[#edf8f1]',
+    aqua: 'brand-connection-icon--aqua bg-[#f7f2f8]',
+    green: 'brand-connection-icon--green bg-[#edf8f1]',
   }[tone];
 
   return (
     <span
       className={cn(
-        'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200',
+        'brand-connection-icon mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200',
         toneClass
       )}
       title={alt}
@@ -111,7 +112,7 @@ function BrandConnectionIcon({
 
 function ConnectionChevron() {
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
+    <span className="connection-chevron flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition group-open:rotate-180">
       <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
     </span>
   );
@@ -125,20 +126,20 @@ function ConnectionStatus({
   tone?: 'connected' | 'pending' | 'platform';
 }) {
   const toneClass = {
-    connected: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    pending: 'border-amber-200 bg-amber-50 text-amber-800',
-    platform: 'border-brand-orange/20 bg-brand-orange/10 text-brand-orange',
+    connected: 'connection-status--connected border-emerald-200 bg-emerald-50 text-emerald-800',
+    pending: 'connection-status--pending border-amber-200 bg-amber-50 text-amber-800',
+    platform: 'connection-status--platform border-brand-orange/20 bg-brand-orange/10 text-brand-orange',
   }[tone];
 
   return (
-    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', toneClass)}>
+    <span className={cn('connection-status inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', toneClass)}>
       {children}
     </span>
   );
 }
 
 const connectionCardClass =
-  'group overflow-hidden rounded-xl border border-ink-200 bg-ink-50/70 shadow-[0_1px_2px_rgba(17,17,17,0.03)] transition hover:border-ink-300 hover:bg-white hover:shadow-[0_8px_24px_rgba(17,17,17,0.06)] open:bg-white open:shadow-[0_8px_24px_rgba(17,17,17,0.06)]';
+  'connection-card group overflow-hidden rounded-xl border border-ink-200 bg-ink-50/70 shadow-[0_1px_2px_rgba(17,17,17,0.03)] transition hover:border-ink-300 hover:bg-white hover:shadow-[0_8px_24px_rgba(17,17,17,0.06)] open:bg-white open:shadow-[0_8px_24px_rgba(17,17,17,0.06)]';
 
 function HelpTooltip({ ariaLabel, help, width = 'w-64' }: { ariaLabel: string; help: string; width?: string }) {
   const [open, setOpen] = useState(false);
@@ -162,7 +163,7 @@ function HelpTooltip({ ariaLabel, help, width = 'w-64' }: { ariaLabel: string; h
     <>
       <span
         aria-label={ariaLabel}
-        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[#dfd8cf] bg-[#f7f5f1] text-[#5c554e] outline-none transition hover:border-[#c9bfb2] hover:text-[#1f1d1b] focus:border-[#111111] focus:text-[#1f1d1b]"
+        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-ink-200 bg-ink-50 text-ink-600 outline-none transition hover:border-ink-300 hover:text-ink-900 focus:border-ink-950 focus:text-ink-900"
         onBlur={() => setOpen(false)}
         onFocus={() => {
           recalc();
@@ -224,7 +225,7 @@ function SaveStatus({ state }: { state: SaveState }) {
   if (state === 'idle') return null;
   if (state === 'saving') {
     return (
-      <div className="flex items-center justify-end gap-1.5 border-t border-[#dfd8cf] pt-3 text-xs text-ink-500">
+      <div className="flex items-center justify-end gap-1.5 border-t border-ink-200 pt-3 text-xs text-ink-500">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Saving…
       </div>
@@ -232,14 +233,14 @@ function SaveStatus({ state }: { state: SaveState }) {
   }
   if (state === 'saved') {
     return (
-      <div className="flex items-center justify-end gap-1.5 border-t border-[#dfd8cf] pt-3 text-xs text-emerald-700">
-        <Check className="h-3.5 w-3.5" />
+      <div className="flex items-center justify-end gap-1.5 border-t border-ink-200 pt-3 text-xs text-emerald-700">
+        <Check className="completion-tick h-3.5 w-3.5" />
         Saved
       </div>
     );
   }
   return (
-    <div className="flex items-center justify-end gap-1.5 border-t border-[#dfd8cf] pt-3 text-xs text-red-700">
+    <div className="flex items-center justify-end gap-1.5 border-t border-ink-200 pt-3 text-xs text-red-700">
       Could not save — try editing again.
     </div>
   );
@@ -268,6 +269,7 @@ function CalendarConnectionSetup({
   const [copied, setCopied] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookUrlError, setWebhookUrlError] = useState('');
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     setProvider(account.calendarProvider || 'calendly');
@@ -283,7 +285,7 @@ function CalendarConnectionSetup({
   const connected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
 
   useEffect(() => {
-    if (!connected) {
+    if (!connected || !open) {
       setWebhookUrl('');
       setWebhookUrlError('');
       return;
@@ -317,7 +319,7 @@ function CalendarConnectionSetup({
     return () => {
       active = false;
     };
-  }, [account.id, connected]);
+  }, [account.id, connected, open]);
 
   async function copyUrl(value: string) {
     if (!value) return;
@@ -387,7 +389,10 @@ function CalendarConnectionSetup({
   }
 
   return (
-    <details className={connectionCardClass}>
+    <details
+      className={connectionCardClass}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
         <div className="flex min-w-0 gap-3">
           <ConnectionIcon icon={CalendarCheck} tone="yellow" />
@@ -703,7 +708,7 @@ function PipedriveSetup({
 export function DashboardClient({
   initialData,
 }: {
-  initialData: DashboardPayload;
+  initialData: DashboardBasePayload;
 }) {
   const initialAccount = initialData.account;
   const [account, setAccount] = useState<AccountSettings>(initialAccount);
@@ -721,9 +726,7 @@ export function DashboardClient({
   // we hide the input behind a LockedField. Setting one of these to true
   // re-reveals the input until the next save.
   const [unlockDomain, setUnlockDomain] = useState(false);
-  const [customDomainOpen, setCustomDomainOpen] = useState(
-    Boolean(initialAccount.domain && !initialAccount.domainAttachedHost)
-  );
+  const [customDomainOpen, setCustomDomainOpen] = useState(false);
 
   // We commit on blur instead of making the user click Save. The dirty refs
   // tell us whether a section has unsaved edits — without that flag every
@@ -746,7 +749,7 @@ export function DashboardClient({
     setPipedriveTestState('idle');
     setPipedriveTestMessage('');
     setUnlockDomain(false);
-    setCustomDomainOpen(Boolean(initialAccount.domain && !initialAccount.domainAttachedHost));
+    setCustomDomainOpen(false);
   }, [initialAccount]);
 
   function setSaveState(section: SaveSection, state: SaveState) {
@@ -958,7 +961,7 @@ export function DashboardClient({
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold text-ink-950">Custom domain</p>
-                        {account.domainAttachedHost && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">Connected</span>}
+                        {account.domainAttachedHost && <ConnectionStatus>Connected</ConnectionStatus>}
                       </div>
                       <p className="mt-0.5 text-xs leading-5 text-ink-600">
                         {account.domainAttachedHost
@@ -1031,10 +1034,12 @@ export function DashboardClient({
                     </Field>
                   </div>
 
-                  <PublishingWizard
-                    hasDomain={Boolean(configuredDomain)}
-                    refreshKey={publishingStatusVersion}
-                  />
+                  {customDomainOpen && (
+                    <PublishingWizard
+                      hasDomain={Boolean(configuredDomain)}
+                      refreshKey={publishingStatusVersion}
+                    />
+                  )}
                 </div>
               </details>
 
@@ -1045,18 +1050,22 @@ export function DashboardClient({
         </AceternityCard>
 
         <AceternityCard className="overflow-hidden p-0">
-          <div className="border-b border-ink-200 bg-[linear-gradient(120deg,#fffaf7_0%,#fff_52%,#f7fbfb_100%)] px-6 py-5">
-            <div className="flex items-start gap-3">
-              <ConnectionIcon icon={BriefcaseBusiness} tone="orange" />
-              <div>
-                <p className="text-sm font-semibold text-ink-950">Optional connections</p>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-600">
-                  Your page and first email work without these. Add a connection only when it helps your workflow.
-                </p>
+          <details className="optional-connections-drawer">
+            <summary className="connection-section-header flex cursor-pointer list-none items-center justify-between gap-4 bg-brand-soft px-6 py-5 transition hover:bg-brand-soft/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 items-start gap-3">
+                <ConnectionIcon icon={BriefcaseBusiness} tone="orange" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink-950">Optional connections</p>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-600">
+                    Your page and first email work without these. Add a connection only when it helps your workflow.
+                  </p>
+                </div>
               </div>
-            </div>
-          </div>
-          <div className="p-5 sm:p-6">
+              <span className="optional-connections-chevron connection-chevron flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition-transform">
+                <ChevronDown aria-hidden="true" className="h-4 w-4" />
+              </span>
+            </summary>
+            <div className="border-t border-ink-200 p-5 sm:p-6">
           <div className="space-y-5">
             <SectionHeader
               description="Magnets handles the basics. Turn on an integration when you have a real reason to use it."
@@ -1065,8 +1074,8 @@ export function DashboardClient({
             />
 
             <div className="space-y-5">
-              <div className="flex items-start gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(17,17,17,0.03)]">
-                <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', account.resendConfigured ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')}>
+              <div className="connection-status-strip flex items-start gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(17,17,17,0.03)]">
+                <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', account.resendConfigured ? 'status-check-icon bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')}>
                   {account.resendConfigured ? <Check className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
                 </span>
                 <div className="min-w-0">
@@ -1229,9 +1238,72 @@ export function DashboardClient({
                 </div>
               </details>
             </div>
-          </div>
-          </div>
-          </div>
+            </div>
+            </div>
+            </div>
+          </details>
+        </AceternityCard>
+
+        <AceternityCard className="overflow-hidden p-0">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 transition hover:bg-ink-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 items-start gap-3">
+                <ConnectionIcon icon={ScrollText} tone="orange" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink-950">Legal links</p>
+                  <p className="mt-1 text-sm leading-6 text-ink-600">
+                    Optionally add your own privacy policy and terms to every page footer.
+                  </p>
+                </div>
+              </div>
+              <ConnectionChevron />
+            </summary>
+            <div className="space-y-4 border-t border-ink-200 p-5 sm:p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Privacy policy URL" hint="Leave blank to hide this link.">
+                  <AceternityInput
+                    inputMode="url"
+                    onBlur={() => commitSection('delivery')}
+                    onChange={(event) =>
+                      patchAccount(
+                        {
+                          brand: {
+                            ...accountRef.current.brand,
+                            privacyPolicyUrl: event.target.value,
+                          },
+                        },
+                        'delivery'
+                      )
+                    }
+                    placeholder="https://your-site.com/privacy"
+                    type="url"
+                    value={account.brand.privacyPolicyUrl}
+                  />
+                </Field>
+                <Field label="Terms URL" hint="Leave blank to hide this link.">
+                  <AceternityInput
+                    inputMode="url"
+                    onBlur={() => commitSection('delivery')}
+                    onChange={(event) =>
+                      patchAccount(
+                        {
+                          brand: {
+                            ...accountRef.current.brand,
+                            termsUrl: event.target.value,
+                          },
+                        },
+                        'delivery'
+                      )
+                    }
+                    placeholder="https://your-site.com/terms"
+                    type="url"
+                    value={account.brand.termsUrl}
+                  />
+                </Field>
+              </div>
+              <SaveStatus state={sectionState.delivery} />
+            </div>
+          </details>
         </AceternityCard>
       </div>
     </>

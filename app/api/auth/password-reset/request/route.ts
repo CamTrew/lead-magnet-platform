@@ -12,7 +12,7 @@ import {
 
 const schema = z
   .object({
-    email: z.string().trim().email(),
+    email: z.string().trim().email().max(254),
   })
   .strict();
 

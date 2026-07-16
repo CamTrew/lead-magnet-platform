@@ -74,6 +74,7 @@ async function main() {
       await updateLeadMagnetFollowUpSync(account.id, magnet.id, {
         followUpEmails: result.emails,
         resendFollowUpAutomationId: result.automationId,
+        resendFollowUpRenderVersion: result.renderVersion,
       });
       synced += 1;
       console.log(`Synced ${magnet.id}`);

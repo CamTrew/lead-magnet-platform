@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { query, type QueryRunner, withTransaction } from './db';
+import { query, type QueryRunner, withAdvisoryLock, withTransaction } from './db';
 import { normaliseBrandHighlightIntensity } from './brand-highlight';
 import { senderMatchesAccountDomain } from './dns-records';
 import { platformUsernameStem } from './platform-username';
@@ -17,10 +17,13 @@ import type {
   AccountSignup,
   BrandSettings,
   CalendarProvider,
+  DashboardBasePayload,
   DashboardPayload,
   FollowUpEmail,
   FollowUpStatus,
   LeadMagnet,
+  LeadMagnetOption,
+  LeadMagnetSummary,
   PlatformUser,
   PostSignupQuizQuestion,
   PostSignupQuizRoute,
@@ -36,6 +39,8 @@ const defaultBrand: BrandSettings = {
   success: '#7FD4DD',
   highlightIntensity: 100,
   pageTheme: 'light',
+  privacyPolicyUrl: '',
+  termsUrl: '',
 };
 
 export class LeadMagnetLimitError extends Error {
@@ -43,6 +48,22 @@ export class LeadMagnetLimitError extends Error {
     super(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages.`);
     this.name = 'LeadMagnetLimitError';
   }
+}
+
+export class AccountDomainMutationInProgressError extends Error {
+  constructor() {
+    super('Another domain change is already in progress.');
+    this.name = 'AccountDomainMutationInProgressError';
+  }
+}
+
+export async function withAccountDomainMutationLock<T>(
+  accountId: string,
+  callback: () => Promise<T>
+) {
+  const result = await withAdvisoryLock(`magnets:account-domain:${accountId}`, callback);
+  if (!result.acquired) throw new AccountDomainMutationInProgressError();
+  return result.value;
 }
 
 type UserRow = {
@@ -116,6 +137,7 @@ type LeadMagnetRow = {
   follow_up_stop_on_booking: boolean;
   follow_up_emails: FollowUpEmail[] | string | null;
   resend_follow_up_automation_id: string;
+  resend_follow_up_render_version: number;
   post_signup_mode: string;
   post_signup_redirect_url: string;
   post_signup_heading: string;
@@ -137,6 +159,12 @@ type LeadMagnetImageSourceRow = {
   account_id: string;
   image_url: string;
   published: boolean;
+  updated_at: Date;
+};
+
+type AccountLogoSourceRow = {
+  id: string;
+  logo_url: string;
   updated_at: Date;
 };
 
@@ -229,13 +257,37 @@ type DashboardBaseRow = {
   account_updated_at: Date;
 };
 
-type DashboardPayloadRow = DashboardBaseRow & {
-  lead_magnets: LeadMagnetRow[] | string | null;
+type LeadMagnetSummaryRow = {
+  id: string;
+  account_id: string;
+  slug: string;
+  title: string;
+  subtitle: string;
+  image_url: string;
+  published: boolean;
+  created_at: Date;
+  updated_at: Date;
 };
 
 type PublicLeadMagnetLookupRow = {
   account: AccountRow;
   lead_magnet: LeadMagnetRow;
+};
+
+type PublishedLeadMagnetSitemapRow = {
+  id: string;
+  slug: string;
+  username: string;
+  domain_attached_host: string;
+  updated_at: Date;
+};
+
+export type PublishedLeadMagnetSitemapEntry = {
+  id: string;
+  slug: string;
+  username: string;
+  domainAttachedHost: string;
+  updatedAt: string;
 };
 
 type LeadMagnetJsonRow = {
@@ -262,6 +314,8 @@ function parseBrand(value: AccountRow['brand']): BrandSettings {
     success: parsed.success || defaultBrand.success,
     highlightIntensity: normaliseBrandHighlightIntensity(parsed.highlightIntensity),
     pageTheme: parsed.pageTheme === 'dark' ? 'dark' : 'light',
+    privacyPolicyUrl: parsed.privacyPolicyUrl || '',
+    termsUrl: parsed.termsUrl || '',
   };
 }
 
@@ -443,8 +497,31 @@ function leadMagnetImageProxyUrl(row: Pick<LeadMagnetRow, 'id' | 'image_url' | '
   // our server adds a database read and a second Blob fetch before pixels can
   // reach the browser, which makes the hero image visibly arrive late. Keep
   // the proxy solely for private uploads, where it enforces access control.
-  if (!isPrivateBlobStorageUrl(row.image_url)) return row.image_url;
+  if (!row.image_url.startsWith('data:') && !isPrivateBlobStorageUrl(row.image_url)) {
+    return row.image_url;
+  }
   return `/magnet-images/${row.id}?v=${encodeURIComponent(iso(row.updated_at))}`;
+}
+
+function accountLogoProxyUrl(row: Pick<AccountRow, 'id' | 'logo_url' | 'updated_at'>) {
+  if (!row.logo_url.startsWith('data:') && !isPrivateBlobStorageUrl(row.logo_url)) {
+    return row.logo_url;
+  }
+  return `/brand-logos/${row.id}?v=${encodeURIComponent(iso(row.updated_at))}`;
+}
+
+function mapLeadMagnetSummary(row: LeadMagnetSummaryRow): LeadMagnetSummary {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    slug: row.slug,
+    title: row.title,
+    subtitle: row.subtitle,
+    imageUrl: leadMagnetImageProxyUrl(row),
+    published: row.published,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
 }
 
 function mapUser(row: UserRow): PlatformUser {
@@ -476,7 +553,8 @@ function mapAccount(
         resendReturnPath: row.resend_return_path,
       })
   );
-  const resendManagedByPlatform = hasPlatformResendApiKey() && !hasVerifiedOwnSender;
+  const usesOwnResendWorkspace = hasOwnResendApiKey && hasVerifiedOwnSender;
+  const resendManagedByPlatform = hasPlatformResendApiKey() && !usesOwnResendWorkspace;
 
   return {
     id: row.id,
@@ -484,14 +562,14 @@ function mapAccount(
     username: row.username || '',
     subdomain: row.subdomain,
     domain: row.domain,
-    logoUrl: row.logo_url,
+    logoUrl: accountLogoProxyUrl(row),
     logoText: row.logo_text,
     brand: parseBrand(row.brand),
     resendFromEmail: row.resend_from_email,
     resendApiKey: options.revealSecrets
       ? revealedResendApiKey
       : redactSecret(row.resend_api_key),
-    resendConfigured: (hasOwnResendApiKey && hasVerifiedOwnSender) || resendManagedByPlatform,
+    resendConfigured: usesOwnResendWorkspace || resendManagedByPlatform,
     resendManagedByPlatform,
     beehiivApiKey: options.revealSecrets
       ? decryptSecret(row.beehiiv_api_key)
@@ -556,9 +634,10 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     emailBody: row.email_body,
     emailPreview: row.email_preview,
     followUpEnabled: row.follow_up_enabled,
-    followUpStopOnBooking: row.follow_up_stop_on_booking,
+    followUpStopOnBooking: row.follow_up_enabled && row.follow_up_stop_on_booking,
     followUpEmails: parseFollowUpEmails(row.follow_up_emails),
     resendFollowUpAutomationId: row.resend_follow_up_automation_id,
+    resendFollowUpRenderVersion: Number(row.resend_follow_up_render_version || 0),
     postSignupMode: row.post_signup_mode === 'redirect' || row.post_signup_mode === 'page'
       ? row.post_signup_mode as PostSignupMode
       : 'message',
@@ -568,7 +647,7 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     postSignupVideoUrl: row.post_signup_video_url || '',
     postSignupCtaLabel: row.post_signup_cta_label || '',
     postSignupCtaUrl: row.post_signup_cta_url || '',
-    postSignupQuizEnabled: row.post_signup_mode !== 'message' && Boolean(row.post_signup_quiz_enabled),
+    postSignupQuizEnabled: row.post_signup_mode === 'page' && Boolean(row.post_signup_quiz_enabled),
     postSignupQuizTitle: row.post_signup_quiz_title || '',
     postSignupQuizDescription: row.post_signup_quiz_description || '',
     postSignupQuizQuestions: postSignupQuiz.questions,
@@ -605,7 +684,7 @@ function mapQuizResponse(row: QuizResponseRow): QuizResponse {
   };
 }
 
-function mapDashboardBase(row: DashboardBaseRow) {
+function mapDashboardBase(row: DashboardBaseRow): DashboardBasePayload {
   return {
     user: mapUser({
       id: row.user_id,
@@ -656,27 +735,8 @@ function mapDashboardBase(row: DashboardBaseRow) {
   };
 }
 
-function parseLeadMagnetRows(value: DashboardPayloadRow['lead_magnets']) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.map(mapLeadMagnet);
-
-  try {
-    const parsed = JSON.parse(value) as LeadMagnetRow[];
-    return Array.isArray(parsed) ? parsed.map(mapLeadMagnet) : [];
-  } catch {
-    return [];
-  }
-}
-
-function mapDashboardPayload(row: DashboardPayloadRow): DashboardPayload {
-  return {
-    ...mapDashboardBase(row),
-    leadMagnets: parseLeadMagnetRows(row.lead_magnets),
-  };
-}
-
 async function getDashboardBaseByUserId(userId: string) {
-  const result = await query<DashboardPayloadRow>(
+  const result = await query<DashboardBaseRow>(
     `
       with user_row as (
         select
@@ -691,7 +751,13 @@ async function getDashboardBaseByUserId(userId: string) {
       ),
       inserted_account as (
         insert into public.magnets_accounts (owner_user_id)
-        select id from user_row
+        select u.id
+        from user_row u
+        where not exists (
+          select 1
+          from public.magnets_accounts existing
+          where existing.owner_user_id = u.id
+        )
         on conflict (owner_user_id) do nothing
         returning *
       ),
@@ -743,26 +809,18 @@ async function getDashboardBaseByUserId(userId: string) {
         a.onboarding_magnet_type as account_onboarding_magnet_type,
         a.onboarding_cadence as account_onboarding_cadence,
         a.created_at as account_created_at,
-        a.updated_at as account_updated_at,
-        coalesce(
-          (
-            select jsonb_agg(to_jsonb(lm) order by lm.updated_at desc)
-            from public.magnets_lead_magnets lm
-            where lm.account_id = a.id
-          ),
-          '[]'::jsonb
-        ) as lead_magnets
+        a.updated_at as account_updated_at
       from user_row u
       join account_row a on true
     `,
     [userId]
   );
 
-  return result.rows[0] ? mapDashboardPayload(result.rows[0]) : null;
+  return result.rows[0] ? mapDashboardBase(result.rows[0]) : null;
 }
 
 async function getDashboardBaseBySessionToken(token: string) {
-  const result = await query<DashboardPayloadRow>(
+  const result = await query<DashboardBaseRow>(
     `
       with user_row as (
         select
@@ -780,7 +838,13 @@ async function getDashboardBaseBySessionToken(token: string) {
       ),
       inserted_account as (
         insert into public.magnets_accounts (owner_user_id)
-        select id from user_row
+        select u.id
+        from user_row u
+        where not exists (
+          select 1
+          from public.magnets_accounts existing
+          where existing.owner_user_id = u.id
+        )
         on conflict (owner_user_id) do nothing
         returning *
       ),
@@ -832,22 +896,14 @@ async function getDashboardBaseBySessionToken(token: string) {
         a.onboarding_magnet_type as account_onboarding_magnet_type,
         a.onboarding_cadence as account_onboarding_cadence,
         a.created_at as account_created_at,
-        a.updated_at as account_updated_at,
-        coalesce(
-          (
-            select jsonb_agg(to_jsonb(lm) order by lm.updated_at desc)
-            from public.magnets_lead_magnets lm
-            where lm.account_id = a.id
-          ),
-          '[]'::jsonb
-        ) as lead_magnets
+        a.updated_at as account_updated_at
       from user_row u
       join account_row a on true
     `,
     [[token, sessionTokenHash(token)]]
   );
 
-  return result.rows[0] ? mapDashboardPayload(result.rows[0]) : null;
+  return result.rows[0] ? mapDashboardBase(result.rows[0]) : null;
 }
 
 export async function ensureUser(email: string, name?: string): Promise<PlatformUser> {
@@ -1087,10 +1143,34 @@ export async function deleteDatabaseSession(token: string) {
 export async function getDashboardPayloadBySessionToken(
   token: string
 ): Promise<DashboardPayload | null> {
-  return getDashboardBaseBySessionToken(token);
+  const base = await getDashboardBaseBySessionToken(token);
+  if (!base) return null;
+
+  return {
+    ...base,
+    leadMagnets: await listLeadMagnetsForAccount(base.account.id),
+  };
 }
 
 export async function getDashboardPayload(userId: string): Promise<DashboardPayload | null> {
+  const base = await getDashboardBaseByUserId(userId);
+  if (!base) return null;
+
+  return {
+    ...base,
+    leadMagnets: await listLeadMagnetsForAccount(base.account.id),
+  };
+}
+
+export async function getDashboardBasePayloadBySessionToken(
+  token: string
+): Promise<DashboardBasePayload | null> {
+  return getDashboardBaseBySessionToken(token);
+}
+
+export async function getDashboardBasePayload(
+  userId: string
+): Promise<DashboardBasePayload | null> {
   return getDashboardBaseByUserId(userId);
 }
 
@@ -1441,7 +1521,12 @@ export async function updateAccount(
         username = $2,
         subdomain = $3,
         domain = $4,
-        logo_url = $5,
+        logo_url = case
+          when $5 = ('/brand-logos/' || id::text)
+            or $5 like ('/brand-logos/' || id::text || '?%')
+            then logo_url
+          else $5
+        end,
         logo_text = $6,
         brand = $7::jsonb,
         resend_from_email = $8,
@@ -1709,7 +1794,7 @@ export async function createLeadMagnet(
           $13,
           $14,
           false,
-          true,
+          false,
           '[]'::jsonb,
           '',
           false
@@ -1855,6 +1940,7 @@ export async function updateLeadMagnetFollowUpSync(
   updates: {
     followUpEmails: FollowUpEmail[];
     resendFollowUpAutomationId: string;
+    resendFollowUpRenderVersion: number;
   }
 ) {
   const result = await query<LeadMagnetRow>(
@@ -1863,6 +1949,7 @@ export async function updateLeadMagnetFollowUpSync(
       set
         follow_up_emails = $3::jsonb,
         resend_follow_up_automation_id = $4,
+        resend_follow_up_render_version = $5,
         updated_at = now()
       where account_id = $1
         and id = $2
@@ -1873,6 +1960,7 @@ export async function updateLeadMagnetFollowUpSync(
       leadMagnetId,
       JSON.stringify(updates.followUpEmails),
       updates.resendFollowUpAutomationId,
+      updates.resendFollowUpRenderVersion,
     ]
   );
 
@@ -1896,13 +1984,34 @@ export async function getLeadMagnetImageSource(leadMagnetId: string) {
   );
 
   const row = result.rows[0];
-  if (!row || !isBlobStorageUrl(row.image_url)) return null;
+  if (!row || !row.image_url) return null;
 
   return {
     id: row.id,
     accountId: row.account_id,
     imageUrl: row.image_url,
     published: row.published,
+    updatedAt: iso(row.updated_at),
+  };
+}
+
+export async function getAccountLogoSource(accountId: string) {
+  const result = await query<AccountLogoSourceRow>(
+    `
+      select id, logo_url, updated_at
+      from public.magnets_accounts
+      where id = $1
+      limit 1
+    `,
+    [accountId]
+  );
+
+  const row = result.rows[0];
+  if (!row?.logo_url) return null;
+
+  return {
+    id: row.id,
+    logoUrl: row.logo_url,
     updatedAt: iso(row.updated_at),
   };
 }
@@ -1922,9 +2031,7 @@ export async function listLeadMagnetImageSources() {
     `
   );
 
-  return result.rows
-    .filter((row) => isBlobStorageUrl(row.image_url))
-    .map((row) => ({
+  return result.rows.map((row) => ({
       id: row.id,
       accountId: row.account_id,
       imageUrl: row.image_url,
@@ -1946,6 +2053,34 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
   const hostname = host.split(':')[0].toLowerCase();
   const canUseLocalFallback =
     hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+  // Local development does not have an attached customer hostname. Skip the
+  // guaranteed miss against domain_attached_host and resolve the latest page
+  // directly, saving one remote Neon round trip on every public page load.
+  if (canUseLocalFallback) {
+    const localLookup = await query<PublicLeadMagnetLookupRow>(
+      `
+        select
+          row_to_json(a) as account,
+          row_to_json(lm) as lead_magnet
+        from public.magnets_lead_magnets lm
+        join public.magnets_accounts a on a.id = lm.account_id
+        where lm.slug = $1
+          and lm.published = true
+        order by lm.updated_at desc
+        limit 1
+      `,
+      [slug]
+    );
+    const localLookupRow = localLookup.rows[0];
+
+    return localLookupRow
+      ? {
+          account: mapAccount(localLookupRow.account),
+          leadMagnet: mapLeadMagnet(localLookupRow.lead_magnet),
+        }
+      : null;
+  }
 
   // Only resolve to accounts that have actually attached this hostname through
   // the verify-ownership + attach flow. We do NOT match by the user-typed
@@ -1984,31 +2119,6 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
       account: mapAccount(publicLookupRow.account),
       leadMagnet: mapLeadMagnet(publicLookupRow.lead_magnet),
     };
-  }
-
-  if (canUseLocalFallback) {
-    const localLookup = await query<PublicLeadMagnetLookupRow>(
-      `
-        select
-          row_to_json(a) as account,
-          row_to_json(lm) as lead_magnet
-        from public.magnets_lead_magnets lm
-        join public.magnets_accounts a on a.id = lm.account_id
-        where lm.slug = $1
-          and lm.published = true
-        order by lm.updated_at desc
-        limit 1
-      `,
-      [slug]
-    );
-    const localLookupRow = localLookup.rows[0];
-
-    if (localLookupRow) {
-      return {
-        account: mapAccount(localLookupRow.account),
-        leadMagnet: mapLeadMagnet(localLookupRow.lead_magnet),
-      };
-    }
   }
 
   return null;
@@ -2083,6 +2193,118 @@ export async function findPublishedLeadMagnetById(leadMagnetId: string) {
   };
 }
 
+/**
+ * Minimal public index data for sitemap generation. Deliberately excludes page
+ * copy, email content, secrets, and image data so sitemap requests stay cheap.
+ */
+export async function listPublishedLeadMagnetsForSitemap(
+  attachedHost = ''
+): Promise<PublishedLeadMagnetSitemapEntry[]> {
+  const hostname = attachedHost.split(':')[0].trim().toLowerCase();
+  const result = await query<PublishedLeadMagnetSitemapRow>(
+    `
+      select
+        lm.id,
+        lm.slug,
+        a.username,
+        a.domain_attached_host,
+        lm.updated_at
+      from public.magnets_lead_magnets lm
+      join public.magnets_accounts a on a.id = lm.account_id
+      where lm.published = true
+        and ($1 = '' or lower(a.domain_attached_host) = $1)
+      order by lm.updated_at desc
+      limit 49900
+    `,
+    [hostname]
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    username: row.username || '',
+    domainAttachedHost: row.domain_attached_host || '',
+    updatedAt: iso(row.updated_at),
+  }));
+}
+
+export async function listLeadMagnetsForAccount(accountId: string): Promise<LeadMagnet[]> {
+  const result = await query<LeadMagnetRow>(
+    `
+      select *
+      from public.magnets_lead_magnets
+      where account_id = $1
+      order by updated_at desc
+    `,
+    [accountId]
+  );
+
+  return result.rows.map(mapLeadMagnet);
+}
+
+export async function listLeadMagnetSummaries(
+  accountId: string
+): Promise<LeadMagnetSummary[]> {
+  const result = await query<LeadMagnetSummaryRow>(
+    `
+      select
+        id,
+        account_id,
+        slug,
+        title,
+        subtitle,
+        case
+          when image_url = '' then ''
+          when image_url like 'data:%'
+            or image_url like 'https://%.private.blob.vercel-storage.com/%'
+            then '/magnet-images/' || id::text || '?v=' || extract(epoch from updated_at)::bigint::text
+          else image_url
+        end as image_url,
+        published,
+        created_at,
+        updated_at
+      from public.magnets_lead_magnets
+      where account_id = $1
+      order by updated_at desc
+    `,
+    [accountId]
+  );
+
+  return result.rows.map(mapLeadMagnetSummary);
+}
+
+export async function listLeadMagnetOptions(
+  accountId: string
+): Promise<LeadMagnetOption[]> {
+  const result = await query<{ id: string; title: string; slug: string }>(
+    `
+      select id, title, slug
+      from public.magnets_lead_magnets
+      where account_id = $1
+      order by updated_at desc
+    `,
+    [accountId]
+  );
+
+  return result.rows.map((row) => ({ id: row.id, title: row.title, slug: row.slug }));
+}
+
+export async function findLatestPublishedLeadMagnetForAccount(accountId: string) {
+  const result = await query<LeadMagnetRow>(
+    `
+      select *
+      from public.magnets_lead_magnets
+      where account_id = $1
+        and published = true
+      order by updated_at desc
+      limit 1
+    `,
+    [accountId]
+  );
+
+  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
 export async function findLeadMagnetForAccount(accountId: string, leadMagnetId: string) {
   const result = await query<LeadMagnetRow>(
     'select * from public.magnets_lead_magnets where id = $1 and account_id = $2 limit 1',
@@ -2090,6 +2312,22 @@ export async function findLeadMagnetForAccount(accountId: string, leadMagnetId: 
   );
 
   return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
+export async function accountOwnsLeadMagnet(accountId: string, leadMagnetId: string) {
+  const result = await query<{ exists: boolean }>(
+    `
+      select exists(
+        select 1
+        from public.magnets_lead_magnets
+        where account_id = $1
+          and id = $2
+      ) as exists
+    `,
+    [accountId, leadMagnetId]
+  );
+
+  return Boolean(result.rows[0]?.exists);
 }
 
 export async function findLeadMagnet(accountId: string, leadMagnetId: string) {
@@ -2294,7 +2532,7 @@ export async function recordQuizResponse(input: {
   if (!row) return null;
 
   const leadMagnet = mapLeadMagnet(row.lead_magnet);
-  if (leadMagnet.postSignupMode === 'message' || !leadMagnet.postSignupQuizEnabled) return null;
+  if (leadMagnet.postSignupMode !== 'page' || !leadMagnet.postSignupQuizEnabled) return null;
 
   const question = leadMagnet.postSignupQuizQuestions.find((item) => item.id === input.questionId);
   const option = question?.options.find((item) => item.id === input.optionId);

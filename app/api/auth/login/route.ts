@@ -9,9 +9,9 @@ import {
 } from '@/lib/rate-limit';
 
 const schema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(8),
-});
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+  password: z.string().min(8).max(256),
+}).strict();
 
 export async function POST(request: NextRequest) {
   try {

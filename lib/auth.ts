@@ -8,6 +8,7 @@ import {
   createUserWithPasswordSession,
   deleteDatabaseSession,
   findUserWithPasswordByEmail,
+  getDashboardBasePayloadBySessionToken,
   getDashboardPayloadBySessionToken,
   resetPasswordFromToken,
 } from './platform-store';
@@ -46,7 +47,7 @@ export async function createLoginSession(email: string, password: string) {
   const result = await findUserWithPasswordByEmail(email);
 
   if (!result) {
-    throw new AuthActionError('No account found for that email. Create an account first.', 404);
+    throw new AuthActionError('Email or password is incorrect.', 401);
   }
 
   if (!result.passwordHash) {
@@ -136,9 +137,24 @@ export const getCurrentDashboardPayload = cache(async () => {
   return getDashboardPayloadBySessionToken(token);
 });
 
-export async function requireDashboardPayload() {
-  const payload = await getCurrentDashboardPayload();
+export const getCurrentDashboardBase = cache(async () => {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(sessionCookieName)?.value;
+  if (!token) return null;
+
+  return getDashboardBasePayloadBySessionToken(token);
+});
+
+export async function requireDashboardBase() {
+  const payload = await getCurrentDashboardBase();
   if (!payload) redirect('/login');
 
   return payload;
+}
+
+export async function requireDashboardPayload() {
+  // Kept as a compatibility alias for API routes. Authentication and account
+  // settings never need every lead magnet, so this must stay on the small
+  // base payload rather than reintroducing the old megabyte-scale auth query.
+  return requireDashboardBase();
 }

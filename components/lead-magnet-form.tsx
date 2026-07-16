@@ -220,7 +220,7 @@ export function LeadMagnetForm({
       const data = await response.json().catch(() => null) as { error?: string; submissionId?: string } | null;
       if (!response.ok) throw new Error(data?.error || 'Failed to submit');
 
-      const hasQuiz = magnet.postSignupMode !== 'message'
+      const hasQuiz = magnet.postSignupMode === 'page'
         && magnet.postSignupQuizEnabled
         && magnet.postSignupQuizQuestions.length > 0;
       if (!hasQuiz && magnet.postSignupMode === 'redirect' && isSafeDestination(magnet.postSignupRedirectUrl)) {
@@ -239,7 +239,7 @@ export function LeadMagnetForm({
 
   if (isSuccess) {
     if (
-      magnet.postSignupMode !== 'message'
+      magnet.postSignupMode === 'page'
       && magnet.postSignupQuizEnabled
       && magnet.postSignupQuizQuestions.length > 0
       && submissionId

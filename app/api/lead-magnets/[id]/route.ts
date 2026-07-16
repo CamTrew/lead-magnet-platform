@@ -19,6 +19,8 @@ import {
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
 import { proxyEmailImagesInBody } from '@/lib/email-image-proxy';
+import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
+import { validateQuizConfiguration } from '@/lib/lead-magnet-validation';
 import {
   type LogoValidationError,
   MAX_MAGNET_IMAGE_BYTES,
@@ -226,6 +228,32 @@ const schema = z.object({
   postSignupQuizRoutes: z.array(quizRouteSchema).max(20),
   published: z.boolean(),
 }).strict().superRefine((value, ctx) => {
+  const followUpIds = new Set<string>();
+  value.followUpEmails.forEach((email, index) => {
+    if (followUpIds.has(email.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Follow-up email ${index + 1} has a duplicate internal ID. Remove it and add it again.`,
+        path: ['followUpEmails', index, 'id'],
+      });
+    }
+    followUpIds.add(email.id);
+  });
+
+  if (value.postSignupMode === 'page' && value.postSignupQuizEnabled) {
+    validateQuizConfiguration({
+      published: value.published,
+      questions: value.postSignupQuizQuestions,
+      routes: value.postSignupQuizRoutes,
+    }).forEach((issue) => {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: issue.message,
+        path: issue.path,
+      });
+    });
+  }
+
   if (value.followUpEnabled) {
     const activeEmails = value.followUpEmails.filter(
       (email) => email.subject.trim() || email.body.trim()
@@ -268,7 +296,7 @@ const schema = z.object({
   }
 
   if (
-    value.postSignupMode !== 'message'
+    value.postSignupMode === 'page'
     && value.postSignupQuizEnabled
     && value.postSignupQuizQuestions.length === 0
   ) {
@@ -371,8 +399,8 @@ export async function PUT(
     }
     const id = idParse.data;
 
-      const body = await request.json().catch(() => null);
-      const parsed = schema.safeParse(body);
+    const body = await request.json().catch(() => null);
+    const parsed = schema.safeParse(body);
 
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message || 'Check the page fields and try again.';
@@ -390,7 +418,9 @@ export async function PUT(
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
     const updateData = {
       ...parsed.data,
-      postSignupQuizEnabled: parsed.data.postSignupMode !== 'message'
+      followUpStopOnBooking: parsed.data.followUpEnabled
+        && parsed.data.followUpStopOnBooking,
+      postSignupQuizEnabled: parsed.data.postSignupMode === 'page'
         && parsed.data.postSignupQuizEnabled,
       emailBody: proxyEmailImagesInBody({
         accountId: payload.account.id,
@@ -414,6 +444,7 @@ export async function PUT(
     if (!leadMagnet) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
+    invalidatePublishedLeadMagnetCache();
 
     try {
       if (!leadMagnet.followUpEnabled && !leadMagnet.resendFollowUpAutomationId) {
@@ -439,6 +470,7 @@ export async function PUT(
       const syncedLeadMagnet = await updateLeadMagnetFollowUpSync(payload.account.id, id, {
         followUpEmails: followUp.emails,
         resendFollowUpAutomationId: followUp.automationId,
+        resendFollowUpRenderVersion: followUp.renderVersion,
       });
       if (syncedLeadMagnet) {
         leadMagnet = syncedLeadMagnet;
@@ -526,6 +558,7 @@ export async function DELETE(
     if (!deleted) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
     }
+    invalidatePublishedLeadMagnetCache();
 
     log.info('Lead magnet deleted', {
       route: ROUTE,

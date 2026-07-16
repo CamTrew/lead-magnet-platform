@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { requireDashboardPayload } from '@/lib/auth';
+import { requireDashboardBase } from '@/lib/auth';
 import { isSetupComplete } from '@/lib/setup';
 import { DashboardLayoutShell } from '@/components/dashboard/app-shell';
 
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const payload = await requireDashboardPayload();
+  const payload = await requireDashboardBase();
   const setupComplete = isSetupComplete(payload.account);
 
   return (

@@ -4,9 +4,13 @@ import { findAccountByAttachedHost } from '@/lib/platform-store';
 
 export const dynamic = 'force-dynamic';
 
-function faviconImageResponse(logoUrl: string) {
+function faviconImageResponse(logoUrl: string, requestUrl: string) {
   if (/^https?:\/\//i.test(logoUrl)) {
     return NextResponse.redirect(logoUrl, 302);
+  }
+
+  if (logoUrl.startsWith('/brand-logos/')) {
+    return NextResponse.redirect(new URL(logoUrl, requestUrl), 302);
   }
 
   const match = logoUrl.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\r\n]+)$/);
@@ -29,7 +33,7 @@ export async function GET(request: Request) {
   const host = request.headers.get('host') || '';
   const account = isPlatformHost(host) ? null : await findAccountByAttachedHost(host);
   const faviconUrl = account ? leadMagnetFaviconUrl(account) : null;
-  const faviconResponse = faviconUrl ? faviconImageResponse(faviconUrl) : null;
+  const faviconResponse = faviconUrl ? faviconImageResponse(faviconUrl, request.url) : null;
 
   return faviconResponse || NextResponse.redirect(new URL('/brand/magnets-mark-dark.png', request.url), 302);
 }
