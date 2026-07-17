@@ -5,7 +5,7 @@ import { isSetupComplete } from '@/lib/setup';
 import { DashboardLayoutShell } from '@/components/dashboard/app-shell';
 
 export const metadata: Metadata = {
-  title: 'Dashboard',
+  title: { absolute: 'Magnets' },
   robots: { index: false, follow: false, nocache: true },
 };
 
