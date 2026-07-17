@@ -6,6 +6,7 @@ import { uploadPresigned } from '@vercel/blob/client';
 import { Check, Loader2, Moon, Palette, Sun, Trash2, Upload } from 'lucide-react';
 import { AceternityButton, AceternityCard, AceternityInput } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { blobUploadErrorMessage } from '@/lib/blob-upload-error';
 import {
   brandHighlightOpacity,
   MAX_BRAND_HIGHLIGHT_INTENSITY,
@@ -135,7 +136,7 @@ export function BrandClient({
       );
       patch({ logoUrl: blob.url });
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Logo could not be uploaded.');
+      setError(blobUploadErrorMessage(uploadError, 'Logo could not be uploaded.'));
       setSaveState('error');
     } finally {
       event.target.value = '';

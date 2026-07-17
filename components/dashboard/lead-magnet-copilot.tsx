@@ -3,6 +3,7 @@
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Check, Loader2, Send, Sparkles, X } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type {
   LeadMagnetCopilotDraft,
   LeadMagnetCopilotFollowUpUpdate,
@@ -100,6 +101,8 @@ export function LeadMagnetCopilot({
   const [error, setError] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const launcherRef = useRef<HTMLButtonElement | null>(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -114,11 +117,16 @@ export function LeadMagnetCopilot({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') closeCopilot();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open]);
+
+  function closeCopilot() {
+    setOpen(false);
+    window.requestAnimationFrame(() => launcherRef.current?.focus());
+  }
 
   async function sendMessage(messageText = input) {
     const content = messageText.trim();
@@ -187,12 +195,30 @@ export function LeadMagnetCopilot({
 
   return (
     <>
-      {open && (
-        <section
-          aria-label="Writing copilot"
-          className="fixed inset-x-3 bottom-20 z-50 flex max-h-[min(620px,calc(100dvh-6rem))] flex-col overflow-hidden rounded-lg border border-ink-300 bg-white shadow-2xl sm:inset-x-auto sm:bottom-20 sm:right-5 sm:h-[600px] sm:w-[390px]"
-          id="lead-magnet-copilot"
-        >
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.section
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            aria-label="Writing copilot"
+            className="fixed inset-x-3 bottom-20 z-50 flex max-h-[min(620px,calc(100dvh-6rem))] origin-bottom-right flex-col overflow-hidden rounded-lg border border-ink-300 bg-white shadow-2xl sm:inset-x-auto sm:bottom-20 sm:right-5 sm:h-[600px] sm:w-[390px]"
+            exit={
+              reduceMotion
+                ? { opacity: 0 }
+                : {
+                    opacity: 0,
+                    scale: 0.965,
+                    y: 16,
+                    transition: { duration: 0.22, ease: [0.4, 0, 1, 1] },
+                  }
+            }
+            id="lead-magnet-copilot"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: 24 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 0.36, ease: [0.16, 1, 0.3, 1] }
+            }
+          >
           <header className="flex items-center justify-between border-b border-ink-200 bg-ink-50 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#ff6f34] text-[#111111]">
@@ -206,7 +232,7 @@ export function LeadMagnetCopilot({
             <button
               aria-label="Close writing copilot"
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-950"
-              onClick={() => setOpen(false)}
+              onClick={closeCopilot}
               type="button"
             >
               <X className="h-4 w-4" />
@@ -297,19 +323,35 @@ export function LeadMagnetCopilot({
               Changes update this draft. Click Save when you are ready.
             </p>
           </form>
-        </section>
-      )}
+          </motion.section>
+        )}
+      </AnimatePresence>
 
       <button
         aria-controls="lead-magnet-copilot"
         aria-expanded={open}
         aria-label={open ? 'Close writing copilot' : 'Open writing copilot'}
-        className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-[#111111] bg-[#ff6f34] text-[#111111] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[#ff6f34] focus:ring-offset-2 sm:bottom-5 sm:right-5"
-        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          'lead-magnet-copilot-launcher fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-[#111111] bg-[#ff6f34] text-[#111111] shadow-lg transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[#ff6f34] focus:ring-offset-2 sm:bottom-5 sm:right-5',
+          open && 'shadow-xl'
+        )}
+        onClick={() => (open ? closeCopilot() : setOpen(true))}
+        ref={launcherRef}
         title="Writing copilot"
         type="button"
       >
-        {open ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+        <Bot
+          className={cn(
+            'lead-magnet-copilot-launcher-icon absolute h-6 w-6 transition-[opacity,transform] duration-300',
+            open ? 'rotate-90 scale-50 opacity-0' : 'rotate-0 scale-100 opacity-100'
+          )}
+        />
+        <X
+          className={cn(
+            'lead-magnet-copilot-launcher-icon absolute h-5 w-5 transition-[opacity,transform] duration-300',
+            open ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-50 opacity-0'
+          )}
+        />
       </button>
     </>
   );

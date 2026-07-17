@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import {
   isSafeQuizDestination,
+  pruneQuizRouteConditions,
   resolveQuizDestination,
+  resolveQuizProgress,
 } from '../lib/quiz-routing';
 import { validateQuizConfiguration } from '../lib/lead-magnet-validation';
+import {
+  isSafePostSignupDestination,
+  postSignupVideoEmbedUrl,
+  resolvePostSignupExperience,
+} from '../lib/post-signup';
 
 const questions = [
   {
@@ -28,6 +35,66 @@ assert.equal(isSafeQuizDestination('https://example.com/next'), true);
 assert.equal(isSafeQuizDestination('http://example.com/next'), true);
 assert.equal(isSafeQuizDestination('javascript:alert(1)'), false);
 assert.equal(isSafeQuizDestination('/relative-url'), false);
+assert.equal(isSafePostSignupDestination('https://example.com/next'), true);
+assert.equal(isSafePostSignupDestination('javascript:alert(1)'), false);
+assert.equal(postSignupVideoEmbedUrl('https://youtu.be/video-id'), 'https://www.youtube.com/embed/video-id');
+assert.equal(postSignupVideoEmbedUrl('https://www.youtube.com/watch?v=watch-id'), 'https://www.youtube.com/embed/watch-id');
+assert.equal(postSignupVideoEmbedUrl('https://www.loom.com/share/loom-id'), 'https://www.loom.com/embed/loom-id');
+assert.equal(postSignupVideoEmbedUrl('https://example.com/video'), '');
+assert.equal(postSignupVideoEmbedUrl('https://notyoutube.com/watch?v=fake'), '');
+
+const experienceBase = {
+  postSignupMode: 'message' as const,
+  postSignupRedirectUrl: '',
+  postSignupQuizEnabled: false,
+  postSignupQuizQuestions: questions,
+};
+assert.deepEqual(resolvePostSignupExperience(experienceBase), { kind: 'message' });
+assert.deepEqual(
+  resolvePostSignupExperience({
+    ...experienceBase,
+    postSignupMode: 'redirect',
+    postSignupRedirectUrl: 'https://example.com/redirect',
+  }),
+  { kind: 'redirect', url: 'https://example.com/redirect' }
+);
+assert.deepEqual(
+  resolvePostSignupExperience({
+    ...experienceBase,
+    postSignupMode: 'redirect',
+    postSignupRedirectUrl: 'javascript:alert(1)',
+  }),
+  { kind: 'message' },
+  'An unsafe redirect must fall back to the standard confirmation.'
+);
+assert.deepEqual(
+  resolvePostSignupExperience({
+    ...experienceBase,
+    postSignupMode: 'page',
+    postSignupRedirectUrl: 'https://google.com/stale-redirect',
+  }),
+  { kind: 'page' }
+);
+assert.deepEqual(
+  resolvePostSignupExperience({
+    ...experienceBase,
+    postSignupMode: 'page',
+    postSignupRedirectUrl: 'https://google.com/stale-redirect',
+    postSignupQuizEnabled: true,
+  }),
+  { kind: 'quiz' },
+  'A stale redirect URL must never override the selected custom-page or quiz mode.'
+);
+assert.deepEqual(
+  resolvePostSignupExperience({
+    ...experienceBase,
+    postSignupMode: 'page',
+    postSignupQuizEnabled: true,
+    postSignupQuizQuestions: [],
+  }),
+  { kind: 'page' },
+  'A page with no valid quiz questions must still show its custom next step.'
+);
 
 assert.equal(
   resolveQuizDestination(
@@ -46,6 +113,83 @@ assert.equal(
     ]
   ),
   'https://example.com/positioning-team'
+);
+
+assert.deepEqual(
+  resolveQuizProgress(
+    questions,
+    [{
+      id: 'positioning-team',
+      destinationUrl: 'https://example.com/positioning-team',
+      conditions: [
+        { questionId: 'goal', optionId: 'positioning' },
+        { questionId: 'team-size', optionId: 'team' },
+      ],
+    }],
+    [{ questionId: 'goal', optionId: 'positioning' }]
+  ),
+  { completed: false, destinationUrl: '' },
+  'A partial quiz must not redirect early.'
+);
+
+assert.deepEqual(
+  resolveQuizProgress(
+    questions,
+    [{
+      id: 'positioning-team',
+      destinationUrl: 'https://example.com/positioning-team',
+      conditions: [
+        { questionId: 'goal', optionId: 'positioning' },
+        { questionId: 'team-size', optionId: 'team' },
+      ],
+    }],
+    [
+      { questionId: 'goal', optionId: 'positioning' },
+      { questionId: 'team-size', optionId: 'team' },
+    ]
+  ),
+  { completed: true, destinationUrl: 'https://example.com/positioning-team' }
+);
+
+const questionsWithSharedOptionIds = [
+  {
+    id: 'first',
+    prompt: 'First?',
+    options: [
+      { id: 'yes', label: 'Yes', destinationUrl: '' },
+      { id: 'no', label: 'No', destinationUrl: '' },
+    ],
+  },
+  {
+    id: 'second',
+    prompt: 'Second?',
+    options: [
+      { id: 'yes', label: 'Yes', destinationUrl: '' },
+      { id: 'no', label: 'No', destinationUrl: '' },
+    ],
+  },
+];
+const sharedIdRoutes = [{
+  id: 'shared-ids',
+  destinationUrl: 'https://example.com/shared',
+  conditions: [
+    { questionId: 'first', optionId: 'yes' },
+    { questionId: 'second', optionId: 'yes' },
+    { questionId: 'deleted', optionId: 'yes' },
+  ],
+}];
+assert.deepEqual(
+  pruneQuizRouteConditions(questionsWithSharedOptionIds, sharedIdRoutes)[0].conditions,
+  [
+    { questionId: 'first', optionId: 'yes' },
+    { questionId: 'second', optionId: 'yes' },
+  ],
+  'Stale conditions are cleared by question/answer pair without affecting matching IDs on other questions.'
+);
+assert.deepEqual(
+  pruneQuizRouteConditions(questionsWithSharedOptionIds.slice(1), sharedIdRoutes)[0].conditions,
+  [{ questionId: 'second', optionId: 'yes' }],
+  'Removing a question clears only that question state.'
 );
 
 assert.equal(

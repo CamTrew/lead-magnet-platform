@@ -11,6 +11,8 @@ import {
 import {
   cleanEmailText,
   cleanPreviewText,
+  MAGNETS_EMAIL_FOOTER_HTML,
+  MAGNETS_EMAIL_FOOTER_TEXT,
   renderEmailTextFallback,
   renderPlainEmailHtml,
   scrubResendErrorMessage,
@@ -20,7 +22,10 @@ import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
-export const FOLLOW_UP_RENDER_VERSION = 1;
+// Increment whenever stored Resend templates need to be rebuilt with new HTML.
+// Version 3 replaces the legacy pre-wrapped Markdown output with real email
+// headings, emphasis, dividers, and lists.
+export const FOLLOW_UP_RENDER_VERSION = 3;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
@@ -165,14 +170,20 @@ function resendName(label: string, magnet: Pick<LeadMagnet, 'id' | 'slug' | 'tit
 
 function templatePayload(from: string, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
   const body = replaceTemplateVariables(email.body);
-  const text = renderEmailTextFallback([body, STOP_SEQUENCE_TEXT].filter(Boolean).join('\n\n'));
+  const text = renderEmailTextFallback(
+    [body, STOP_SEQUENCE_TEXT, MAGNETS_EMAIL_FOOTER_TEXT].filter(Boolean).join('\n\n')
+  );
 
   return {
     name: resendName('Magnets follow-up email', magnet, String(index + 1)),
     from,
     subject: email.subject,
     text,
-    html: renderPlainEmailHtml(cleanEmailText(body), email.preview, STOP_SEQUENCE_HTML),
+    html: renderPlainEmailHtml(
+      cleanEmailText(body),
+      email.preview,
+      `${STOP_SEQUENCE_HTML}${MAGNETS_EMAIL_FOOTER_HTML}`
+    ),
     variables: TEMPLATE_VARIABLES,
   };
 }

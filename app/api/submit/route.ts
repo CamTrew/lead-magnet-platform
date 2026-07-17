@@ -59,7 +59,10 @@ async function runPostSubmissionWork({
         }
       },
     },
-    { name: 'Beehiiv subscribe', run: () => addToBeehiiv(account, email, name) },
+    {
+      name: 'Beehiiv subscribe and tag',
+      run: () => addToBeehiiv({ account, email, leadMagnet, name }),
+    },
     { name: 'Substack subscribe', run: () => addToSubstack(account, email) },
     {
       name: 'Slack signup notification',

@@ -21,6 +21,7 @@ import { log } from '@/lib/logger';
 import { proxyEmailImagesInBody } from '@/lib/email-image-proxy';
 import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
 import { validateQuizConfiguration } from '@/lib/lead-magnet-validation';
+import { pruneQuizRouteConditions } from '@/lib/quiz-routing';
 import {
   type LogoValidationError,
   MAX_MAGNET_IMAGE_BYTES,
@@ -422,6 +423,10 @@ export async function PUT(
         && parsed.data.followUpStopOnBooking,
       postSignupQuizEnabled: parsed.data.postSignupMode === 'page'
         && parsed.data.postSignupQuizEnabled,
+      postSignupQuizRoutes: pruneQuizRouteConditions(
+        parsed.data.postSignupQuizQuestions,
+        parsed.data.postSignupQuizRoutes
+      ),
       emailBody: proxyEmailImagesInBody({
         accountId: payload.account.id,
         baseUrl,

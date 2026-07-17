@@ -4,7 +4,7 @@ import { normaliseBrandHighlightIntensity } from './brand-highlight';
 import { senderMatchesAccountDomain } from './dns-records';
 import { platformUsernameStem } from './platform-username';
 import { hasPlatformResendApiKey } from './platform-resend';
-import { resolveQuizDestination } from './quiz-routing';
+import { resolveQuizProgress } from './quiz-routing';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from './limits';
 import {
   decryptSecret,
@@ -2351,6 +2351,7 @@ export async function findLeadMagnet(accountId: string, leadMagnetId: string) {
 type SignupRow = {
   email: string;
   name: string;
+  lead_magnets: Array<{ id: string; title: string; slug: string }> | string | null;
   first_lead_magnet_id: string;
   first_lead_magnet_title: string;
   first_lead_magnet_slug: string;
@@ -2364,6 +2365,28 @@ type SignupRow = {
 };
 
 function mapSignup(row: SignupRow): AccountSignup {
+  const leadMagnets = (() => {
+    const value = (() => {
+      if (Array.isArray(row.lead_magnets)) return row.lead_magnets;
+      if (typeof row.lead_magnets !== 'string') return [];
+      try {
+        const parsed = JSON.parse(row.lead_magnets) as unknown;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })();
+
+    return value.filter(
+      (magnet): magnet is { id: string; title: string; slug: string } =>
+        typeof magnet === 'object' &&
+        magnet !== null &&
+        typeof magnet.id === 'string' &&
+        typeof magnet.title === 'string' &&
+        typeof magnet.slug === 'string'
+    );
+  })();
+
   const quizAnswers = (() => {
     if (Array.isArray(row.quiz_answers)) return row.quiz_answers;
     if (typeof row.quiz_answers !== 'string') return [];
@@ -2378,6 +2401,7 @@ function mapSignup(row: SignupRow): AccountSignup {
   return {
     email: row.email,
     name: row.name,
+    leadMagnets,
     firstLeadMagnetId: row.first_lead_magnet_id,
     firstLeadMagnetTitle: row.first_lead_magnet_title,
     firstLeadMagnetSlug: row.first_lead_magnet_slug,
@@ -2391,7 +2415,10 @@ function mapSignup(row: SignupRow): AccountSignup {
   };
 }
 
-export async function listAccountSignups(accountId: string): Promise<AccountSignup[]> {
+export async function listAccountSignups(
+  accountId: string,
+  options: { leadMagnetId?: string } = {}
+): Promise<AccountSignup[]> {
   const result = await query<SignupRow>(
     `
       with ranked as (
@@ -2416,10 +2443,37 @@ export async function listAccountSignups(accountId: string): Promise<AccountSign
         from public.magnets_submissions s
         join public.magnets_lead_magnets lm on lm.id = s.lead_magnet_id
         where s.account_id = $1
+          and ($2::uuid is null or s.lead_magnet_id = $2::uuid)
       )
       select
         latest.email,
         latest.name,
+        (
+          select coalesce(
+            jsonb_agg(
+              jsonb_build_object(
+                'id', magnet_signup.id,
+                'title', magnet_signup.title,
+                'slug', magnet_signup.slug
+              ) order by magnet_signup.first_signup_at asc
+            ),
+            '[]'::jsonb
+          )
+          from (
+            select
+              associated_magnet.id,
+              associated_magnet.title,
+              associated_magnet.slug,
+              min(associated_submission.created_at) as first_signup_at
+            from public.magnets_submissions associated_submission
+            join public.magnets_lead_magnets associated_magnet
+              on associated_magnet.id = associated_submission.lead_magnet_id
+            where associated_submission.account_id = $1::uuid
+              and lower(associated_submission.email) = lower(first.email)
+              and ($2::uuid is null or associated_submission.lead_magnet_id = $2::uuid)
+            group by associated_magnet.id, associated_magnet.title, associated_magnet.slug
+          ) magnet_signup
+        ) as lead_magnets,
         first.lead_magnet_id as first_lead_magnet_id,
         first.lead_magnet_title as first_lead_magnet_title,
         first.lead_magnet_slug as first_lead_magnet_slug,
@@ -2468,7 +2522,7 @@ export async function listAccountSignups(accountId: string): Promise<AccountSign
       where first.first_rank = 1
       order by first.latest_signup_at desc
     `,
-    [accountId]
+    [accountId, options.leadMagnetId ?? null]
   );
 
   return result.rows.map(mapSignup);
@@ -2513,7 +2567,7 @@ export async function recordQuizResponse(input: {
   leadMagnetId: string;
   questionId: string;
   optionId: string;
-}): Promise<{ response: QuizResponse; destinationUrl: string } | null> {
+}): Promise<{ response: QuizResponse; completed: boolean; destinationUrl: string } | null> {
   const context = await query<LeadMagnetJsonRow>(
     `
       select
@@ -2596,15 +2650,15 @@ export async function recordQuizResponse(input: {
     questionId: answer.question_id,
     optionId: answer.option_id,
   }));
-  const completed = leadMagnet.postSignupQuizQuestions.every((quizQuestion) =>
-    selectedAnswers.some((answer) => answer.questionId === quizQuestion.id)
+  const progress = resolveQuizProgress(
+    leadMagnet.postSignupQuizQuestions,
+    leadMagnet.postSignupQuizRoutes,
+    selectedAnswers
   );
 
   return {
     response: mapQuizResponse(saved),
-    destinationUrl: completed
-      ? resolveQuizDestination(leadMagnet.postSignupQuizQuestions, leadMagnet.postSignupQuizRoutes, selectedAnswers)
-      : '',
+    ...progress,
   };
 }
 

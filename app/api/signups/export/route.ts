@@ -1,4 +1,5 @@
 import { type NextRequest } from 'next/server';
+import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
 import { listAccountSignups } from '@/lib/platform-store';
 import {
@@ -10,6 +11,8 @@ import {
 import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
+
+const leadMagnetIdSchema = z.string().uuid();
 
 function escapeCsvCell(value: string) {
   if (value === '' || (!value.includes(',') && !value.includes('"') && !value.includes('\n') && !value.includes('\r'))) {
@@ -50,7 +53,19 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    const signups = await listAccountSignups(payload.account.id);
+    const rawLeadMagnetId = request.nextUrl.searchParams.get('leadMagnetId');
+    const parsedLeadMagnetId = rawLeadMagnetId
+      ? leadMagnetIdSchema.safeParse(rawLeadMagnetId)
+      : null;
+    if (parsedLeadMagnetId && !parsedLeadMagnetId.success) {
+      return new Response(JSON.stringify({ error: 'Invalid lead magnet filter' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const leadMagnetId = parsedLeadMagnetId?.data;
+    const signups = await listAccountSignups(payload.account.id, { leadMagnetId });
 
     const header = toCsvRow(['Email', 'Name', 'Lead magnet', 'Lead magnet slug', 'Signed up at', 'Last signed up at', 'Signup count']);
     const rows = signups.map((signup) =>
@@ -73,7 +88,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       userId,
       accountId,
-      extra: { count: signups.length },
+      extra: { count: signups.length, leadMagnetId: leadMagnetId || undefined },
     });
 
     return new Response(csv, {

@@ -188,6 +188,11 @@ export interface SignupQuizAnswer {
 export interface AccountSignup {
   email: string;
   name: string;
+  leadMagnets: Array<{
+    id: string;
+    title: string;
+    slug: string;
+  }>;
   firstLeadMagnetId: string;
   firstLeadMagnetTitle: string;
   firstLeadMagnetSlug: string;

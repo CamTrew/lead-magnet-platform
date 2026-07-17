@@ -16,6 +16,8 @@ const deleteSchema = z.object({
   email: z.string().trim().email().max(254),
 }).strict();
 
+const leadMagnetIdSchema = z.string().uuid();
+
 export async function GET(request: NextRequest) {
   let userId: string | undefined;
   let accountId: string | undefined;
@@ -39,7 +41,17 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    const signups = await listAccountSignups(payload.account.id);
+    const rawLeadMagnetId = request.nextUrl.searchParams.get('leadMagnetId');
+    const parsedLeadMagnetId = rawLeadMagnetId
+      ? leadMagnetIdSchema.safeParse(rawLeadMagnetId)
+      : null;
+    if (parsedLeadMagnetId && !parsedLeadMagnetId.success) {
+      return NextResponse.json({ error: 'Invalid lead magnet filter' }, { status: 400 });
+    }
+
+    const signups = await listAccountSignups(payload.account.id, {
+      leadMagnetId: parsedLeadMagnetId?.data,
+    });
     return NextResponse.json({ signups });
   } catch (err) {
     if (err instanceof RateLimitError) {

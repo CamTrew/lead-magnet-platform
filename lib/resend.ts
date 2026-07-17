@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 import { parseEmailImageLine } from './email-body-images';
-import { renderEmailInlineHtml, renderEmailInlineText } from './email-body-links';
+import { renderEmailFormattedHtml, renderEmailInlineText } from './email-body-links';
 import { log } from './logger';
 import {
   platformResendApiKey,
@@ -17,6 +17,9 @@ export class EmailDeliveryError extends Error {
   }
 }
 
+export const MAGNETS_EMAIL_FOOTER_TEXT = 'Powered by Magnets: https://magnets.so';
+export const MAGNETS_EMAIL_FOOTER_HTML = '<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font:13px/1.5 Arial,sans-serif;color:#6b7280">Powered by <a href="https://magnets.so" style="color:#374151;text-decoration:underline">Magnets</a>.</div>';
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -32,7 +35,9 @@ export function renderEmailTextFallback(text: string) {
       .split('\n')
       .map((line) => {
         const image = parseEmailImageLine(line);
-        return image ? `${image.alt}: ${image.url}` : renderEmailInlineText(line);
+        if (image) return `${image.alt}: ${image.url}`;
+        if (/^---\s*$/.test(line)) return '----------------------------------------';
+        return renderEmailInlineText(line.replace(/^#{1,3}\s+/, ''));
       })
       .join('\n')
   );
@@ -47,9 +52,7 @@ function renderEmailBodyHtml(text: string) {
     textBuffer.length = 0;
     if (!textChunk) return;
 
-    chunks.push(
-      `<div style="white-space:pre-wrap;font:16px/1.5 Arial,sans-serif;color:#111827">${renderEmailInlineHtml(textChunk)}</div>`
-    );
+    chunks.push(renderEmailFormattedHtml(textChunk));
   };
 
   for (const line of text.split('\n')) {
@@ -112,8 +115,8 @@ export async function sendPasswordResetEmail({
   }
 
   const resend = new Resend(resendApiKey);
-  const text = `Reset your Magnets password\n\nUse this link to choose a new password:\n${resetUrl}\n\nThis link expires in one hour. If you did not request it, you can ignore this email.`;
-  const html = `<p style="font:16px/1.5 Arial,sans-serif;color:#111827">Use the link below to choose a new Magnets password.</p><p><a href="${escapeHtml(resetUrl)}" style="font:600 16px Arial,sans-serif;color:#111827">Reset your password</a></p><p style="font:14px/1.5 Arial,sans-serif;color:#4b5563">This link expires in one hour. If you did not request it, you can ignore this email.</p>`;
+  const text = `Reset your Magnets password\n\nUse this link to choose a new password:\n${resetUrl}\n\nThis link expires in one hour. If you did not request it, you can ignore this email.\n\n${MAGNETS_EMAIL_FOOTER_TEXT}`;
+  const html = `<p style="font:16px/1.5 Arial,sans-serif;color:#111827">Use the link below to choose a new Magnets password.</p><p><a href="${escapeHtml(resetUrl)}" style="font:600 16px Arial,sans-serif;color:#111827">Reset your password</a></p><p style="font:14px/1.5 Arial,sans-serif;color:#4b5563">This link expires in one hour. If you did not request it, you can ignore this email.</p>${MAGNETS_EMAIL_FOOTER_HTML}`;
 
   try {
     const result = await resend.emails.send({
@@ -186,7 +189,7 @@ export async function sendLeadMagnetEmail({
       .replace(/{name}/g, name)
       .replace(/{download_link}/g, downloadLink)
   );
-  const text = renderEmailTextFallback(body);
+  const text = `${renderEmailTextFallback(body)}\n\n${MAGNETS_EMAIL_FOOTER_TEXT}`;
   const previewText = cleanPreviewText(magnet.emailPreview);
 
   let result;
@@ -196,7 +199,7 @@ export async function sendLeadMagnetEmail({
       to,
       subject: magnet.emailSubject,
       text,
-      html: renderPlainEmailHtml(body, previewText),
+      html: renderPlainEmailHtml(body, previewText, MAGNETS_EMAIL_FOOTER_HTML),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

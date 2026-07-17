@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
+import { LeadMagnetExperience } from '@/components/lead-magnet-experience';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import {
@@ -136,15 +137,26 @@ export function LeadMagnetPageView({
           />
         </>
       )}
-      <header className="relative z-10">
+      <LeadMagnetExperience
+        brand={{
+          displayName,
+          homeHref,
+          logoText: account.logoText,
+          logoUrl: account.logoUrl,
+          privacyPolicyUrl,
+          termsUrl,
+        }}
+        magnet={magnet}
+      >
+        <header className="relative z-10">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
           <Link href={homeHref} className="inline-flex min-h-10 max-w-full items-center justify-center gap-2 transition-transform hover:scale-[1.01]">
             <BrandLockup account={account} displayName={displayName} />
           </Link>
         </div>
-      </header>
+        </header>
 
-      <main className="relative z-10 flex-1">
+        <main className="relative z-10 flex-1">
         <div className="mx-auto max-w-[1280px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
           <div
             className="magnet-page-shell relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-white/95 p-5 backdrop-blur-sm sm:rounded-[24px] sm:p-9 lg:p-14"
@@ -220,9 +232,9 @@ export function LeadMagnetPageView({
             </div>
           </div>
         </div>
-      </main>
+        </main>
 
-      <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
+        <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
         <div className="magnet-page-muted mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
           {privacyPolicyUrl && (
@@ -236,12 +248,12 @@ export function LeadMagnetPageView({
             </a>
           )}
         </div>
-      </footer>
+        </footer>
 
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: safeJsonLd({
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: safeJsonLd({
             '@context': 'https://schema.org',
             '@type': 'WebPage',
             '@id': `${pageUrl}#webpage`,
@@ -274,9 +286,10 @@ export function LeadMagnetPageView({
                   }
                 : {}),
             },
-          }),
-        }}
-      />
+            }),
+          }}
+        />
+      </LeadMagnetExperience>
     </div>
   );
 }
@@ -392,7 +405,11 @@ function CaptureCard({
           {magnet.formSubtext}
         </p>
       )}
-      <LeadMagnetForm accountId={account.id} magnet={magnet} />
+      <LeadMagnetForm
+        accountId={account.id}
+        key={`${magnet.id}:${magnet.updatedAt}`}
+        magnet={magnet}
+      />
     </div>
   );
 }

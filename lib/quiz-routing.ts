@@ -8,6 +8,26 @@ export type QuizAnswerSelection = {
   optionId: string;
 };
 
+/** Remove route conditions that no longer point to a current question/answer pair. */
+export function pruneQuizRouteConditions(
+  questions: PostSignupQuizQuestion[],
+  routes: PostSignupQuizRoute[]
+) {
+  const optionIdsByQuestion = new Map(
+    questions.map((question) => [
+      question.id,
+      new Set(question.options.map((option) => option.id)),
+    ])
+  );
+
+  return routes.map((route) => ({
+    ...route,
+    conditions: route.conditions.filter((condition) =>
+      optionIdsByQuestion.get(condition.questionId)?.has(condition.optionId)
+    ),
+  }));
+}
+
 export function isSafeQuizDestination(value: string) {
   try {
     const url = new URL(value);
@@ -44,4 +64,19 @@ export function resolveQuizDestination(
   }
 
   return '';
+}
+
+export function resolveQuizProgress(
+  questions: PostSignupQuizQuestion[],
+  routes: PostSignupQuizRoute[],
+  answers: QuizAnswerSelection[]
+) {
+  const completed = questions.length > 0 && questions.every((question) =>
+    answers.some((answer) => answer.questionId === question.id)
+  );
+
+  return {
+    completed,
+    destinationUrl: completed ? resolveQuizDestination(questions, routes, answers) : '',
+  };
 }

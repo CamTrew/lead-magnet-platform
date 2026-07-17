@@ -6,16 +6,27 @@ import { useRouter } from 'next/navigation';
 import { uploadPresigned } from '@vercel/blob/client';
 import {
   ArrowLeft,
+  Bold,
+  Braces,
   CalendarCheck,
   Check,
   ChevronDown,
   Clock,
   ExternalLink,
+  Heading1,
+  Heading2,
+  Heading3,
   Image as ImageIcon,
+  Italic,
   Link2,
+  List,
   ListChecks,
+  ListMinus,
+  ListOrdered,
   Loader2,
   Mail,
+  Minus,
+  Pilcrow,
   Plus,
   Save,
   Trash2,
@@ -31,7 +42,9 @@ import {
   removeEmailBodySegment,
   replaceEmailBodySegment,
 } from '@/lib/email-body-images';
+import { blobUploadErrorMessage } from '@/lib/blob-upload-error';
 import { normaliseEmailLinkUrl, renderEmailEditorHtml } from '@/lib/email-body-links';
+import { pruneQuizRouteConditions } from '@/lib/quiz-routing';
 import type { DashboardBasePayload, LeadMagnet } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import {
@@ -557,7 +570,7 @@ export function PageEditorClient({
       dirtyRef.current = wasDirty;
       setSaveState(wasDirty ? 'idle' : 'saved');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Image could not be uploaded.');
+      setError(blobUploadErrorMessage(err, 'Image could not be uploaded.'));
     } finally {
       setIsUploadingImage(false);
       setImageUploadProgress(0);
@@ -628,7 +641,7 @@ export function PageEditorClient({
         };
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Email image could not be uploaded.');
+      setError(blobUploadErrorMessage(err, 'Email image could not be uploaded.'));
     } finally {
       setIsUploadingEmailImage(false);
       setEmailImageUploadTarget(null);
@@ -1279,39 +1292,179 @@ function ImageHotspot({
   );
 }
 
-type EmailBodyEditorHandle = {
-  openLinkEditor: () => void;
-};
-
 type EmailTextSegmentEditorHandle = {
+  applyFormat: (format: EmailFormatCommand) => void;
+  insertVariable: (value: string) => void;
   openLinkEditor: () => void;
 };
 
-const EmailBodyEditor = forwardRef<EmailBodyEditorHandle, {
-  ariaLabel: string;
-  onChange: (value: string) => void;
-  pendingImage: PendingEmailImage | null;
-  value: string;
-}>(function EmailBodyEditor({
+type EmailFormatCommand =
+  | 'paragraph'
+  | 'heading1'
+  | 'heading2'
+  | 'heading3'
+  | 'bold'
+  | 'italic'
+  | 'unorderedList'
+  | 'dashedList'
+  | 'orderedList'
+  | 'divider';
+
+function EmailBodyEditor({
   ariaLabel,
+  isUploadingImage,
+  onAddImage,
   onChange,
   pendingImage,
   value,
-}, ref) {
+}: {
+  ariaLabel: string;
+  isUploadingImage: boolean;
+  onAddImage: () => void;
+  onChange: (value: string) => void;
+  pendingImage: PendingEmailImage | null;
+  value: string;
+}) {
   const segments = parseEmailBodySegments(value);
   const activeTextSegmentRef = useRef(0);
   const textSegmentRefs = useRef(new Map<number, EmailTextSegmentEditorHandle>());
 
-  useImperativeHandle(ref, () => ({
-    openLinkEditor() {
-      const editor = textSegmentRefs.current.get(activeTextSegmentRef.current)
-        || textSegmentRefs.current.values().next().value;
-      editor?.openLinkEditor();
-    },
-  }), []);
+  function activeEditor() {
+    return textSegmentRefs.current.get(activeTextSegmentRef.current)
+      || textSegmentRefs.current.values().next().value;
+  }
+
+  const applyFormat = (format: EmailFormatCommand) => activeEditor()?.applyFormat(format);
+  const toolbarButton = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-700 transition hover:bg-white hover:text-ink-950';
 
   return (
     <div className="space-y-3">
+      <div
+        aria-label={`${ariaLabel} formatting`}
+        className="flex flex-wrap items-center gap-1 rounded-lg border border-ink-200 bg-ink-50 p-1.5"
+        role="toolbar"
+      >
+        <button
+          aria-label="Paragraph"
+          className={toolbarButton}
+          onClick={() => applyFormat('paragraph')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Paragraph"
+          type="button"
+        >
+          <Pilcrow className="h-4 w-4" />
+        </button>
+        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-ink-200" />
+        {([
+          ['heading1', Heading1, 'Heading 1'],
+          ['heading2', Heading2, 'Heading 2'],
+          ['heading3', Heading3, 'Heading 3'],
+        ] as const).map(([format, Icon, label]) => (
+          <button
+            aria-label={label}
+            className={toolbarButton}
+            key={format}
+            onClick={() => applyFormat(format)}
+            onMouseDown={(event) => event.preventDefault()}
+            title={label}
+            type="button"
+          >
+            <Icon className="h-4 w-4" />
+          </button>
+        ))}
+        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-ink-200" />
+        <button
+          aria-label="Bold"
+          className={toolbarButton}
+          onClick={() => applyFormat('bold')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Bold"
+          type="button"
+        >
+          <Bold className="h-4 w-4" />
+        </button>
+        <button
+          aria-label="Italic"
+          className={toolbarButton}
+          onClick={() => applyFormat('italic')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Italic"
+          type="button"
+        >
+          <Italic className="h-4 w-4" />
+        </button>
+        <button
+          aria-label="Bulleted list"
+          className={toolbarButton}
+          onClick={() => applyFormat('unorderedList')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Bulleted list"
+          type="button"
+        >
+          <List className="h-4 w-4" />
+        </button>
+        <button
+          aria-label="Dashed list"
+          className={toolbarButton}
+          onClick={() => applyFormat('dashedList')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Dashed list"
+          type="button"
+        >
+          <ListMinus className="h-4 w-4" />
+        </button>
+        <button
+          aria-label="Numbered list"
+          className={toolbarButton}
+          onClick={() => applyFormat('orderedList')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Numbered list"
+          type="button"
+        >
+          <ListOrdered className="h-4 w-4" />
+        </button>
+        <button
+          aria-label="Divider"
+          className={toolbarButton}
+          onClick={() => applyFormat('divider')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Divider"
+          type="button"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-ink-200" />
+        <button
+          aria-label="Insert name variable"
+          className={toolbarButton}
+          onClick={() => activeEditor()?.insertVariable('{name}')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Insert name variable"
+          type="button"
+        >
+          <Braces className="h-4 w-4" />
+        </button>
+        <button
+          aria-label="Add link"
+          className={toolbarButton}
+          onClick={() => activeEditor()?.openLinkEditor()}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Add link"
+          type="button"
+        >
+          <Link2 className="h-4 w-4" />
+        </button>
+        <button
+          aria-label={isUploadingImage ? 'Uploading image' : 'Add image'}
+          className={`${toolbarButton} disabled:pointer-events-none disabled:opacity-50`}
+          disabled={isUploadingImage}
+          onClick={onAddImage}
+          title={isUploadingImage ? 'Uploading image' : 'Add image'}
+          type="button"
+        >
+          {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+        </button>
+      </div>
       {segments.map((segment, index) => {
         if (segment.kind === 'image') {
           return (
@@ -1386,7 +1539,7 @@ const EmailBodyEditor = forwardRef<EmailBodyEditorHandle, {
       )}
     </div>
   );
-});
+}
 
 type EmailLinkDraft = {
   error: string;
@@ -1394,7 +1547,7 @@ type EmailLinkDraft = {
   url: string;
 };
 
-function serializeEmailEditorNode(node: Node): string {
+function serializeEmailEditorInline(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
   if (!(node instanceof HTMLElement)) return '';
   if (node.tagName === 'BR') return '\n';
@@ -1413,21 +1566,50 @@ function serializeEmailEditorNode(node: Node): string {
     return `[${safeLabel}](${href})`;
   }
 
-  return Array.from(node.childNodes).map(serializeEmailEditorNode).join('');
+  const children = Array.from(node.childNodes).map(serializeEmailEditorInline).join('');
+  if (node.tagName === 'STRONG' || node.tagName === 'B') return children ? `**${children}**` : '';
+  if (node.tagName === 'EM' || node.tagName === 'I') return children ? `*${children}*` : '';
+  return children;
+}
+
+function serializeEmailEditorBlock(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (!(node instanceof HTMLElement)) return '';
+
+  if (node.tagName === 'H1') return `# ${serializeEmailEditorInline(node).trim()}\n\n`;
+  if (node.tagName === 'H2') return `## ${serializeEmailEditorInline(node).trim()}\n\n`;
+  if (node.tagName === 'H3') return `### ${serializeEmailEditorInline(node).trim()}\n\n`;
+  if (node.tagName === 'HR') return '---\n\n';
+  if (node.tagName === 'UL' || node.tagName === 'OL') {
+    const ordered = node.tagName === 'OL';
+    const dashed = node.tagName === 'UL' && node.dataset.emailListStyle === 'dash';
+    const items = Array.from(node.children)
+      .filter((child) => child.tagName === 'LI')
+      .map((child, index) => `${dashed ? '–' : ordered ? `${index + 1}.` : '-'} ${serializeEmailEditorInline(child).trim()}`)
+        .filter((item) => !/^(?:[-–—]|\d+\.)\s*$/.test(item));
+    return items.length ? `${items.join('\n')}\n\n` : '';
+  }
+  if (node.tagName === 'P' || node.tagName === 'DIV') {
+    const containsBlock = Array.from(node.children).some((child) =>
+      ['H1', 'H2', 'H3', 'HR', 'UL', 'OL', 'P', 'DIV'].includes(child.tagName)
+    );
+    const content = containsBlock
+      ? Array.from(node.childNodes).map(serializeEmailEditorBlock).join('')
+      : serializeEmailEditorInline(node);
+    return `${content}\n\n`;
+  }
+  if (node.tagName === 'BR') return '\n';
+  return serializeEmailEditorInline(node);
 }
 
 function extractEmailEditorValue(element: HTMLElement) {
-  let output = '';
-  const children = Array.from(element.childNodes);
-
-  children.forEach((node, index) => {
-    const isBlock = node instanceof HTMLElement && ['DIV', 'P'].includes(node.tagName);
-    if (isBlock && output && !output.endsWith('\n')) output += '\n';
-    output += serializeEmailEditorNode(node);
-    if (isBlock && index < children.length - 1 && !output.endsWith('\n')) output += '\n';
-  });
-
-  return output.replace(/ /g, ' ').replace(/\n{3,}/g, '\n\n');
+  return Array.from(element.childNodes)
+    .map(serializeEmailEditorBlock)
+    .join('')
+    .replace(/ /g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n+$/, '');
 }
 
 const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
@@ -1572,6 +1754,53 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     onChange(nextValue);
   }
 
+  function listContainingRange(range: Range | null) {
+    const editor = editorRef.current;
+    if (!editor || !range) return null;
+    const element = range.startContainer instanceof HTMLElement
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    const list = element?.closest('ul, ol');
+    return list && editor.contains(list) ? list as HTMLElement : null;
+  }
+
+  function applyListFormat(format: 'unorderedList' | 'dashedList' | 'orderedList') {
+    const currentList = listContainingRange(currentEditorRange());
+
+    if (format === 'dashedList' && currentList?.tagName === 'UL') {
+      if (currentList.dataset.emailListStyle === 'dash') {
+        delete currentList.dataset.emailListStyle;
+        document.execCommand('insertUnorderedList');
+      } else {
+        currentList.dataset.emailListStyle = 'dash';
+      }
+      return;
+    }
+
+    if (
+      format === 'unorderedList'
+      && currentList?.tagName === 'UL'
+      && currentList.dataset.emailListStyle === 'dash'
+    ) {
+      delete currentList.dataset.emailListStyle;
+      return;
+    }
+
+    if (format === 'orderedList' && currentList?.dataset.emailListStyle === 'dash') {
+      delete currentList.dataset.emailListStyle;
+    }
+
+    document.execCommand(
+      format === 'orderedList' ? 'insertOrderedList' : 'insertUnorderedList'
+    );
+
+    const updatedList = listContainingRange(currentEditorRange());
+    if (updatedList?.tagName === 'UL') {
+      if (format === 'dashedList') updatedList.dataset.emailListStyle = 'dash';
+      else delete updatedList.dataset.emailListStyle;
+    }
+  }
+
   function insertAtRange(range: Range, node: Node) {
     range.deleteContents();
     range.insertNode(node);
@@ -1595,7 +1824,34 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     requestAnimationFrame(() => urlInputRef.current?.focus());
   }
 
-  useImperativeHandle(ref, () => ({ openLinkEditor }));
+  function insertVariable(value: string) {
+    const range = currentEditorRange();
+    if (!range) return;
+    insertAtRange(range, document.createTextNode(value));
+  }
+
+  function applyFormat(format: EmailFormatCommand) {
+    const range = currentEditorRange();
+    if (!range) return;
+    selectRange(range);
+
+    if (format === 'paragraph') document.execCommand('formatBlock', false, 'p');
+    if (format === 'heading1') document.execCommand('formatBlock', false, 'h1');
+    if (format === 'heading2') document.execCommand('formatBlock', false, 'h2');
+    if (format === 'heading3') document.execCommand('formatBlock', false, 'h3');
+    if (format === 'bold') document.execCommand('bold');
+    if (format === 'italic') document.execCommand('italic');
+    if (
+      format === 'unorderedList'
+      || format === 'dashedList'
+      || format === 'orderedList'
+    ) applyListFormat(format);
+    if (format === 'divider') document.execCommand('insertHorizontalRule');
+
+    emitChange();
+  }
+
+  useImperativeHandle(ref, () => ({ applyFormat, insertVariable, openLinkEditor }));
 
   function addLink() {
     if (!linkDraft) return;
@@ -1646,13 +1902,7 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
         }}
         onFocus={onFocus}
         onInput={emitChange}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter') return;
-          event.preventDefault();
-          unlinkForMutation('insertParagraph');
-          const range = currentEditorRange();
-          if (range) insertAtRange(range, document.createTextNode('\n'));
-        }}
+        onPointerDown={onFocus}
         onPaste={(event) => {
           event.preventDefault();
           unlinkForMutation('insertFromPaste');
@@ -1767,8 +2017,6 @@ function EmailCanvas({
   onPatch: (updates: Partial<LeadMagnet>) => void;
   pendingImage: PendingEmailImage | null;
 }) {
-  const emailBodyEditorRef = useRef<EmailBodyEditorHandle | null>(null);
-
   return (
     <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-2xl space-y-4">
@@ -1807,38 +2055,13 @@ function EmailCanvas({
           </div>
 
           <div className="px-6 py-7">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="text-xs font-medium text-ink-700">Body</span>
-              <div className="flex items-center gap-2">
-                <button
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50"
-                  onClick={() => emailBodyEditorRef.current?.openLinkEditor()}
-                  onMouseDown={(event) => event.preventDefault()}
-                  type="button"
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                  Add link
-                </button>
-                <button
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
-                  disabled={isUploadingEmailImage}
-                  onClick={onAddImage}
-                  type="button"
-                >
-                  {isUploadingEmailImage ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ImageIcon className="h-3.5 w-3.5" />
-                  )}
-                  {isUploadingEmailImage ? 'Uploading' : 'Add image'}
-                </button>
-              </div>
-            </div>
+            <p className="mb-3 text-xs font-medium text-ink-700">Body</p>
             <EmailBodyEditor
               ariaLabel="Email body"
+              isUploadingImage={isUploadingEmailImage}
+              onAddImage={onAddImage}
               onChange={(value) => onPatch({ emailBody: value })}
               pendingImage={pendingImage}
-              ref={emailBodyEditorRef}
               value={leadMagnet.emailBody}
             />
           </div>
@@ -1869,7 +2092,6 @@ function SequenceCanvas({
   pendingImage: PendingEmailImage | null;
 }) {
   const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
-  const emailBodyEditorRefs = useRef(new Map<string, EmailBodyEditorHandle>());
   const resendConfigured = account.resendConfigured;
   const calendarConnected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
   const calendarProviderLabel =
@@ -2087,48 +2309,15 @@ function SequenceCanvas({
                   </label>
 
                   <div className="block">
-                    <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-ink-700">
-                      Body
-                      <span className="flex items-center gap-2">
-                        <button
-                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50"
-                          onClick={() => emailBodyEditorRefs.current.get(email.id)?.openLinkEditor()}
-                          onMouseDown={(event) => event.preventDefault()}
-                          type="button"
-                        >
-                          <Link2 className="h-3.5 w-3.5" />
-                          Add link
-                        </button>
-                        <button
-                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-60"
-                          disabled={Boolean(emailImageUploadTarget)}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            onAddImage(email.id);
-                          }}
-                          type="button"
-                        >
-                          {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <ImageIcon className="h-3.5 w-3.5" />
-                          )}
-                          {emailImageUploadTarget?.kind === 'follow-up' && emailImageUploadTarget.emailId === email.id
-                            ? 'Uploading'
-                            : 'Add image'}
-                        </button>
-                      </span>
-                    </span>
+                    <p className="mb-1.5 text-xs font-medium text-ink-700">Body</p>
                     <EmailBodyEditor
                       ariaLabel={`Body for email ${index + 1}`}
+                      isUploadingImage={Boolean(emailImageUploadTarget)}
+                      onAddImage={() => onAddImage(email.id)}
                       onChange={(value) => onUpdateEmail(email.id, { body: value })}
                       pendingImage={pendingImage?.target.kind === 'follow-up' && pendingImage.target.emailId === email.id
                         ? pendingImage
                         : null}
-                      ref={(editor) => {
-                        if (editor) emailBodyEditorRefs.current.set(email.id, editor);
-                        else emailBodyEditorRefs.current.delete(email.id);
-                      }}
                       value={email.body}
                     />
                   </div>
@@ -2415,13 +2604,13 @@ function AfterSignupCanvas({
                             aria-label={`Remove question ${questionIndex + 1}`}
                             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
                             disabled={quizQuestions.length <= 1}
-                            onClick={() => onPatch({
-                              postSignupQuizQuestions: quizQuestions.filter((_, index) => index !== questionIndex),
-                              postSignupQuizRoutes: quizRoutes.map((route) => ({
-                                ...route,
-                                conditions: route.conditions.filter((condition) => condition.questionId !== question.id),
-                              })),
-                            })}
+                            onClick={() => {
+                              const nextQuestions = quizQuestions.filter((_, index) => index !== questionIndex);
+                              onPatch({
+                                postSignupQuizQuestions: nextQuestions,
+                                postSignupQuizRoutes: pruneQuizRouteConditions(nextQuestions, quizRoutes),
+                              });
+                            }}
                             type="button"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -2445,15 +2634,15 @@ function AfterSignupCanvas({
                                 aria-label={`Remove answer ${optionIndex + 1}`}
                                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
                                 disabled={question.options.length <= 2}
-                                onClick={() => onPatch({
-                                  postSignupQuizQuestions: quizQuestions.map((currentQuestion, index) => index === questionIndex
+                                onClick={() => {
+                                  const nextQuestions = quizQuestions.map((currentQuestion, index) => index === questionIndex
                                     ? { ...currentQuestion, options: question.options.filter((_, currentOptionIndex) => currentOptionIndex !== optionIndex) }
-                                    : currentQuestion),
-                                  postSignupQuizRoutes: quizRoutes.map((route) => ({
-                                    ...route,
-                                    conditions: route.conditions.filter((condition) => condition.optionId !== option.id),
-                                  })),
-                                })}
+                                    : currentQuestion);
+                                  onPatch({
+                                    postSignupQuizQuestions: nextQuestions,
+                                    postSignupQuizRoutes: pruneQuizRouteConditions(nextQuestions, quizRoutes),
+                                  });
+                                }}
                                 type="button"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Download,
+  ListFilter,
   Loader2,
   Mail,
   Plus,
@@ -51,26 +52,42 @@ export function SignupsClient({
   const router = useRouter();
   const [signups, setSignups] = useState<AccountSignup[]>(initialSignups);
   const [search, setSearch] = useState('');
+  const [leadMagnetFilter, setLeadMagnetFilter] = useState('');
   const [manualOpen, setManualOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [signupToRemove, setSignupToRemove] = useState<AccountSignup | null>(null);
   const [stoppingEmail, setStoppingEmail] = useState('');
   const [actionError, setActionError] = useState('');
 
+  const magnetFiltered = useMemo(() => {
+    if (!leadMagnetFilter) return signups;
+    return signups.filter((signup) =>
+      signup.leadMagnets.some((magnet) => magnet.id === leadMagnetFilter)
+    );
+  }, [leadMagnetFilter, signups]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return signups;
-    return signups.filter(
+    if (!query) return magnetFiltered;
+    return magnetFiltered.filter(
       (signup) =>
         signup.email.toLowerCase().includes(query) ||
         signup.name.toLowerCase().includes(query) ||
-        signup.firstLeadMagnetTitle.toLowerCase().includes(query)
+        signup.leadMagnets.some(
+          (magnet) =>
+            magnet.title.toLowerCase().includes(query) ||
+            magnet.slug.toLowerCase().includes(query)
+        )
     );
-  }, [signups, search]);
+  }, [magnetFiltered, search]);
 
   const totalCount = signups.length;
+  const exportCount = magnetFiltered.length;
   const matchCount = filtered.length;
   const hasMagnets = leadMagnets.length > 0;
+  const exportHref = leadMagnetFilter
+    ? `/api/signups/export?leadMagnetId=${encodeURIComponent(leadMagnetFilter)}`
+    : '/api/signups/export';
 
   function onAfterImport() {
     setManualOpen(false);
@@ -190,6 +207,22 @@ export function SignupsClient({
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto xl:flex-nowrap xl:justify-end">
               <div className="relative w-full sm:w-auto xl:w-52">
+                <ListFilter className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                <select
+                  aria-label="Filter signups by lead magnet"
+                  className="h-9 w-full rounded-md border border-ink-200 bg-white py-0 pl-8 pr-8 text-sm text-ink-900 outline-none transition focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:w-64 xl:w-52"
+                  onChange={(event) => setLeadMagnetFilter(event.target.value)}
+                  value={leadMagnetFilter}
+                >
+                  <option value="">All lead magnets</option>
+                  {leadMagnets.map((magnet) => (
+                    <option key={magnet.id} value={magnet.id}>
+                      {magnet.title} (/{magnet.slug})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="relative w-full sm:w-auto xl:w-52">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <AceternityInput
                   className="pl-8 sm:w-64 xl:w-52"
@@ -221,13 +254,13 @@ export function SignupsClient({
                 Import CSV
               </AceternityButton>
               <a
-                aria-disabled={totalCount === 0}
+                aria-disabled={exportCount === 0}
                 className={
-                  totalCount === 0
+                  exportCount === 0
                     ? 'pointer-events-none inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60'
                     : 'inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800'
                 }
-                href="/api/signups/export"
+                href={exportHref}
                 download
               >
                 <Download className="h-4 w-4" />
@@ -236,7 +269,7 @@ export function SignupsClient({
             </div>
           </div>
 
-          {search.trim() && (
+          {(search.trim() || leadMagnetFilter) && (
             <p className="border-b border-ink-200 bg-ink-50 px-5 py-2 text-xs font-medium text-ink-500">
               {matchCount} of {totalCount} signups match
             </p>
@@ -262,7 +295,7 @@ export function SignupsClient({
                 <tr>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">First magnet</th>
+                  <th className="px-4 py-3">Lead magnets</th>
                   <th className="px-4 py-3">First signup</th>
                   <th className="px-4 py-3">Signups</th>
                   <th className="px-4 py-3">Sequence</th>
@@ -278,13 +311,24 @@ export function SignupsClient({
                       </p>
                       <p className="mt-1 text-sm text-ink-500">
                         {totalCount === 0
-                          ? 'Signups appear here once someone enters their email on a published magnet. or use Import CSV / Add manually.'
-                          : 'Try a different search term.'}
+                          ? 'Signups appear here once someone enters their email on a published magnet. Or use Import CSV / Add manually.'
+                          : 'Try a different search term or lead magnet filter.'}
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((signup) => (
+                  filtered.map((signup) => {
+                    const associatedMagnets = signup.leadMagnets.length
+                      ? signup.leadMagnets
+                      : [
+                          {
+                            id: signup.firstLeadMagnetId,
+                            title: signup.firstLeadMagnetTitle,
+                            slug: signup.firstLeadMagnetSlug,
+                          },
+                        ];
+
+                    return (
                     <tr key={signup.email} className="block bg-white px-5 py-4 transition hover:bg-ink-50 xl:table-row xl:px-0 xl:py-0">
                       <td className="block min-w-0 py-0 xl:table-cell xl:px-4 xl:py-3">
                         <p className="truncate font-medium text-ink-950">{signup.email}</p>
@@ -293,9 +337,18 @@ export function SignupsClient({
                         {signup.name && <><span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Name</span><span className="break-words">{signup.name}</span></>}
                       </td>
                       <td className="mt-3 block min-w-0 xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
-                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">First magnet</span>
-                        <p className="truncate text-ink-700">{signup.firstLeadMagnetTitle}</p>
-                        <p className="truncate font-mono text-xs text-ink-500">/{signup.firstLeadMagnetSlug}</p>
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Lead magnets</span>
+                        <div className="flex flex-wrap gap-1">
+                          {associatedMagnets.map((magnet) => (
+                            <span
+                              className="inline-flex max-w-full truncate rounded-md border border-ink-200 bg-ink-50 px-2 py-0.5 text-xs font-medium text-ink-700"
+                              key={magnet.id}
+                              title={`/${magnet.slug}`}
+                            >
+                              {magnet.title}
+                            </span>
+                          ))}
+                        </div>
                         {signup.quizAnswers.length > 0 && (
                           <details className="mt-2 max-w-xs text-xs text-ink-600">
                             <summary className="cursor-pointer font-medium text-ink-700">
@@ -357,7 +410,8 @@ export function SignupsClient({
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

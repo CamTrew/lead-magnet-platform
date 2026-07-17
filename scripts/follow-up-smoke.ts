@@ -10,6 +10,7 @@ import {
   stopLeadMagnetFollowUpSequence,
   syncLeadMagnetFollowUpAutomation,
 } from '../lib/follow-up-sequences';
+import { addToBeehiiv, beehiivLeadMagnetTag } from '../lib/beehiiv';
 import {
   appendEmailImage,
   parseEmailBodySegments,
@@ -251,7 +252,7 @@ const magnet: LeadMagnet = {
       delayHours: 0,
       subject: 'First follow-up for {name}',
       preview: 'First preview',
-      body: 'Hi {name}, [book a call](https://example.com/book) or use the link below.\n\n![Audit preview](https://cdn.example.com/audit-preview.png)\n\n{download_link}',
+      body: '## Your next step\n\nHi {name}, **[book a call](https://example.com/book)** or use the link below.\n\n- Review the guide\n- Pick one action\n\n![Audit preview](https://cdn.example.com/audit-preview.png)\n\n{download_link}',
       resendTemplateId: '',
     },
     {
@@ -372,11 +373,37 @@ async function run() {
   assert.equal(usesPlatformResendAccount(unreadableCustomerKeyAccount), true);
 
   resetRequests();
+  const formattedDeliveryBody = [
+    'Hi {name},',
+    '',
+    '---',
+    '',
+    '# Heading 1',
+    '',
+    '## Heading 2',
+    '',
+    '### Heading 3',
+    '',
+    '**Bold** and *italic* with [the guide](https://example.com/guide).',
+    '',
+    '- Normal bullet 1',
+    '- Normal bullet 2',
+    '',
+    '– Dashed bullet 1',
+    '– Dashed bullet 2',
+    '',
+    '1. Numbered bullet 1',
+    '2. Numbered bullet 2',
+    '',
+    '![Guide preview](https://cdn.example.com/guide-preview.png)',
+    '',
+    'Or use {download_link}.',
+  ].join('\n');
   const ownedEmail = await sendLeadMagnetEmail({
     account,
     magnet: {
       ...magnet,
-      emailBody: 'Hi {name}, read [the guide](https://example.com/guide).\n\n![Guide preview](https://cdn.example.com/guide-preview.png)\n\nOr use {download_link}.',
+      emailBody: formattedDeliveryBody,
     },
     to: 'existing-user@example.com',
     name: 'Existing User',
@@ -385,10 +412,22 @@ async function run() {
   const ownedEmailRequest = findRequest('/emails', 'POST');
   assert.equal(ownedEmailRequest?.authorization, 'Bearer re_smoke_test');
   assert.equal(ownedEmailRequest?.body?.from, account.resendFromEmail);
+  assert.match(String(ownedEmailRequest?.body?.html), /<hr[^>]*\/>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h1[^>]*>Heading 1<\/h1>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h2[^>]*>Heading 2<\/h2>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h3[^>]*>Heading 3<\/h3>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<strong[^>]*>Bold<\/strong>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<em[^>]*>italic<\/em>/);
   assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/example\.com\/guide"[^>]*>the guide<\/a>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<ul[^>]*list-style-type:disc/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<ul[^>]*list-style-type:none/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<ol[^>]*list-style-type:decimal/);
   assert.match(String(ownedEmailRequest?.body?.html), /<img src="https:\/\/cdn\.example\.com\/guide-preview\.png"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/magnets\.so"/);
+  assert.doesNotMatch(String(ownedEmailRequest?.body?.html), /(?:^|>)#{1,3}\s|\*\*Bold\*\*|---/);
   assert.match(String(ownedEmailRequest?.body?.text), /the guide \(https:\/\/example\.com\/guide\)/);
   assert.match(String(ownedEmailRequest?.body?.text), /Guide preview: https:\/\/cdn\.example\.com\/guide-preview\.png/);
+  assert.match(String(ownedEmailRequest?.body?.text), /Powered by Magnets: https:\/\/magnets\.so/);
 
   const legacySenderAccount = {
     ...account,
@@ -473,6 +512,9 @@ async function run() {
   assert.equal(templateBody.subject, 'First follow-up for {name}');
   assert.equal(typeof templateBody.html, 'string');
   assert.match(String(templateBody.html), /\{\{\{NAME\}\}\}/);
+  assert.match(String(templateBody.html), /<h2[^>]*>Your next step<\/h2>/);
+  assert.match(String(templateBody.html), /<strong[^>]*><a href="https:\/\/example\.com\/book"/);
+  assert.match(String(templateBody.html), /<ul[^>]*list-style-type:disc/);
   assert.match(String(templateBody.html), /<img src="https:\/\/cdn\.example\.com\/audit-preview\.png"/);
   assert.match(String(templateBody.html), /href="https:\/\/example\.com\/book"[^>]*>book a call<\/a>/);
   assert.match(String(templateBody.html), /alt="Audit preview"/);
@@ -496,6 +538,109 @@ async function run() {
   assert.equal(
     renderEmailTextFallback(linkedEmailBody),
     'Read the guide (https://example.com/guide) or visit https://example.com/help.'
+  );
+
+  const combinedFormattingBody =
+    'This is ***bold and italic*** with a ***[bold and italic link](https://example.com/combined)***.';
+  const combinedFormattingHtml = renderPlainEmailHtml(combinedFormattingBody, '');
+  assert.match(
+    combinedFormattingHtml,
+    /<strong[^>]*><em[^>]*>bold and italic<\/em><\/strong>/
+  );
+  assert.match(
+    combinedFormattingHtml,
+    /<strong[^>]*><em[^>]*><a href="https:\/\/example\.com\/combined"[^>]*>bold and italic link<\/a><\/em><\/strong>/
+  );
+  assert.equal(
+    renderEmailTextFallback(combinedFormattingBody),
+    'This is bold and italic with a bold and italic link (https://example.com/combined).'
+  );
+
+  const formattedEmailBody = [
+    '# Main heading',
+    '',
+    '## Section heading',
+    '',
+    '### Smaller heading',
+    '',
+    'This has **bold text**, *italic text*, and **[a bold link](https://example.com/offer)**.',
+    '',
+    '- First point',
+    '- Second point',
+    '',
+    '– First dashed point',
+    '– Second dashed point',
+    '',
+    '1. First step',
+    '2. Second step',
+    '',
+    '---',
+    '',
+    'Final paragraph.',
+  ].join('\n');
+  const formattedEmailHtml = renderPlainEmailHtml(formattedEmailBody, 'Formatted preview');
+  const formattedEditorHtml = renderEmailEditorHtml(formattedEmailBody);
+  assert.match(formattedEmailHtml, /<h1[^>]*>Main heading<\/h1>/);
+  assert.match(formattedEmailHtml, /<h2[^>]*>Section heading<\/h2>/);
+  assert.match(formattedEmailHtml, /<h3[^>]*>Smaller heading<\/h3>/);
+  assert.match(formattedEmailHtml, /<strong[^>]*>bold text<\/strong>/);
+  assert.match(formattedEmailHtml, /<em[^>]*>italic text<\/em>/);
+  assert.match(formattedEmailHtml, /<strong[^>]*><a href="https:\/\/example\.com\/offer"/);
+  assert.match(
+    formattedEmailHtml,
+    /<ul[^>]*list-style-type:disc[^>]*><li[^>]*>First point<\/li><li[^>]*>Second point<\/li><\/ul>/
+  );
+  assert.match(
+    formattedEmailHtml,
+    /<ol[^>]*list-style-type:decimal[^>]*><li[^>]*>First step<\/li><li[^>]*>Second step<\/li><\/ol>/
+  );
+  assert.match(
+    formattedEmailHtml,
+    /<ul[^>]*list-style-type:none[^>]*><li[^>]*><span[^>]*>–<\/span>First dashed point<\/li><li[^>]*><span[^>]*>–<\/span>Second dashed point<\/li><\/ul>/
+  );
+  assert.match(formattedEmailHtml, /<hr[^>]*\/>/);
+  assert.match(formattedEditorHtml, /<h1[^>]*>Main heading<\/h1>/);
+  assert.match(formattedEditorHtml, /<h2[^>]*>Section heading<\/h2>/);
+  assert.match(formattedEditorHtml, /<h3[^>]*>Smaller heading<\/h3>/);
+  assert.match(formattedEditorHtml, /<strong[^>]*>bold text<\/strong>/);
+  assert.match(formattedEditorHtml, /<em[^>]*>italic text<\/em>/);
+  assert.match(
+    formattedEditorHtml,
+    /<ul[^>]*list-style-type:disc[^>]*><li[^>]*>First point<\/li><li[^>]*>Second point<\/li><\/ul>/
+  );
+  assert.match(
+    formattedEditorHtml,
+    /<ol[^>]*list-style-type:decimal[^>]*><li[^>]*>First step<\/li><li[^>]*>Second step<\/li><\/ol>/
+  );
+  assert.match(
+    formattedEditorHtml,
+    /<ul data-email-list-style="dash"[^>]*><li[^>]*>First dashed point<\/li><li[^>]*>Second dashed point<\/li><\/ul>/
+  );
+  assert.match(formattedEditorHtml, /<hr[^>]*\/>/);
+  assert.equal(
+    renderEmailTextFallback(formattedEmailBody),
+    [
+      'Main heading',
+      '',
+      'Section heading',
+      '',
+      'Smaller heading',
+      '',
+      'This has bold text, italic text, and a bold link (https://example.com/offer).',
+      '',
+      '- First point',
+      '- Second point',
+      '',
+      '– First dashed point',
+      '– Second dashed point',
+      '',
+      '1. First step',
+      '2. Second step',
+      '',
+      '----------------------------------------',
+      '',
+      'Final paragraph.',
+    ].join('\n')
   );
   assert.equal(normaliseEmailLinkUrl('example.com/guide'), 'https://example.com/guide');
   assert.equal(normaliseEmailLinkUrl('javascript:alert(1)'), null);
@@ -938,6 +1083,7 @@ async function run() {
     host: string;
   }> = [];
   let existingPipedrivePerson = false;
+  let beehiivCreateReturnsDuplicate = false;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(requestUrl(input));
     const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
@@ -964,12 +1110,31 @@ async function run() {
       }
     }
 
+    if (url.hostname === 'api.beehiiv.com') {
+      if (url.pathname === '/v2/publications/pub_smoke/subscriptions' && method === 'POST') {
+        return beehiivCreateReturnsDuplicate
+          ? jsonResponse({ error: 'Subscription already exists' }, 400)
+          : jsonResponse({ data: { id: 'sub_new' } });
+      }
+      if (
+        url.pathname === '/v2/publications/pub_smoke/subscriptions/by_email/existing%40example.com'
+        && method === 'GET'
+      ) {
+        return jsonResponse({ data: { id: 'sub_existing' } });
+      }
+      if (/^\/v2\/publications\/pub_smoke\/subscriptions\/sub_(?:new|existing)\/tags$/.test(url.pathname)) {
+        return jsonResponse({ data: { id: url.pathname.includes('sub_existing') ? 'sub_existing' : 'sub_new' } });
+      }
+    }
+
     return jsonResponse({ success: false, error: 'Unexpected integration request' }, 500);
   }) as typeof fetch;
 
   try {
     const integrationAccount: AccountSettings = {
       ...account,
+      beehiivApiKey: 'beehiiv_smoke_key',
+      beehiivPublicationId: 'pub_smoke',
       slackWebhookUrl: 'https://hooks.slack.com/services/T00000000/B00000000/secret_value',
       pipedriveApiToken: 'pipedrive_smoke_token',
     };
@@ -987,6 +1152,41 @@ async function run() {
       await upsertPipedrivePerson({ account: integrationAccount, email: 'lead@example.com', name: 'Lead Example' }),
       { synced: true, action: 'created' }
     );
+
+    await addToBeehiiv({
+      account: integrationAccount,
+      email: 'lead@example.com',
+      leadMagnet: magnet,
+      name: 'Lead Example',
+    });
+    const beehiivCreateRequest = integrationRequests.find(
+      (request) => request.pathname === '/v2/publications/pub_smoke/subscriptions'
+    );
+    assert.equal(beehiivCreateRequest?.body?.utm_source, 'magnets');
+    assert.equal(beehiivCreateRequest?.body?.utm_medium, 'lead-magnet');
+    assert.equal(beehiivCreateRequest?.body?.utm_campaign, magnet.slug);
+    const beehiivTagRequest = integrationRequests.find(
+      (request) => request.pathname === '/v2/publications/pub_smoke/subscriptions/sub_new/tags'
+    );
+    assert.deepEqual(beehiivTagRequest?.body?.tags, ['Lead magnet: Smoke Test Magnet']);
+    assert.equal(beehiivLeadMagnetTag({ title: '', slug: 'fallback-title' }), 'Lead magnet: fallback title');
+
+    beehiivCreateReturnsDuplicate = true;
+    await addToBeehiiv({
+      account: integrationAccount,
+      email: 'existing@example.com',
+      leadMagnet: { ...magnet, title: 'Second Magnet' },
+      name: 'Existing Subscriber',
+    });
+    assert.ok(
+      integrationRequests.some(
+        (request) => request.pathname === '/v2/publications/pub_smoke/subscriptions/by_email/existing%40example.com'
+      )
+    );
+    const existingBeehiivTagRequest = integrationRequests.find(
+      (request) => request.pathname === '/v2/publications/pub_smoke/subscriptions/sub_existing/tags'
+    );
+    assert.deepEqual(existingBeehiivTagRequest?.body?.tags, ['Lead magnet: Second Magnet']);
 
     existingPipedrivePerson = true;
     assert.deepEqual(
@@ -1012,7 +1212,7 @@ async function run() {
     globalThis.fetch = resendFetch;
   }
 
-  console.log('Follow-up smoke test passed: managed Resend sending, automation creation and repair, sequence cancellation, email images, account-level booking cancellation, Slack notifications, and Pipedrive create/update sync.');
+  console.log('Follow-up smoke test passed: managed Resend sending, automation creation and repair, sequence cancellation, email images, account-level booking cancellation, Beehiiv lead-magnet tags, Slack notifications, and Pipedrive create/update sync.');
 }
 
 run()
