@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Bug,
+  CircleHelp,
   FileText,
   LayoutDashboard,
   Loader2,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import { MagnetsLogo } from '@/components/magnets-logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { WalkthroughModal } from '@/components/walkthrough-video';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -101,6 +103,7 @@ function SidebarLink({
 }
 
 function SidebarContent({
+  onOpenHelp,
   onLogout,
   onNavigate,
   isLoggingOut,
@@ -109,6 +112,7 @@ function SidebarContent({
   userEmail,
 }: {
   isLoggingOut?: boolean;
+  onOpenHelp: () => void;
   onLogout: () => void;
   onNavigate?: () => void;
   setupComplete: boolean;
@@ -204,6 +208,18 @@ function SidebarContent({
               className="h-9 w-full justify-start border-transparent bg-transparent px-2.5 shadow-none"
               showLabel
             />
+            <button
+              type="button"
+              onClick={() => {
+                accountMenuRef.current?.removeAttribute('open');
+                onOpenHelp();
+              }}
+              className="flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
+              role="menuitem"
+            >
+              <CircleHelp className="h-4 w-4 shrink-0" />
+              Help &amp; walkthrough
+            </button>
             <a
               href="mailto:hello@camerontrew.com?subject=Magnets%20bug%20report"
               className="flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
@@ -246,6 +262,7 @@ export function DashboardLayoutShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -262,6 +279,7 @@ export function DashboardLayoutShell({
         <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 border-r border-ink-200 bg-white lg:block">
           <SidebarContent
             isLoggingOut={isLoggingOut}
+            onOpenHelp={() => setWalkthroughOpen(true)}
             onLogout={handleLogout}
             setupComplete={setupComplete}
             userName={userName}
@@ -300,6 +318,10 @@ export function DashboardLayoutShell({
                 </div>
                 <SidebarContent
                   isLoggingOut={isLoggingOut}
+                  onOpenHelp={() => {
+                    setMobileOpen(false);
+                    setWalkthroughOpen(true);
+                  }}
                   onLogout={handleLogout}
                   onNavigate={() => setMobileOpen(false)}
                   setupComplete={setupComplete}
@@ -339,6 +361,8 @@ export function DashboardLayoutShell({
           </footer>
         </div>
       </div>
+
+      <WalkthroughModal open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
 
     </main>
   );

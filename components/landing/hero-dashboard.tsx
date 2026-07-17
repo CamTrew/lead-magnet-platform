@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import { motion, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
+import { WalkthroughVideo } from '@/components/walkthrough-video';
 
 export function HeroDashboard() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,18 +39,10 @@ export function HeroDashboard() {
             <span className="h-2.5 w-2.5 rounded-full bg-brand-yellow" />
             <span className="h-2.5 w-2.5 rounded-full bg-brand-aqua" />
             <span className="ml-3 hidden rounded bg-ink-50 px-2 py-1 font-mono text-[10px] text-ink-400 sm:block">
-              magnets.so/dashboard
+              Magnets platform walkthrough
             </span>
           </div>
-          <Image
-            alt="Magnets Pages dashboard showing published lead magnets, their live URLs, and signup counts"
-            className="mt-2 h-auto w-full rounded-md border border-ink-100"
-            height={720}
-            priority
-            sizes="(max-width: 768px) 100vw, 1152px"
-            src="/landing-dashboard.png"
-            width={1280}
-          />
+          <WalkthroughVideo className="mt-2 border border-ink-100" />
         </div>
       </motion.div>
     </div>
