@@ -181,6 +181,14 @@ function SidebarContent({
             </div>
           );
         })}
+        <button
+          type="button"
+          onClick={onOpenHelp}
+          className="group flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-ink-600 transition hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset lg:min-h-9"
+        >
+          <CircleHelp className="h-4 w-4 shrink-0" />
+          <span className="overflow-hidden whitespace-nowrap">Help &amp; walkthrough</span>
+        </button>
       </nav>
 
       <div className="border-t border-ink-200 p-2">
@@ -208,18 +216,6 @@ function SidebarContent({
               className="h-9 w-full justify-start border-transparent bg-transparent px-2.5 shadow-none"
               showLabel
             />
-            <button
-              type="button"
-              onClick={() => {
-                accountMenuRef.current?.removeAttribute('open');
-                onOpenHelp();
-              }}
-              className="flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
-              role="menuitem"
-            >
-              <CircleHelp className="h-4 w-4 shrink-0" />
-              Help &amp; walkthrough
-            </button>
             <a
               href="mailto:hello@camerontrew.com?subject=Magnets%20bug%20report"
               className="flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
