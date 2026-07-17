@@ -3,12 +3,14 @@ import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
 import {
   deleteLeadMagnet,
+  findLeadMagnetForAccount,
   getAccountWithSecrets,
   updateLeadMagnet,
   updateLeadMagnetFollowUpSync,
 } from '@/lib/platform-store';
 import {
   FollowUpSequenceError,
+  followUpAutomationNeedsSync,
   syncLeadMagnetFollowUpAutomation,
 } from '@/lib/follow-up-sequences';
 import {
@@ -444,6 +446,7 @@ export async function PUT(
       })),
     };
 
+    const previousLeadMagnet = await findLeadMagnetForAccount(payload.account.id, id);
     let leadMagnet = await updateLeadMagnet(payload.account.id, id, updateData);
 
     if (!leadMagnet) {
@@ -452,7 +455,7 @@ export async function PUT(
     invalidatePublishedLeadMagnetCache();
 
     try {
-      if (!leadMagnet.followUpEnabled && !leadMagnet.resendFollowUpAutomationId) {
+      if (!followUpAutomationNeedsSync(previousLeadMagnet, leadMagnet)) {
         log.info('Lead magnet updated', {
           route: ROUTE,
           method: 'PUT',

@@ -151,6 +151,19 @@ function followUpEmailsChanged(a: FollowUpEmail[], b: FollowUpEmail[]) {
   return JSON.stringify(a) !== JSON.stringify(b);
 }
 
+export function followUpAutomationNeedsSync(previous: LeadMagnet | null, next: LeadMagnet) {
+  if (!next.followUpEnabled) {
+    return Boolean(next.resendFollowUpAutomationId);
+  }
+
+  if (needsInitialFollowUpSync(next)) return true;
+  if (!previous) return true;
+
+  return previous.followUpEnabled !== next.followUpEnabled
+    || previous.followUpStopOnBooking !== next.followUpStopOnBooking
+    || followUpEmailsChanged(previous.followUpEmails, next.followUpEmails);
+}
+
 function replaceTemplateVariables(value: string) {
   return value
     .replace(/{name}/g, '{{{NAME}}}')
@@ -425,6 +438,44 @@ async function enableAutomation(apiKey: string, automationId: string) {
   });
 }
 
+async function disableAutomationIfPresent(apiKey: string, automationId: string) {
+  try {
+    await disableAutomation(apiKey, automationId);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/404|not found/i.test(message)) return false;
+    throw error;
+  }
+}
+
+async function activateReplacementAutomation(
+  apiKey: string,
+  previousAutomationId: string,
+  replacementAutomationId: string
+) {
+  if (!previousAutomationId) {
+    await enableAutomation(apiKey, replacementAutomationId);
+    return;
+  }
+
+  let previousDisabled = false;
+  try {
+    // Resend keeps existing runs alive after an Automation is stopped, but
+    // stops matching events from starting new runs. Create the replacement
+    // first, then perform this short disabled -> enabled handover so a signup
+    // can never trigger both versions.
+    previousDisabled = await disableAutomationIfPresent(apiKey, previousAutomationId);
+    await enableAutomation(apiKey, replacementAutomationId);
+  } catch (error) {
+    await disableAutomationIfPresent(apiKey, replacementAutomationId).catch(() => undefined);
+    if (previousDisabled) {
+      await enableAutomation(apiKey, previousAutomationId).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
 async function sendEvent(
   account: AccountSettings,
   leadMagnetId: string,
@@ -456,10 +507,10 @@ export async function syncLeadMagnetFollowUpAutomation(
 
   if (!magnet.followUpEnabled) {
     if (resendApiKey && magnet.resendFollowUpAutomationId) {
-      await disableAutomation(resendApiKey, magnet.resendFollowUpAutomationId).catch(() => undefined);
+      await disableAutomationIfPresent(resendApiKey, magnet.resendFollowUpAutomationId);
     }
     return {
-      automationId: magnet.resendFollowUpAutomationId,
+      automationId: '',
       emails,
       renderVersion: FOLLOW_UP_RENDER_VERSION,
     };
@@ -480,9 +531,12 @@ export async function syncLeadMagnetFollowUpAutomation(
   const syncedEmails: FollowUpEmail[] = [];
   for (let index = 0; index < activeEmails.length; index += 1) {
     const email = activeEmails[index];
+    // Never republish a template used by an older run. A replacement
+    // Automation gets replacement templates so people already in the old
+    // sequence continue seeing the exact version they entered.
     const templateId = await upsertTemplate(
       readyResendApiKey,
-      email.resendTemplateId,
+      '',
       templatePayload(from, magnet, email, index)
     );
     syncedEmails.push({ ...email, resendTemplateId: templateId });
@@ -490,10 +544,14 @@ export async function syncLeadMagnetFollowUpAutomation(
 
   const automationId = await upsertAutomation(
     readyResendApiKey,
-    magnet.resendFollowUpAutomationId,
+    '',
     buildAutomationGraph(from, magnet, syncedEmails)
   );
-  await enableAutomation(readyResendApiKey, automationId);
+  await activateReplacementAutomation(
+    readyResendApiKey,
+    magnet.resendFollowUpAutomationId,
+    automationId
+  );
 
   return {
     automationId,

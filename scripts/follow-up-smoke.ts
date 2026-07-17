@@ -5,6 +5,7 @@ import {
 } from '../lib/calendar-webhook-payload';
 import {
   FollowUpSequenceError,
+  followUpAutomationNeedsSync,
   startLeadMagnetFollowUpSequence,
   stopAccountFollowUpSequencesForEmail,
   stopLeadMagnetFollowUpSequence,
@@ -497,6 +498,27 @@ async function run() {
     synced.emails.map((email) => email.resendTemplateId),
     ['tmpl_1', 'tmpl_2']
   );
+  const currentSyncedMagnet = {
+    ...magnet,
+    followUpEmails: synced.emails,
+    resendFollowUpAutomationId: synced.automationId,
+    resendFollowUpRenderVersion: synced.renderVersion,
+  };
+  assert.equal(
+    followUpAutomationNeedsSync(currentSyncedMagnet, { ...currentSyncedMagnet, title: 'Delivery-only edit' }),
+    false,
+    'Editing the page or delivery email must not replace an unchanged follow-up Automation.'
+  );
+  assert.equal(
+    followUpAutomationNeedsSync(currentSyncedMagnet, {
+      ...currentSyncedMagnet,
+      followUpEmails: currentSyncedMagnet.followUpEmails.map((email, index) =>
+        index === 0 ? { ...email, body: `${email.body}\n\nNew copy.` } : email
+      ),
+    }),
+    true,
+    'Changing follow-up content must create a replacement Automation.'
+  );
 
   const eventBodies = requests
     .filter((request) => request.pathname === '/events' && request.method === 'POST')
@@ -796,6 +818,7 @@ async function run() {
 
   resetRequests();
   let savedRenderVersion = -1;
+  let savedReplacementAutomationId = '';
   const staleRenderResult = await startLeadMagnetFollowUpSequence({
     account,
     magnet: {
@@ -819,6 +842,7 @@ async function run() {
       }),
       updateLeadMagnetFollowUpSync: async (_accountId, _leadMagnetId, updates) => {
         savedRenderVersion = updates.resendFollowUpRenderVersion;
+        savedReplacementAutomationId = updates.resendFollowUpAutomationId;
         return {
           ...magnet,
           followUpEmails: updates.followUpEmails,
@@ -830,13 +854,17 @@ async function run() {
   });
   assert.deepEqual(staleRenderResult, { started: false, reason: 'duplicate' });
   assert.equal(savedRenderVersion, synced.renderVersion);
-  assert.ok(findRequest('/templates/tmpl_1', 'PATCH'));
-  assert.ok(findRequest('/templates/tmpl_2', 'PATCH'));
-  assert.ok(findRequest('/automations/auto_1', 'PATCH'));
+  assert.equal(savedReplacementAutomationId, 'auto_2');
+  assert.equal(findRequest('/templates/tmpl_1', 'PATCH'), undefined);
+  assert.equal(findRequest('/templates/tmpl_2', 'PATCH'), undefined);
+  assert.deepEqual(automationPatchBodies('auto_1'), [{ status: 'disabled' }]);
+  assert.deepEqual(automationPatchBodies('auto_2'), [{ status: 'enabled' }]);
+  assert.ok(findRequest('/templates', 'POST'));
+  assert.ok(findRequest('/automations', 'POST'));
   assert.deepEqual(eventSendBodies(), []);
 
   resetRequests();
-  await syncLeadMagnetFollowUpAutomation(account, {
+  const disabledSequence = await syncLeadMagnetFollowUpAutomation(account, {
     ...magnet,
     followUpEnabled: false,
     resendFollowUpAutomationId: 'auto_existing',
@@ -844,6 +872,7 @@ async function run() {
 
   const disabledBody = findBody('/automations/auto_existing', 'PATCH');
   assert.deepEqual(disabledBody, { status: 'disabled' });
+  assert.equal(disabledSequence.automationId, '');
 
   resetRequests();
   const manualStopCalls: JsonRecord[] = [];
@@ -1017,7 +1046,7 @@ async function run() {
   assert.deepEqual(duplicateAfterRepair, { started: false, reason: 'duplicate' });
   const savedRepairSnapshot = savedRepair as JsonRecord | null;
   assert.ok(savedRepairSnapshot, 'Missing automation should be repaired before duplicate suppression.');
-  assert.equal(savedRepairSnapshot.resendFollowUpAutomationId, 'auto_2');
+  assert.equal(savedRepairSnapshot.resendFollowUpAutomationId, 'auto_3');
   assert.ok(findRequest('/automations', 'POST'));
   assert.deepEqual(eventSendBodies(), []);
 
