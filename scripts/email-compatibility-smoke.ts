@@ -258,6 +258,8 @@ assert.match(footerHtml, /<\/td><\/tr><tr><td class="magnets-email-footer-cell"/
 assert.match(footerHtml, /background:#080d18/);
 assert.match(footerHtml, /src="https:\/\/magnets\.so\/brand\/magnets-mark\.png"/);
 assert.match(footerHtml, /Powered by Magnets/);
+assert.match(footerHtml, /width:100%;margin:0;background:#ffffff/);
+assert.doesNotMatch(footerHtml, /background:#f5f5f4/);
 const parityBody = 'Hi Alex.\n\n![Preview](https://cdn.example.com/preview.png)';
 const parityPreview = '  Your   preview text  ';
 assert.equal(
@@ -282,6 +284,6 @@ assert.match(renderFollowUpEmailHtml(parityBody, parityPreview, '#'), /Stop this
 assert.equal(parseEmailImageLine('![Unsafe](javascript:alert(1))'), null);
 
 assert.equal(cleanEmailText('\r\nHello.   \r\n\r\n\r\nWorld.  '), 'Hello.\n\nWorld.');
-assert.equal(FOLLOW_UP_RENDER_VERSION, 6);
+assert.equal(FOLLOW_UP_RENDER_VERSION, 7);
 
 console.log('Email compatibility smoke test passed: legacy plain text, rich formatting, single images, proxy URLs, and new responsive image rows.');

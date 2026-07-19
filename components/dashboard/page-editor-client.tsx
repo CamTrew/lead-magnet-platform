@@ -3005,7 +3005,7 @@ function EmailPreviewDialog({
     const rendered = kind === 'follow-up'
       ? renderFollowUpEmailHtml(sampleBody, previewText, '#')
       : renderDeliveryEmailHtml(sampleBody, previewText);
-    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head><body style="margin:0;background:#f5f5f4">${rendered}</body></html>`;
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head><body style="margin:0;background:#ffffff">${rendered}</body></html>`;
   }, [body, kind, previewText]);
 
   return (

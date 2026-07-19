@@ -23,7 +23,7 @@ const RESEND_API_BASE = 'https://api.resend.com';
 // Increment whenever stored Resend templates need to be rebuilt with new HTML.
 // Version 3 replaces the legacy pre-wrapped Markdown output with real email
 // headings, emphasis, dividers, and lists.
-export const FOLLOW_UP_RENDER_VERSION = 6;
+export const FOLLOW_UP_RENDER_VERSION = 7;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
