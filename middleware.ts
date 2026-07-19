@@ -115,11 +115,6 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Logged-in users hitting /login or /register — bounce them into the dashboard.
-  if ((pathname === '/login' || pathname === '/register') && hasSession) {
-    return applySecurityHeaders(NextResponse.redirect(new URL('/dashboard/pages', request.url)), request);
-  }
-
   return applySecurityHeaders(NextResponse.next(), request);
 }
 

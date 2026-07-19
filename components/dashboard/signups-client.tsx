@@ -24,6 +24,7 @@ import {
   AceternityInput,
   Field,
 } from '@/components/ui/aceternity';
+import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import { parseCsv } from '@/lib/csv';
 import type { AccountSignup } from '@/lib/types';
@@ -59,6 +60,7 @@ export function SignupsClient({
   const [manualOpen, setManualOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [signupToRemove, setSignupToRemove] = useState<AccountSignup | null>(null);
+  const [startingEmail, setStartingEmail] = useState('');
   const [stoppingEmail, setStoppingEmail] = useState('');
   const [actionError, setActionError] = useState('');
 
@@ -135,6 +137,44 @@ export function SignupsClient({
     }
   }
 
+  async function startSequence(signup: AccountSignup) {
+    if (startingEmail) return;
+    setStartingEmail(signup.email);
+    setActionError('');
+    try {
+      const response = await fetch('/api/signups/sequence/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: signup.email,
+          name: signup.name,
+          leadMagnetId: signup.firstLeadMagnetId,
+        }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'Could not start sequence');
+      }
+      setSignups((current) =>
+        current.map((item) =>
+          item.email.toLowerCase() === signup.email.toLowerCase()
+            ? {
+                ...item,
+                followUpStatus: 'active',
+                followUpStopReason: '',
+                followUpStoppedAt: null,
+              }
+            : item
+        )
+      );
+      router.refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not start sequence');
+    } finally {
+      setStartingEmail('');
+    }
+  }
+
   return (
     <>
       <PageHeader title="Signups" subtitle="Everyone who has signed up to a magnet" />
@@ -201,19 +241,19 @@ export function SignupsClient({
         </div>
 
         <AceternityCard className="overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-ink-200 bg-white p-5 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0 xl:max-w-sm">
+          <div className="border-b border-ink-200 bg-white p-5">
+            <div className="min-w-0">
               <h2 className="text-base font-semibold text-ink-950">All signups</h2>
               <p className="mt-1 text-sm text-ink-500">
                 One row per email, deduplicated across every magnet on this account.
               </p>
             </div>
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto xl:flex-nowrap xl:justify-end">
-              <div className="relative w-full sm:w-auto xl:w-52">
+            <div className="mt-4 grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto_auto]">
+              <div className="relative min-w-0">
                 <ListFilter className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <select
                   aria-label="Filter signups by lead magnet"
-                  className="h-9 w-full rounded-md border border-ink-200 bg-white py-0 pl-8 pr-8 text-sm text-ink-900 outline-none transition focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:w-64 xl:w-52"
+                  className="h-9 w-full rounded-md border border-ink-200 bg-white py-0 pl-8 pr-8 text-sm text-ink-900 outline-none transition focus:border-ink-950 focus:ring-1 focus:ring-ink-950"
                   onChange={(event) => setLeadMagnetFilter(event.target.value)}
                   value={leadMagnetFilter}
                 >
@@ -225,17 +265,17 @@ export function SignupsClient({
                   ))}
                 </select>
               </div>
-              <div className="relative w-full sm:w-auto xl:w-52">
+              <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
                 <AceternityInput
-                  className="pl-8 sm:w-64 xl:w-52"
+                  className="w-full pl-8"
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search email, name, or magnet"
                   value={search}
                 />
               </div>
               <AceternityButton
-                className="shrink-0"
+                className="w-full shrink-0 sm:w-auto"
                 disabled={!hasMagnets}
                 onClick={() => setManualOpen(true)}
                 size="md"
@@ -246,7 +286,7 @@ export function SignupsClient({
                 Add manually
               </AceternityButton>
               <AceternityButton
-                className="shrink-0"
+                className="w-full shrink-0 sm:w-auto"
                 disabled={!hasMagnets}
                 onClick={() => setImportOpen(true)}
                 size="md"
@@ -260,8 +300,8 @@ export function SignupsClient({
                 aria-disabled={exportCount === 0}
                 className={
                   exportCount === 0
-                    ? 'pointer-events-none inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60'
-                    : 'inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800'
+                    ? 'pointer-events-none inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60 sm:w-auto'
+                    : 'inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800 sm:w-auto'
                 }
                 href={exportHref}
                 download
@@ -398,6 +438,23 @@ export function SignupsClient({
                       </td>
                       <td className="mt-4 block xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
                         <div className="flex gap-1 xl:justify-end">
+                          {(signup.followUpStatus === 'none' || signup.followUpStatus === 'failed') && (
+                            <button
+                              aria-label={`Start sequence for ${signup.email}`}
+                              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-ink-950 bg-ink-950 px-2.5 text-xs font-medium text-white transition hover:bg-ink-800 disabled:opacity-50"
+                              disabled={startingEmail === signup.email}
+                              onClick={() => startSequence(signup)}
+                              title={signup.followUpStatus === 'failed' ? 'Retry follow-up sequence' : 'Start follow-up sequence'}
+                              type="button"
+                            >
+                              {startingEmail === signup.email ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                              {startingEmail === signup.email
+                                ? 'Starting'
+                                : signup.followUpStatus === 'failed'
+                                  ? 'Retry sequence'
+                                  : 'Start sequence'}
+                            </button>
+                          )}
                           {signup.followUpStatus === 'active' && (
                             <button
                               aria-label={`Stop sequence for ${signup.email}`}
@@ -478,6 +535,8 @@ function ModalShell({
   onClose: () => void;
   title: string;
 }) {
+  useModalAccessibility(onClose);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/20 p-4 backdrop-blur-sm">
       <button aria-label="Close" className="absolute inset-0" onClick={onClose} type="button" />

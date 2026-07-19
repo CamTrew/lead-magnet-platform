@@ -3,6 +3,7 @@
 import { type ReactNode, useState } from 'react';
 import { AlertTriangle, Lock, Pencil, X } from 'lucide-react';
 import { AceternityButton } from '@/components/ui/aceternity';
+import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 
 /**
  * A value that's been "committed" and shouldn't be changed casually.
@@ -78,6 +79,8 @@ function ConfirmEditModal({
   onConfirm: () => void;
   title: string;
 }) {
+  useModalAccessibility(onCancel);
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/40 p-4 backdrop-blur-sm">
       <button aria-label="Close" className="absolute inset-0" onClick={onCancel} type="button" />

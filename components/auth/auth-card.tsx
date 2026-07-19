@@ -57,6 +57,7 @@ export function AuthCard({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [newsletterOptIn, setNewsletterOptIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +89,7 @@ export function AuthCard({
 
     try {
       const body = mode === 'register'
-        ? { email, password, name: name.trim(), acceptedTerms: true }
+        ? { email, password, name: name.trim(), acceptedTerms: true, newsletterOptIn }
         : { email, password };
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -220,7 +221,22 @@ export function AuthCard({
                 <a className="font-medium text-ink-950 underline-offset-4 hover:underline" href="/privacy" rel="noreferrer" target="_blank">
                   Privacy Policy
                 </a>
-                . I understand my email will be added to the Magnets product newsletter, which I can unsubscribe from at any time.
+                .
+              </span>
+            </label>
+          )}
+
+          {mode === 'register' && (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-ink-200 bg-white p-3 text-xs leading-5 text-ink-700">
+              <input
+                checked={newsletterOptIn}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 text-ink-950 accent-ink-950"
+                disabled={isBusy}
+                onChange={(event) => setNewsletterOptIn(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                Email me occasional product updates and practical lead-magnet tips. Optional, and I can unsubscribe at any time.
               </span>
             </label>
           )}

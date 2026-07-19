@@ -14,7 +14,9 @@ import {
 import { addToBeehiiv, beehiivLeadMagnetTag } from '../lib/beehiiv';
 import {
   appendEmailImage,
+  insertEmailImages,
   parseEmailBodySegments,
+  parseEmailImageRowLine,
   removeEmailBodySegment,
   replaceEmailBodySegment,
 } from '../lib/email-body-images';
@@ -30,7 +32,9 @@ import {
 } from '../lib/email-image-proxy';
 import { verifyFollowUpStopToken } from '../lib/follow-up-opt-out';
 import {
+  renderDeliveryEmailHtml,
   renderEmailTextFallback,
+  renderFollowUpEmailHtml,
   renderPlainEmailHtml,
   sendLeadMagnetEmail,
 } from '../lib/resend';
@@ -63,6 +67,7 @@ const requests: CapturedRequest[] = [];
 let templateCount = 0;
 let automationCount = 0;
 let forbiddenPath = '';
+const automationResources = new Map<string, JsonRecord>();
 const originalFetch = globalThis.fetch;
 
 function jsonResponse(body: JsonRecord, status = 200) {
@@ -158,11 +163,28 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 
   if (method === 'POST' && url.pathname === '/automations') {
     automationCount += 1;
-    return jsonResponse({ id: `auto_${automationCount}` });
+    const id = `auto_${automationCount}`;
+    automationResources.set(id, { id, ...(body || {}) });
+    return jsonResponse({ id });
+  }
+
+  if (method === 'GET' && url.pathname === '/automations') {
+    return jsonResponse({ data: Array.from(automationResources.values()) });
+  }
+
+  if (method === 'GET' && /^\/automations\/[^/]+$/.test(url.pathname)) {
+    const id = decodeURIComponent(url.pathname.split('/')[2] || '');
+    const automation = automationResources.get(id);
+    return automation
+      ? jsonResponse(automation)
+      : jsonResponse({ message: 'Automation not found' }, 404);
   }
 
   if (method === 'PATCH' && /^\/automations\/[^/]+$/.test(url.pathname)) {
-    return jsonResponse({ id: decodeURIComponent(url.pathname.split('/')[2] || '') });
+    const id = decodeURIComponent(url.pathname.split('/')[2] || '');
+    const existing = automationResources.get(id);
+    if (existing) automationResources.set(id, { ...existing, ...(body || {}) });
+    return jsonResponse({ id });
   }
 
   if (method === 'POST' && url.pathname === '/events/send') {
@@ -413,6 +435,16 @@ async function run() {
   const ownedEmailRequest = findRequest('/emails', 'POST');
   assert.equal(ownedEmailRequest?.authorization, 'Bearer re_smoke_test');
   assert.equal(ownedEmailRequest?.body?.from, account.resendFromEmail);
+  assert.equal(
+    ownedEmailRequest?.body?.html,
+    renderDeliveryEmailHtml(
+      formattedDeliveryBody
+        .replace(/{name}/g, 'Existing User')
+        .replace(/{download_link}/g, magnet.downloadLink),
+      magnet.emailPreview
+    ),
+    'The provider payload must be byte-for-byte identical to the shared preview renderer.'
+  );
   assert.match(String(ownedEmailRequest?.body?.html), /<hr[^>]*\/>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h1[^>]*>Heading 1<\/h1>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h2[^>]*>Heading 2<\/h2>/);
@@ -533,6 +565,17 @@ async function run() {
   assert.equal(templateBody.from, account.resendFromEmail);
   assert.equal(templateBody.subject, 'First follow-up for {name}');
   assert.equal(typeof templateBody.html, 'string');
+  assert.equal(
+    templateBody.html,
+    renderFollowUpEmailHtml(
+      magnet.followUpEmails[0].body
+        .replace(/{name}/g, '{{{NAME}}}')
+        .replace(/{download_link}/g, '{{{DOWNLOAD_LINK}}}'),
+      magnet.followUpEmails[0].preview,
+      '{{{STOP_SEQUENCE_URL}}}'
+    ),
+    'The follow-up provider template must be byte-for-byte identical to the shared preview renderer.'
+  );
   assert.match(String(templateBody.html), /\{\{\{NAME\}\}\}/);
   assert.match(String(templateBody.html), /<h2[^>]*>Your next step<\/h2>/);
   assert.match(String(templateBody.html), /<strong[^>]*><a href="https:\/\/example\.com\/book"/);
@@ -547,7 +590,9 @@ async function run() {
   assert.match(String(templateBody.text), /\{\{\{STOP_SEQUENCE_URL\}\}\}/);
 
   const normalEmailBody = 'Here is the screenshot:\n\n![Screenshot](https://cdn.example.com/screenshot.jpg)\n\nDone.';
-  assert.match(renderPlainEmailHtml(normalEmailBody, 'Preview'), /<img src="https:\/\/cdn\.example\.com\/screenshot\.jpg"/);
+  const normalEmailHtml = renderPlainEmailHtml(normalEmailBody, 'Preview');
+  assert.match(normalEmailHtml, /<img src="https:\/\/cdn\.example\.com\/screenshot\.jpg"/);
+  assert.match(normalEmailHtml, /max-width:640px/);
   assert.match(renderEmailTextFallback(normalEmailBody), /Screenshot: https:\/\/cdn\.example\.com\/screenshot\.jpg/);
 
   const linkedEmailBody = 'Read [the guide](https://example.com/guide) or visit https://example.com/help.';
@@ -696,6 +741,22 @@ async function run() {
     'Text before.\n\n![Preview](https://cdn.example.com/preview.png)\n\nText after with spaces '
   );
 
+  const insertedImageRow = insertEmailImages(
+    'Before.\n\nAfter.',
+    { mode: 'row', segmentIndex: 0, before: 'Before.', after: 'After.' },
+    [
+      { alt: 'Desktop', url: 'https://cdn.example.com/desktop.png' },
+      { alt: 'Mobile', url: 'https://cdn.example.com/mobile.png' },
+    ]
+  );
+  assert.match(insertedImageRow, /Desktop.* \|\| .*Mobile/);
+  assert.equal(parseEmailBodySegments(insertedImageRow)[1]?.kind, 'image-row');
+  assert.equal(parseEmailImageRowLine(parseEmailBodySegments(insertedImageRow)[1]?.raw || '')?.length, 2);
+  const imageRowHtml = renderPlainEmailHtml(insertedImageRow, 'Preview');
+  assert.match(imageRowHtml, /magnets-image-column/);
+  assert.match(imageRowHtml, /max-width:520px/);
+  assert.match(renderEmailTextFallback(insertedImageRow), /Desktop: https:\/\/cdn\.example\.com\/desktop\.png/);
+
   const privateImageUrl = `https://store.private.blob.vercel-storage.com/lead-magnets/${account.id}/${magnet.id}/email-images/promo.png`;
   const proxiedImageUrl = publicEmailImageUrl(privateImageUrl, 'https://magnets.so');
   assert.match(proxiedImageUrl, /^https:\/\/magnets\.so\/email-images\//);
@@ -749,6 +810,26 @@ async function run() {
     ?.variables || {}) as JsonRecord;
   assert.deepEqual(templateVariables.STOP_SEQUENCE_URL, { var: 'event.stopSequenceUrl' });
 
+  automationResources.set('auto_orphan', {
+    id: 'auto_orphan',
+    name: automationBody.name,
+    status: 'enabled',
+    steps: [{
+      key: 'start',
+      type: 'trigger',
+      config: { event_name: 'magnets.lead_magnet.magnet_smoke.signup' },
+    }],
+  });
+  resetRequests();
+  const replacement = await syncLeadMagnetFollowUpAutomation(account, currentSyncedMagnet);
+  assert.equal(replacement.automationId, 'auto_2');
+  assert.deepEqual(automationPatchBodies('auto_1'), [{ status: 'disabled' }]);
+  assert.deepEqual(automationPatchBodies('auto_orphan'), [{ status: 'disabled' }]);
+  assert.deepEqual(automationPatchBodies('auto_2'), [{ status: 'enabled' }]);
+  assert.equal(automationResources.get('auto_1')?.status, 'disabled');
+  assert.equal(automationResources.get('auto_orphan')?.status, 'disabled');
+  assert.equal(automationResources.get('auto_2')?.status, 'enabled');
+
   resetRequests();
   const started = await startLeadMagnetFollowUpSequence({
     account,
@@ -776,15 +857,6 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
-      updateLeadMagnetFollowUpSync: async (accountId, leadMagnetId, updates) => {
-        assert.equal(accountId, account.id);
-        assert.equal(leadMagnetId, magnet.id);
-        return {
-          ...magnet,
-          followUpEmails: updates.followUpEmails,
-          resendFollowUpAutomationId: updates.resendFollowUpAutomationId,
-        };
-      },
     },
   });
 
@@ -817,8 +889,6 @@ async function run() {
   });
 
   resetRequests();
-  let savedRenderVersion = -1;
-  let savedReplacementAutomationId = '';
   const staleRenderResult = await startLeadMagnetFollowUpSequence({
     account,
     magnet: {
@@ -840,28 +910,10 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
-      updateLeadMagnetFollowUpSync: async (_accountId, _leadMagnetId, updates) => {
-        savedRenderVersion = updates.resendFollowUpRenderVersion;
-        savedReplacementAutomationId = updates.resendFollowUpAutomationId;
-        return {
-          ...magnet,
-          followUpEmails: updates.followUpEmails,
-          resendFollowUpAutomationId: updates.resendFollowUpAutomationId,
-          resendFollowUpRenderVersion: updates.resendFollowUpRenderVersion,
-        };
-      },
     },
   });
   assert.deepEqual(staleRenderResult, { started: false, reason: 'duplicate' });
-  assert.equal(savedRenderVersion, synced.renderVersion);
-  assert.equal(savedReplacementAutomationId, 'auto_2');
-  assert.equal(findRequest('/templates/tmpl_1', 'PATCH'), undefined);
-  assert.equal(findRequest('/templates/tmpl_2', 'PATCH'), undefined);
-  assert.deepEqual(automationPatchBodies('auto_1'), [{ status: 'disabled' }]);
-  assert.deepEqual(automationPatchBodies('auto_2'), [{ status: 'enabled' }]);
-  assert.ok(findRequest('/templates', 'POST'));
-  assert.ok(findRequest('/automations', 'POST'));
-  assert.deepEqual(eventSendBodies(), []);
+  assert.deepEqual(requests, [], 'Signup must not rebuild a stale Automation.');
 
   resetRequests();
   const disabledSequence = await syncLeadMagnetFollowUpAutomation(account, {
@@ -902,7 +954,6 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
-      updateLeadMagnetFollowUpSync: async () => null,
     },
   });
 
@@ -952,7 +1003,6 @@ async function run() {
           leadMagnetIds: [magnet.id, 'magnet_second'],
         };
       },
-      updateLeadMagnetFollowUpSync: async () => null,
     },
   });
 
@@ -1000,7 +1050,6 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
-      updateLeadMagnetFollowUpSync: async () => null,
     },
   });
 
@@ -1008,7 +1057,6 @@ async function run() {
   assert.deepEqual(requests, []);
 
   resetRequests();
-  let savedRepair: JsonRecord | null = null;
   const repairMagnet: LeadMagnet = {
     ...magnet,
     resendFollowUpAutomationId: '',
@@ -1030,25 +1078,44 @@ async function run() {
         stoppedCount: 0,
         leadMagnetIds: [],
       }),
-      updateLeadMagnetFollowUpSync: async (accountId, leadMagnetId, updates) => {
-        assert.equal(accountId, account.id);
-        assert.equal(leadMagnetId, magnet.id);
-        savedRepair = updates as unknown as JsonRecord;
-        return {
-          ...repairMagnet,
-          followUpEmails: updates.followUpEmails,
-          resendFollowUpAutomationId: updates.resendFollowUpAutomationId,
-        };
-      },
     },
   });
 
   assert.deepEqual(duplicateAfterRepair, { started: false, reason: 'duplicate' });
-  const savedRepairSnapshot = savedRepair as JsonRecord | null;
-  assert.ok(savedRepairSnapshot, 'Missing automation should be repaired before duplicate suppression.');
-  assert.equal(savedRepairSnapshot.resendFollowUpAutomationId, 'auto_3');
-  assert.ok(findRequest('/automations', 'POST'));
-  assert.deepEqual(eventSendBodies(), []);
+  assert.deepEqual(requests, [], 'Duplicate signup must not repair or emit an Automation event.');
+
+  resetRequests();
+  const failedRuns: Array<{ reason: string; runId: string }> = [];
+  await assert.rejects(
+    () => startLeadMagnetFollowUpSequence({
+      account,
+      magnet: repairMagnet,
+      email: 'missing-automation@example.com',
+      name: 'Missing Automation',
+      store: {
+        createFollowUpRun: async () => ({ created: true, runId: 'run_missing_automation' }),
+        markFollowUpRunFailed: async (runId, reason) => {
+          failedRuns.push({ runId, reason });
+        },
+        hasActiveFollowUpRunForEmail: async () => false,
+        stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+        listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+        stopFollowUpRunsForAccountEmail: async () => ({
+          stopped: false,
+          stoppedCount: 0,
+          leadMagnetIds: [],
+        }),
+      },
+    }),
+    (error) => {
+      assert.ok(error instanceof FollowUpSequenceError);
+      assert.match(error.message, /automation is not ready/i);
+      return true;
+    }
+  );
+  assert.equal(failedRuns[0]?.runId, 'run_missing_automation');
+  assert.match(failedRuns[0]?.reason || '', /automation is not ready/i);
+  assert.deepEqual(requests, []);
 
   resetRequests();
   forbiddenPath = '/events';

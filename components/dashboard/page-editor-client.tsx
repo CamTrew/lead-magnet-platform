@@ -1,22 +1,23 @@
 'use client';
 
-import type { CSSProperties, ChangeEvent } from 'react';
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ChangeEvent, DragEvent as ReactDragEvent } from 'react';
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { uploadPresigned } from '@vercel/blob/client';
 import {
   ArrowLeft,
   Bold,
-  Braces,
   CalendarCheck,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  Columns2,
+  Eye,
   ExternalLink,
-  Heading1,
-  Heading2,
-  Heading3,
   Image as ImageIcon,
+  GripVertical,
   Italic,
   Link2,
   List,
@@ -25,11 +26,14 @@ import {
   ListOrdered,
   Loader2,
   Mail,
+  Monitor,
   Minus,
-  Pilcrow,
   Plus,
+  Redo2,
   Save,
+  Smartphone,
   Trash2,
+  Undo2,
   Video,
   X,
 } from 'lucide-react';
@@ -37,13 +41,21 @@ import { cn } from '@/lib/utils';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import { safeLegalUrl } from '@/lib/legal-links';
 import {
-  appendEmailImage,
+  emailImageMarkdown,
+  insertEmailImages,
+  mergeEmailImageBlocks,
+  parseEmailBodyBlocks,
   parseEmailBodySegments,
-  removeEmailBodySegment,
-  replaceEmailBodySegment,
+  serializeEmailBodyBlocks,
+  type EmailBodyBlock,
+  type EmailImageInsertion,
 } from '@/lib/email-body-images';
 import { blobUploadErrorMessage } from '@/lib/blob-upload-error';
 import { normaliseEmailLinkUrl, renderEmailEditorHtml } from '@/lib/email-body-links';
+import {
+  renderDeliveryEmailHtml,
+  renderFollowUpEmailHtml,
+} from '@/lib/email-render';
 import { pruneQuizRouteConditions } from '@/lib/quiz-routing';
 import type { DashboardBasePayload, LeadMagnet } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
@@ -53,9 +65,12 @@ import {
   AceternityInput,
   AceternityTextarea,
 } from '@/components/ui/aceternity';
+import { ToolbarDropdown } from '@/components/ui/toolbar-dropdown';
+import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 import { ConfirmDialog } from '@/components/dashboard/confirm-dialog';
 import { LeadMagnetCopilot } from '@/components/dashboard/lead-magnet-copilot';
 import { EditableHotspot, InlineParagraphs, InlineText } from '@/components/dashboard/inline-edit';
+import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
 import type {
   LeadMagnetCopilotFollowUpUpdate,
   LeadMagnetCopilotPatch,
@@ -65,8 +80,8 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Mode = 'page' | 'email' | 'sequence' | 'after';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 type EmailImageTarget =
-  | { kind: 'resource' }
-  | { kind: 'follow-up'; emailId: string };
+  | ({ kind: 'resource' } & EmailImageInsertion)
+  | ({ kind: 'follow-up'; emailId: string } & EmailImageInsertion);
 type PendingEmailImage = {
   target: EmailImageTarget;
   previewUrl: string;
@@ -265,7 +280,7 @@ const pageBackground = [
 
 function preserveEmailImages(currentBody: string, nextBody: string) {
   const currentImages = parseEmailBodySegments(currentBody)
-    .filter((segment) => segment.kind === 'image')
+    .filter((segment) => segment.kind !== 'text')
     .map((segment) => segment.raw);
   const missingImages = currentImages.filter((image) => !nextBody.includes(image));
 
@@ -347,6 +362,7 @@ export function PageEditorClient({
   const [isUploadingEmailImage, setIsUploadingEmailImage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [emailImageUploadTarget, setEmailImageUploadTarget] = useState<EmailImageTarget | null>(null);
+  const emailImageUploadTargetRef = useRef<EmailImageTarget | null>(null);
   const [pendingEmailImage, setPendingEmailImage] = useState<PendingEmailImage | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -470,7 +486,6 @@ export function PageEditorClient({
           followUpEnabled: payload.followUpEnabled,
           followUpStopOnBooking: payload.followUpStopOnBooking,
           followUpEmails: payload.followUpEmails,
-          resendFollowUpAutomationId: payload.resendFollowUpAutomationId,
           postSignupMode: payload.postSignupMode,
           postSignupRedirectUrl: payload.postSignupRedirectUrl,
           postSignupHeading: payload.postSignupHeading,
@@ -580,46 +595,59 @@ export function PageEditorClient({
 
   function pickEmailImage(target: EmailImageTarget) {
     if (isUploadingEmailImage) return;
+    emailImageUploadTargetRef.current = target;
     setEmailImageUploadTarget(target);
     emailImageInputRef.current?.click();
   }
 
-  async function handleEmailImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    const target = emailImageUploadTarget;
-    if (!file || !target) return;
-
-    if (!MAGNET_IMAGE_TYPES.has(file.type)) {
-      setError('Email image must be a PNG, JPG, WebP, or GIF.');
-      event.target.value = '';
+  async function uploadEmailImageFiles(selectedFiles: File[], target: EmailImageTarget) {
+    if (isUploadingEmailImage || selectedFiles.length === 0) return;
+    const files = target.mode === 'row' ? selectedFiles.slice(0, 3) : selectedFiles.slice(0, 1);
+    if (target.mode === 'row' && files.length < 2) {
+      setError('Choose two or three images for an image row.');
       return;
     }
-    if (file.size > MAX_MAGNET_IMAGE_BYTES) {
+
+    if (files.some((file) => !MAGNET_IMAGE_TYPES.has(file.type))) {
+      setError('Email image must be a PNG, JPG, WebP, or GIF.');
+      return;
+    }
+    if (files.some((file) => file.size > MAX_MAGNET_IMAGE_BYTES)) {
       setError('Email image must be 10 MB or smaller.');
-      event.target.value = '';
       return;
     }
 
     setError('');
+    emailImageUploadTargetRef.current = target;
+    setEmailImageUploadTarget(target);
     setIsUploadingEmailImage(true);
-    const previewUrl = URL.createObjectURL(file);
+    const previewUrl = URL.createObjectURL(files[0]);
     setPendingEmailImage({ target, previewUrl, progress: 0 });
     try {
-      const multipart = file.size > 8_000_000;
-      const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/email-image`;
-      const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/email-images/${safeImageName(file)}`;
-      const blob = await uploadPresigned(pathname, file, {
-        access: 'public',
-        contentType: file.type,
-        handleUploadUrl,
-        multipart,
-        onUploadProgress: ({ percentage }) => {
-          setPendingEmailImage((current) => current?.previewUrl === previewUrl
-            ? { ...current, progress: Math.round(percentage) }
-            : current);
-        },
-      });
-      const imageUrl = await finaliseUploadedEmailImage(leadMagnet.id, blob.url);
+      const uploadedImages: Array<{ alt: string; url: string }> = [];
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const multipart = file.size > 8_000_000;
+        const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/email-image`;
+        const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/email-images/${safeImageName(file)}`;
+        const blob = await uploadPresigned(pathname, file, {
+          access: 'public',
+          contentType: file.type,
+          handleUploadUrl,
+          multipart,
+          onUploadProgress: ({ percentage }) => {
+            const totalProgress = Math.round(((index * 100) + percentage) / files.length);
+            setPendingEmailImage((current) => current?.previewUrl === previewUrl
+              ? { ...current, progress: totalProgress }
+              : current);
+          },
+        });
+        const imageUrl = await finaliseUploadedEmailImage(leadMagnet.id, blob.url);
+        uploadedImages.push({
+          alt: file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim() || 'Image',
+          url: imageUrl,
+        });
+      }
 
       dirtyRef.current = true;
       setSaveState('idle');
@@ -627,7 +655,7 @@ export function PageEditorClient({
         if (target.kind === 'resource') {
           return {
             ...current,
-            emailBody: appendEmailImage(current.emailBody, imageUrl),
+            emailBody: insertEmailImages(current.emailBody, target, uploadedImages),
           };
         }
 
@@ -635,7 +663,7 @@ export function PageEditorClient({
           ...current,
           followUpEmails: current.followUpEmails.map((email) =>
             email.id === target.emailId
-              ? { ...email, body: appendEmailImage(email.body, imageUrl) }
+              ? { ...email, body: insertEmailImages(email.body, target, uploadedImages) }
               : email
           ),
         };
@@ -644,11 +672,19 @@ export function PageEditorClient({
       setError(blobUploadErrorMessage(err, 'Email image could not be uploaded.'));
     } finally {
       setIsUploadingEmailImage(false);
+      emailImageUploadTargetRef.current = null;
       setEmailImageUploadTarget(null);
       setPendingEmailImage(null);
       window.setTimeout(() => URL.revokeObjectURL(previewUrl), 0);
-      event.target.value = '';
     }
+  }
+
+  async function handleEmailImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files || []);
+    const target = emailImageUploadTargetRef.current;
+    event.target.value = '';
+    if (selectedFiles.length === 0 || !target) return;
+    await uploadEmailImageFiles(selectedFiles, target);
   }
 
   const brand = account.brand;
@@ -660,7 +696,7 @@ export function PageEditorClient({
 
   return (
     <>
-      <PageHeader title="Edit magnet" subtitle="Click anywhere to edit. Changes save as you go." />
+      <PageHeader title="Edit magnet" subtitle="Edit on the canvas, preview the experience, then save when it is ready." />
 
       {confirmDelete && (
         <ConfirmDialog
@@ -689,7 +725,7 @@ export function PageEditorClient({
 
         <AceternityCard
           className={cn(
-            'page-editor-frame overflow-hidden',
+            'page-editor-frame overflow-clip',
             editorIsDark
               ? 'magnet-page--dark page-editor-frame--dark'
               : 'magnet-page--light page-editor-frame--light'
@@ -796,7 +832,11 @@ export function PageEditorClient({
               account={account}
               isUploadingEmailImage={isUploadingEmailImage && emailImageUploadTarget?.kind === 'resource'}
               leadMagnet={leadMagnet}
-              onAddImage={() => pickEmailImage({ kind: 'resource' })}
+              onAddImage={(insertion, files) => {
+                const target: EmailImageTarget = { kind: 'resource', ...insertion };
+                if (files?.length) void uploadEmailImageFiles(files, target);
+                else pickEmailImage(target);
+              }}
               onPatch={patchLeadMagnet}
               pendingImage={pendingEmailImage?.target.kind === 'resource' ? pendingEmailImage : null}
             />
@@ -807,7 +847,11 @@ export function PageEditorClient({
               account={account}
               emailImageUploadTarget={isUploadingEmailImage ? emailImageUploadTarget : null}
               leadMagnet={leadMagnet}
-              onAddImage={(emailId) => pickEmailImage({ kind: 'follow-up', emailId })}
+              onAddImage={(emailId, insertion, files) => {
+                const target: EmailImageTarget = { kind: 'follow-up', emailId, ...insertion };
+                if (files?.length) void uploadEmailImageFiles(files, target);
+                else pickEmailImage(target);
+              }}
               onPatch={patchLeadMagnet}
               onUpdateEmail={patchFollowUpEmail}
               pendingImage={pendingEmailImage?.target.kind === 'follow-up' ? pendingEmailImage : null}
@@ -826,6 +870,7 @@ export function PageEditorClient({
         <input
           accept={MAGNET_IMAGE_ACCEPT}
           className="hidden"
+          multiple
           onChange={handleEmailImageUpload}
           ref={emailImageInputRef}
           type="file"
@@ -1294,8 +1339,13 @@ function ImageHotspot({
 
 type EmailTextSegmentEditorHandle = {
   applyFormat: (format: EmailFormatCommand) => void;
+  discardRememberedSelection: () => void;
+  focusAt: (position: 'start' | 'end') => void;
   insertVariable: (value: string) => void;
   openLinkEditor: () => void;
+  rememberInsertionPoint: () => void;
+  rememberSelection: () => void;
+  splitAtCaret: () => { after: string; before: string };
 };
 
 type EmailFormatCommand =
@@ -1310,6 +1360,37 @@ type EmailFormatCommand =
   | 'orderedList'
   | 'divider';
 
+type EmailEditorBlock = EmailBodyBlock & { editorId: string };
+type ImageBlockDropTarget = { index: number; placement: 'before' | 'after' };
+type EmailHistoryMode = 'structural' | 'typing';
+
+const EMAIL_HISTORY_LIMIT = 100;
+const EMAIL_TYPING_GROUP_MS = 900;
+
+let emailEditorBlockSequence = 0;
+
+function nextEmailEditorBlockId() {
+  emailEditorBlockSequence += 1;
+  return `email-block-${emailEditorBlockSequence}`;
+}
+
+function hydrateEmailEditorBlocks(body: string): EmailEditorBlock[] {
+  return parseEmailBodyBlocks(body).map((block) => ({
+    ...block,
+    editorId: nextEmailEditorBlockId(),
+  }));
+}
+
+function nearestEmailTextBlockIndex(blocks: EmailEditorBlock[], preferredIndex: number) {
+  if (blocks.length === 0) return -1;
+  const safeIndex = Math.max(0, Math.min(preferredIndex, blocks.length - 1));
+  const nextIndex = blocks.findIndex((block, index) => (
+    block.kind === 'text' && index >= safeIndex
+  ));
+  if (nextIndex >= 0) return nextIndex;
+  return blocks.findLastIndex((block, index) => block.kind === 'text' && index <= safeIndex);
+}
+
 function EmailBodyEditor({
   ariaLabel,
   isUploadingImage,
@@ -1320,14 +1401,266 @@ function EmailBodyEditor({
 }: {
   ariaLabel: string;
   isUploadingImage: boolean;
-  onAddImage: () => void;
+  onAddImage: (insertion: EmailImageInsertion, files?: File[]) => void;
   onChange: (value: string) => void;
   pendingImage: PendingEmailImage | null;
   value: string;
 }) {
-  const segments = parseEmailBodySegments(value);
+  const [blocks, setBlocks] = useState<EmailEditorBlock[]>(() => hydrateEmailEditorBlocks(value));
+  const [draggedImageBlockIndex, setDraggedImageBlockIndex] = useState<number | null>(null);
+  const [imageBlockDropTarget, setImageBlockDropTarget] = useState<ImageBlockDropTarget | null>(null);
+  const [historyAvailability, setHistoryAvailability] = useState({ canRedo: false, canUndo: false });
+  const draggedImageBlockIndexRef = useRef<number | null>(null);
+  const lastEmittedBodyRef = useRef(value);
+  const historyRef = useRef({ entries: [value], index: 0 });
+  const lastHistoryMutationRef = useRef<{
+    at: number;
+    blockIndex: number;
+    mode: EmailHistoryMode;
+  } | null>(null);
+  const pendingBlockFocusRef = useRef<{ index: number; position: 'start' | 'end' } | null>(null);
   const activeTextSegmentRef = useRef(0);
   const textSegmentRefs = useRef(new Map<number, EmailTextSegmentEditorHandle>());
+
+  useEffect(() => {
+    if (value === lastEmittedBodyRef.current) return;
+    const history = historyRef.current;
+    const nextEntries = [...history.entries.slice(0, history.index + 1), value]
+      .slice(-EMAIL_HISTORY_LIMIT);
+    historyRef.current = { entries: nextEntries, index: nextEntries.length - 1 };
+    lastHistoryMutationRef.current = null;
+    setHistoryAvailability({ canRedo: false, canUndo: nextEntries.length > 1 });
+    lastEmittedBodyRef.current = value;
+    setBlocks(hydrateEmailEditorBlocks(value));
+  }, [value]);
+
+  useLayoutEffect(() => {
+    const pending = pendingBlockFocusRef.current;
+    if (!pending) return;
+    const editor = textSegmentRefs.current.get(pending.index);
+    if (!editor) return;
+    pendingBlockFocusRef.current = null;
+    editor.focusAt(pending.position);
+  }, [blocks]);
+
+  function updateHistoryAvailability() {
+    const history = historyRef.current;
+    setHistoryAvailability({
+      canRedo: history.index < history.entries.length - 1,
+      canUndo: history.index > 0,
+    });
+  }
+
+  function recordHistory(nextBody: string, mode: EmailHistoryMode, blockIndex: number) {
+    const history = historyRef.current;
+    if (history.entries[history.index] === nextBody) return;
+
+    const now = Date.now();
+    const lastMutation = lastHistoryMutationRef.current;
+    const canGroupTyping = mode === 'typing'
+      && lastMutation?.mode === 'typing'
+      && lastMutation.blockIndex === blockIndex
+      && now - lastMutation.at <= EMAIL_TYPING_GROUP_MS
+      && history.index === history.entries.length - 1;
+
+    if (canGroupTyping) {
+      history.entries[history.index] = nextBody;
+    } else {
+      const entries = [...history.entries.slice(0, history.index + 1), nextBody]
+        .slice(-EMAIL_HISTORY_LIMIT);
+      historyRef.current = { entries, index: entries.length - 1 };
+    }
+
+    lastHistoryMutationRef.current = { at: now, blockIndex, mode };
+    updateHistoryAvailability();
+  }
+
+  function restoreHistory(direction: 'redo' | 'undo') {
+    const history = historyRef.current;
+    const nextIndex = direction === 'undo' ? history.index - 1 : history.index + 1;
+    if (nextIndex < 0 || nextIndex >= history.entries.length) return;
+
+    history.index = nextIndex;
+    lastHistoryMutationRef.current = null;
+    const nextBody = history.entries[nextIndex];
+    const nextBlocks = hydrateEmailEditorBlocks(nextBody);
+    const focusIndex = nearestEmailTextBlockIndex(nextBlocks, activeTextSegmentRef.current);
+    activeTextSegmentRef.current = Math.max(0, focusIndex);
+    pendingBlockFocusRef.current = focusIndex >= 0
+      ? { index: focusIndex, position: 'end' }
+      : null;
+    lastEmittedBodyRef.current = nextBody;
+    setBlocks(nextBlocks);
+    onChange(nextBody);
+    updateHistoryAvailability();
+  }
+
+  function commitBlocks(
+    nextBlocks: EmailEditorBlock[],
+    mode: EmailHistoryMode = 'structural',
+    blockIndex = activeTextSegmentRef.current
+  ) {
+    const safeBlocks = nextBlocks.length > 0
+      ? nextBlocks
+      : [{ kind: 'text' as const, raw: '', editorId: nextEmailEditorBlockId() }];
+    const nextBody = serializeEmailBodyBlocks(safeBlocks);
+    recordHistory(nextBody, mode, blockIndex);
+    setBlocks(safeBlocks);
+    lastEmittedBodyRef.current = nextBody;
+    onChange(nextBody);
+  }
+
+  function updateTextBlock(index: number, raw: string, mode: EmailHistoryMode) {
+    commitBlocks(
+      blocks.map((block, blockIndex) => blockIndex === index ? { ...block, raw } : block),
+      mode,
+      index
+    );
+  }
+
+  function splitTextBlock(index: number, split: { after: string; before: string }) {
+    const current = blocks[index];
+    if (!current || current.kind !== 'text') return;
+    const nextBlocks = blocks.flatMap((block, blockIndex) => blockIndex === index
+      ? [
+          { ...block, raw: split.before },
+          { kind: 'text' as const, raw: split.after, editorId: nextEmailEditorBlockId() },
+        ]
+      : [block]);
+    pendingBlockFocusRef.current = { index: index + 1, position: 'start' };
+    activeTextSegmentRef.current = index + 1;
+    commitBlocks(nextBlocks);
+  }
+
+  function mergeTextBlockWithPrevious(index: number) {
+    const current = blocks[index];
+    const previous = blocks[index - 1];
+    if (!current || current.kind !== 'text' || !previous || previous.kind !== 'text') return false;
+    const nextBlocks = blocks
+      .map((block, blockIndex) => blockIndex === index - 1
+        ? { ...previous, raw: `${previous.raw}${current.raw}` }
+        : block)
+      .filter((_, blockIndex) => blockIndex !== index);
+    pendingBlockFocusRef.current = { index: index - 1, position: 'end' };
+    activeTextSegmentRef.current = index - 1;
+    commitBlocks(nextBlocks);
+    return true;
+  }
+
+  function removeBlock(index: number) {
+    const remainingBlocks = blocks.filter((_, blockIndex) => blockIndex !== index);
+    const nextBlocks: EmailEditorBlock[] = remainingBlocks.length > 0
+      ? remainingBlocks
+      : [{ kind: 'text', raw: '', editorId: nextEmailEditorBlockId() }];
+    const focusIndex = nearestEmailTextBlockIndex(nextBlocks, index);
+    activeTextSegmentRef.current = Math.max(0, focusIndex);
+    pendingBlockFocusRef.current = focusIndex >= 0
+      ? { index: focusIndex, position: 'end' }
+      : null;
+    commitBlocks(nextBlocks);
+  }
+
+  function separateImageRow(index: number) {
+    const block = blocks[index];
+    if (!block || block.kind !== 'image-row') return;
+
+    const separatedBlocks: EmailEditorBlock[] = block.images.map((image) => ({
+      kind: 'image',
+      alt: image.alt,
+      url: image.url,
+      raw: emailImageMarkdown(image),
+      editorId: nextEmailEditorBlockId(),
+    }));
+    commitBlocks([
+      ...blocks.slice(0, index),
+      ...separatedBlocks,
+      ...blocks.slice(index + 1),
+    ]);
+  }
+
+  function imageCountForBlock(index: number) {
+    const block = blocks[index];
+    if (block?.kind === 'image') return 1;
+    if (block?.kind === 'image-row') return block.images.length;
+    return 0;
+  }
+
+  function canMergeImageBlocks(sourceIndex: number, targetIndex: number) {
+    if (sourceIndex === targetIndex) return false;
+    const sourceCount = imageCountForBlock(sourceIndex);
+    const targetCount = imageCountForBlock(targetIndex);
+    return sourceCount > 0 && targetCount > 0 && sourceCount + targetCount <= 3;
+  }
+
+  function startDraggingImageBlock(event: ReactDragEvent<HTMLDivElement>, index: number) {
+    if ((event.target as HTMLElement).closest('button, a, input')) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-magnets-image-block', String(index));
+    event.dataTransfer.setData('text/plain', `image-block-${index}`);
+    draggedImageBlockIndexRef.current = index;
+    setDraggedImageBlockIndex(index);
+    setImageBlockDropTarget(null);
+  }
+
+  function dragImageBlockOver(event: ReactDragEvent<HTMLDivElement>, targetIndex: number) {
+    const sourceIndex = draggedImageBlockIndexRef.current;
+    if (
+      sourceIndex === null
+      || !canMergeImageBlocks(sourceIndex, targetIndex)
+    ) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after';
+    setImageBlockDropTarget((current) => (
+      current?.index === targetIndex && current.placement === placement
+        ? current
+        : { index: targetIndex, placement }
+    ));
+  }
+
+  function dropImageBlock(event: ReactDragEvent<HTMLDivElement>, targetIndex: number) {
+    event.preventDefault();
+    const transferredValue = event.dataTransfer.getData('application/x-magnets-image-block');
+    const transferredIndex = transferredValue ? Number(transferredValue) : -1;
+    const sourceIndex = draggedImageBlockIndexRef.current
+      ?? (Number.isInteger(transferredIndex) ? transferredIndex : -1);
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after';
+
+    if (canMergeImageBlocks(sourceIndex, targetIndex)) {
+      commitBlocks(mergeEmailImageBlocks(blocks, sourceIndex, targetIndex, placement));
+    }
+    draggedImageBlockIndexRef.current = null;
+    setDraggedImageBlockIndex(null);
+    setImageBlockDropTarget(null);
+  }
+
+  function finishDraggingImageBlock() {
+    draggedImageBlockIndexRef.current = null;
+    setDraggedImageBlockIndex(null);
+    setImageBlockDropTarget(null);
+  }
+
+  function insertTextBlockAfter(index: number) {
+    const nextIndex = index + 1;
+    const nextBlock: EmailEditorBlock = {
+      kind: 'text',
+      raw: '',
+      editorId: nextEmailEditorBlockId(),
+    };
+    pendingBlockFocusRef.current = { index: nextIndex, position: 'start' };
+    activeTextSegmentRef.current = nextIndex;
+    commitBlocks([
+      ...blocks.slice(0, nextIndex),
+      nextBlock,
+      ...blocks.slice(nextIndex),
+    ]);
+  }
 
   function activeEditor() {
     return textSegmentRefs.current.get(activeTextSegmentRef.current)
@@ -1335,208 +1668,385 @@ function EmailBodyEditor({
   }
 
   const applyFormat = (format: EmailFormatCommand) => activeEditor()?.applyFormat(format);
-  const toolbarButton = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-700 transition hover:bg-white hover:text-ink-950';
 
-  return (
-    <div className="space-y-3">
+  function insertAtCaret(mode: 'single' | 'row') {
+    const blockIndex = activeTextSegmentRef.current;
+    const editor = activeEditor();
+    if (!editor) return;
+    const split = editor.splitAtCaret();
+    requestImage(blockIndex, mode, split);
+  }
+
+  function requestImage(
+    blockIndex: number,
+    mode: 'single' | 'row',
+    split: { after: string; before: string },
+    files?: File[]
+  ) {
+    const current = blocks[blockIndex];
+    if (!current || current.kind !== 'text') return;
+
+    const beforeBlocks: EmailBodyBlock[] = [
+      ...blocks.slice(0, blockIndex),
+      { kind: 'text', raw: split.before },
+    ];
+    const afterBlocks: EmailBodyBlock[] = [
+      { kind: 'text', raw: split.after },
+      ...blocks.slice(blockIndex + 1),
+    ];
+
+    onAddImage({
+      mode,
+      segmentIndex: blockIndex,
+      before: split.before,
+      after: split.after,
+      bodyBefore: serializeEmailBodyBlocks(beforeBlocks),
+      bodyAfter: serializeEmailBodyBlocks(afterBlocks),
+    }, files);
+  }
+
+  function formattingToolbar(floating: boolean) {
+    const toolbarButton = cn(
+      'inline-flex shrink-0 items-center justify-center rounded-md text-ink-700 transition hover:bg-ink-100 hover:text-ink-950 disabled:pointer-events-none disabled:text-ink-300',
+      floating ? 'h-9 w-9' : 'h-8 w-8'
+    );
+    const divider = floating
+      ? 'mx-auto my-0.5 h-px w-5 bg-ink-200'
+      : 'mx-0.5 h-5 w-px bg-ink-200';
+
+    return (
       <div
         aria-label={`${ariaLabel} formatting`}
-        className="flex flex-wrap items-center gap-1 rounded-lg border border-ink-200 bg-ink-50 p-1.5"
+        className={cn(
+          'no-scrollbar flex items-center gap-1 bg-white/95 p-1.5 backdrop-blur-md',
+          floating
+            ? 'flex-col rounded-xl border border-ink-200 shadow-xl shadow-black/10'
+            : 'flex-wrap rounded-t-xl border-b border-ink-200 bg-ink-50/95 sm:flex-nowrap sm:overflow-x-auto'
+        )}
         role="toolbar"
       >
         <button
-          aria-label="Paragraph"
+          aria-label="Undo"
           className={toolbarButton}
-          onClick={() => applyFormat('paragraph')}
+          disabled={!historyAvailability.canUndo}
+          onClick={() => restoreHistory('undo')}
           onMouseDown={(event) => event.preventDefault()}
-          title="Paragraph"
+          title="Undo (Ctrl/⌘ Z)"
           type="button"
         >
-          <Pilcrow className="h-4 w-4" />
+          <Undo2 className="h-4 w-4" />
         </button>
-        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-ink-200" />
-        {([
-          ['heading1', Heading1, 'Heading 1'],
-          ['heading2', Heading2, 'Heading 2'],
-          ['heading3', Heading3, 'Heading 3'],
-        ] as const).map(([format, Icon, label]) => (
-          <button
-            aria-label={label}
-            className={toolbarButton}
-            key={format}
-            onClick={() => applyFormat(format)}
-            onMouseDown={(event) => event.preventDefault()}
-            title={label}
-            type="button"
-          >
-            <Icon className="h-4 w-4" />
-          </button>
-        ))}
-        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-ink-200" />
         <button
-          aria-label="Bold"
+          aria-label="Redo"
           className={toolbarButton}
-          onClick={() => applyFormat('bold')}
+          disabled={!historyAvailability.canRedo}
+          onClick={() => restoreHistory('redo')}
           onMouseDown={(event) => event.preventDefault()}
-          title="Bold"
+          title="Redo (Ctrl/⌘ Shift Z)"
           type="button"
         >
+          <Redo2 className="h-4 w-4" />
+        </button>
+        <span aria-hidden="true" className={divider} />
+        <ToolbarDropdown
+          ariaLabel="Text style"
+          compact={floating}
+          label="Text style"
+          menuAlign={floating ? 'right' : 'left'}
+          onDismiss={() => activeEditor()?.discardRememberedSelection()}
+          onOpen={() => activeEditor()?.rememberSelection()}
+          onSelect={(format) => applyFormat(format)}
+          options={[
+            { value: 'paragraph', label: 'Paragraph', previewClassName: 'text-sm font-normal' },
+            { value: 'heading1', label: 'Title', previewClassName: 'text-lg font-semibold' },
+            { value: 'heading2', label: 'Heading', previewClassName: 'text-base font-semibold' },
+            { value: 'heading3', label: 'Subheading', previewClassName: 'text-sm font-semibold' },
+          ] satisfies Array<{ label: string; previewClassName: string; value: EmailFormatCommand }>}
+        />
+        <span aria-hidden="true" className={divider} />
+        <button aria-label="Bold" className={toolbarButton} onClick={() => applyFormat('bold')} onMouseDown={(event) => event.preventDefault()} title="Bold" type="button">
           <Bold className="h-4 w-4" />
         </button>
-        <button
-          aria-label="Italic"
-          className={toolbarButton}
-          onClick={() => applyFormat('italic')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Italic"
-          type="button"
-        >
+        <button aria-label="Italic" className={toolbarButton} onClick={() => applyFormat('italic')} onMouseDown={(event) => event.preventDefault()} title="Italic" type="button">
           <Italic className="h-4 w-4" />
         </button>
-        <button
-          aria-label="Bulleted list"
-          className={toolbarButton}
-          onClick={() => applyFormat('unorderedList')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Bulleted list"
-          type="button"
-        >
+        <button aria-label="Bulleted list" className={toolbarButton} onClick={() => applyFormat('unorderedList')} onMouseDown={(event) => event.preventDefault()} title="Bulleted list" type="button">
           <List className="h-4 w-4" />
         </button>
-        <button
-          aria-label="Dashed list"
-          className={toolbarButton}
-          onClick={() => applyFormat('dashedList')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Dashed list"
-          type="button"
-        >
+        <button aria-label="Dashed list" className={toolbarButton} onClick={() => applyFormat('dashedList')} onMouseDown={(event) => event.preventDefault()} title="Dashed list" type="button">
           <ListMinus className="h-4 w-4" />
         </button>
-        <button
-          aria-label="Numbered list"
-          className={toolbarButton}
-          onClick={() => applyFormat('orderedList')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Numbered list"
-          type="button"
-        >
+        <button aria-label="Numbered list" className={toolbarButton} onClick={() => applyFormat('orderedList')} onMouseDown={(event) => event.preventDefault()} title="Numbered list" type="button">
           <ListOrdered className="h-4 w-4" />
         </button>
-        <button
-          aria-label="Divider"
-          className={toolbarButton}
-          onClick={() => applyFormat('divider')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Divider"
-          type="button"
-        >
+        <button aria-label="Divider" className={toolbarButton} onClick={() => applyFormat('divider')} onMouseDown={(event) => event.preventDefault()} title="Divider" type="button">
           <Minus className="h-4 w-4" />
         </button>
-        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-ink-200" />
-        <button
-          aria-label="Insert name variable"
-          className={toolbarButton}
-          onClick={() => activeEditor()?.insertVariable('{name}')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Insert name variable"
-          type="button"
-        >
-          <Braces className="h-4 w-4" />
+        <span aria-hidden="true" className={divider} />
+        <button aria-label="Insert name variable" className={cn(toolbarButton, 'w-auto px-2 text-[11px] font-semibold')} onClick={() => activeEditor()?.insertVariable('{name}')} onMouseDown={(event) => event.preventDefault()} title="Insert name variable" type="button">
+          Name
         </button>
-        <button
-          aria-label="Add link"
-          className={toolbarButton}
-          onClick={() => activeEditor()?.openLinkEditor()}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Add link"
-          type="button"
-        >
+        <button aria-label="Add link" className={toolbarButton} onClick={() => activeEditor()?.openLinkEditor()} onMouseDown={(event) => event.preventDefault()} title="Add link" type="button">
           <Link2 className="h-4 w-4" />
         </button>
         <button
           aria-label={isUploadingImage ? 'Uploading image' : 'Add image'}
-          className={`${toolbarButton} disabled:pointer-events-none disabled:opacity-50`}
+          className={cn(toolbarButton, 'disabled:pointer-events-none disabled:opacity-50', !floating && 'w-auto px-2')}
           disabled={isUploadingImage}
-          onClick={onAddImage}
+          onClick={() => insertAtCaret('single')}
+          onMouseDown={(event) => {
+            activeEditor()?.rememberInsertionPoint();
+            event.preventDefault();
+          }}
           title={isUploadingImage ? 'Uploading image' : 'Add image'}
           type="button"
         >
           {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+          {!floating && <span className="ml-1.5 text-xs font-medium">{isUploadingImage ? 'Uploading' : 'Image'}</span>}
         </button>
       </div>
-      {segments.map((segment, index) => {
-        if (segment.kind === 'image') {
-          return (
-            <div
-              className="group/email-image relative overflow-hidden rounded-lg border border-ink-200 bg-ink-50"
-              key={`image-${index}-${segment.url}`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt={segment.alt}
-                className="max-h-96 w-full object-contain"
-                src={segment.url}
-              />
-              <button
-                aria-label={`Remove ${segment.alt}`}
-                className="absolute right-2 top-2 inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white/95 px-2.5 text-xs font-medium text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onChange(removeEmailBodySegment(value, index));
-                }}
-                type="button"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Remove
-              </button>
-            </div>
-          );
-        }
+    );
+  }
 
-        const trimmedText = segment.raw.trim();
-        const visibleLines = trimmedText
-          ? Math.max(2, Math.min(10, trimmedText.split('\n').length + 1))
-          : 2;
-        return (
-          <div className="space-y-1" key={`text-${index}`}>
-            {index > 0 && segments[index - 1]?.kind === 'image' && (
-              <p className="px-2 text-[11px] font-medium text-ink-400">Text below image</p>
-            )}
-            <EmailTextSegmentEditor
-              ariaLabel={segments.length === 1 ? ariaLabel : `${ariaLabel}, text section ${index + 1}`}
-              onFocus={() => {
-                activeTextSegmentRef.current = index;
-              }}
-              onChange={(nextText) => onChange(replaceEmailBodySegment(value, index, nextText))}
-              placeholder={index === 0
-                ? 'Write the email. Use {name} for the recipient.'
-                : 'Continue writing below the image...'}
-              ref={(editor) => {
-                if (editor) textSegmentRefs.current.set(index, editor);
-                else textSegmentRefs.current.delete(index);
-              }}
-              rows={visibleLines}
-              value={segment.raw}
-            />
-          </div>
-        );
-      })}
+  return (
+    <div
+      className="relative xl:flex xl:items-start xl:gap-3"
+      onKeyDownCapture={(event) => {
+        if ((!event.metaKey && !event.ctrlKey) || event.altKey) return;
+        const target = event.target as HTMLElement;
+        if (target.closest('input, textarea, select')) return;
 
-      {pendingImage && (
-        <div className="relative overflow-hidden rounded-lg border border-ink-200 bg-ink-50">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="Uploading email image"
-            className="max-h-96 w-full object-contain opacity-75"
-            src={pendingImage.previewUrl}
-          />
-          <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-white/90 px-3 py-2 text-xs font-medium text-ink-700 backdrop-blur">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Uploading{pendingImage.progress > 0 ? ` ${pendingImage.progress}%` : ''}
-          </div>
+        const key = event.key.toLowerCase();
+        const redo = key === 'y' || (key === 'z' && event.shiftKey);
+        if (key !== 'z' && key !== 'y') return;
+        event.preventDefault();
+        event.stopPropagation();
+        restoreHistory(redo ? 'redo' : 'undo');
+      }}
+    >
+      <div className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white transition focus-within:border-ink-400 focus-within:ring-1 focus-within:ring-ink-200">
+        <div className="sticky top-16 z-40 xl:hidden">
+          {formattingToolbar(false)}
         </div>
-      )}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-ink-100 bg-ink-50/60 px-5 py-2 text-[11px] text-ink-500 sm:px-7">
+          <span className="font-medium text-ink-700">
+            {blocks.length} content {blocks.length === 1 ? 'block' : 'blocks'}
+          </span>
+          <span>Enter: new block · Shift + Enter: line break · /: insert</span>
+        </div>
+        <div className="min-h-64 px-5 py-3 sm:px-7 sm:py-4">
+          {blocks.map((block, index) => {
+            if (block.kind === 'image' || block.kind === 'image-row') {
+              const images = block.kind === 'image'
+                ? [{ alt: block.alt, url: block.url }]
+                : block.images;
+              const isDraggedImageBlock = draggedImageBlockIndex === index;
+              const canAcceptDraggedImages = draggedImageBlockIndex !== null
+                && canMergeImageBlocks(draggedImageBlockIndex, index);
+              const activeDropTarget = imageBlockDropTarget?.index === index
+                ? imageBlockDropTarget
+                : null;
+              return (
+                <Fragment key={block.editorId}>
+                  <div
+                    className={cn(
+                      'group/email-block group/email-image relative -mx-1 rounded-lg border border-transparent bg-white p-3 transition hover:border-ink-200 hover:bg-ink-50/30 focus-within:border-ink-300 focus-within:shadow-sm sm:-mx-3',
+                      isDraggedImageBlock && 'scale-[0.99] opacity-40',
+                      canAcceptDraggedImages && 'border-dashed border-ink-400 bg-ink-50/70',
+                      activeDropTarget && 'border-ink-950 bg-white ring-2 ring-ink-950 ring-offset-2'
+                    )}
+                    onDragOver={(event) => dragImageBlockOver(event, index)}
+                    onDrop={(event) => dropImageBlock(event, index)}
+                  >
+                    <div className={cn(
+                      'grid gap-2 overflow-hidden rounded-lg',
+                      images.length === 3 ? 'grid-cols-3' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-1 place-items-center'
+                    )}>
+                      {images.map((image) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          alt={image.alt}
+                          className={cn(
+                            'max-h-[22rem] rounded-lg object-contain',
+                            images.length === 1 ? 'h-auto w-auto max-w-full sm:max-w-[27.5rem]' : 'h-full w-full'
+                          )}
+                          key={image.url}
+                          draggable={false}
+                          src={image.url}
+                        />
+                      ))}
+                    </div>
+                    <div
+                      className="absolute left-2 top-2 hidden cursor-grab items-center gap-1 rounded-md border border-ink-200 bg-white/95 px-2 py-1 text-[10px] font-semibold text-ink-600 shadow-sm backdrop-blur active:cursor-grabbing sm:flex"
+                      draggable
+                      onDragEnd={finishDraggingImageBlock}
+                      onDragStart={(event) => startDraggingImageBlock(event, index)}
+                      title="Drag this image beside another"
+                    >
+                      <GripVertical className="h-3 w-3" />
+                      Drag beside
+                    </div>
+                    {activeDropTarget && (
+                      <div className={cn(
+                        'pointer-events-none absolute inset-y-3 z-20 flex w-1/2 items-center justify-center rounded-lg border-2 border-dashed border-ink-950 bg-white/85 text-xs font-semibold text-ink-950 backdrop-blur-sm',
+                        activeDropTarget.placement === 'before' ? 'left-3' : 'right-3'
+                      )}>
+                        Drop {activeDropTarget.placement === 'before' ? 'to the left' : 'to the right'}
+                      </div>
+                    )}
+                    <div className="absolute right-2 top-2 flex items-center gap-1 rounded-lg border border-ink-200 bg-white/95 p-1 shadow-sm backdrop-blur">
+                      {images.length > 1 && (
+                        <button
+                          aria-label="Separate side-by-side images"
+                          className="inline-flex h-8 items-center rounded-md px-2 text-xs font-medium text-ink-700 transition hover:bg-ink-100"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            separateImageRow(index);
+                          }}
+                          title="Put these images back into separate blocks"
+                          type="button"
+                        >
+                          Separate
+                        </button>
+                      )}
+                      {images.length < 3 && (
+                        <button
+                          aria-label="Add an image beside this one"
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-ink-700 transition hover:bg-ink-100"
+                          disabled={isUploadingImage}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onAddImage({
+                              mode: 'beside',
+                              segmentIndex: index,
+                              targetMedia: block.raw,
+                              bodyBefore: serializeEmailBodyBlocks(blocks.slice(0, index)),
+                              bodyAfter: serializeEmailBodyBlocks(blocks.slice(index + 1)),
+                            });
+                          }}
+                          title="Add beside"
+                          type="button"
+                        >
+                          <Columns2 className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Add beside</span>
+                        </button>
+                      )}
+                      <button
+                        aria-label="Remove image"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeBlock(index);
+                        }}
+                        title="Remove image"
+                        type="button"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <EmailBlockInsertControl
+                    blockNumber={index + 1}
+                    onInsert={() => insertTextBlockAfter(index)}
+                  />
+                </Fragment>
+              );
+            }
+
+            const trimmedText = block.raw.trim();
+            const visibleLines = trimmedText
+              ? Math.max(1, Math.min(8, trimmedText.split('\n').length))
+              : 1;
+            return (
+              <Fragment key={block.editorId}>
+                <div className="group/email-block relative -mx-1 rounded-md border border-transparent bg-transparent px-3 transition hover:border-ink-200 hover:bg-ink-50/50 focus-within:border-ink-300 focus-within:bg-white focus-within:shadow-sm sm:-mx-3">
+                  <EmailTextSegmentEditor
+                    ariaLabel={blocks.length === 1 ? ariaLabel : `${ariaLabel}, block ${index + 1}`}
+                    onFocus={() => {
+                      activeTextSegmentRef.current = index;
+                    }}
+                    onChange={(nextText, mode) => updateTextBlock(index, nextText, mode)}
+                    onInsertImage={(split) => requestImage(index, 'single', split)}
+                    onInsertImageRow={(split) => requestImage(index, 'row', split)}
+                    onPasteImages={(split, files) => requestImage(
+                      index,
+                      files.length > 1 ? 'row' : 'single',
+                      split,
+                      files
+                    )}
+                    onMergeWithPrevious={() => mergeTextBlockWithPrevious(index)}
+                    onSplit={(split) => splitTextBlock(index, split)}
+                    placeholder={index === 0
+                      ? 'Write the email. Use {name} for the recipient. Type / for blocks.'
+                      : 'Write something or type / to insert'}
+                    ref={(editor) => {
+                      if (editor) textSegmentRefs.current.set(index, editor);
+                      else textSegmentRefs.current.delete(index);
+                    }}
+                    rows={visibleLines}
+                    value={block.raw}
+                  />
+                  <button
+                    aria-label={`Delete text block ${index + 1}`}
+                    className="absolute right-1 top-1 z-20 inline-flex h-7 w-7 items-center justify-center rounded-md border border-ink-200 bg-white/95 text-ink-400 opacity-100 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 sm:pointer-events-none sm:opacity-0 sm:group-hover/email-block:pointer-events-auto sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:pointer-events-auto sm:group-focus-within/email-block:opacity-100"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeBlock(index);
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    title="Delete block"
+                    type="button"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <EmailBlockInsertControl
+                  blockNumber={index + 1}
+                  onInsert={() => insertTextBlockAfter(index)}
+                />
+              </Fragment>
+            );
+          })}
+
+          {pendingImage && (
+            <span className="sr-only" role="status">
+              Uploading image{pendingImage.progress > 0 ? ` ${pendingImage.progress}%` : ''}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="sticky top-20 z-40 hidden self-start xl:block">
+        <div className="pointer-events-auto">
+          {formattingToolbar(true)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmailBlockInsertControl({
+  blockNumber,
+  onInsert,
+}: {
+  blockNumber: number;
+  onInsert: () => void;
+}) {
+  return (
+    <div className="group/email-insert relative h-4 sm:h-3">
+      <span
+        aria-hidden="true"
+        className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-transparent transition group-hover/email-insert:bg-ink-200 group-focus-within/email-insert:bg-ink-200"
+      />
+      <button
+        aria-label={`Add a content block after block ${blockNumber}`}
+        className="absolute left-1/2 top-1/2 inline-flex h-5 -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-ink-200 bg-white px-1.5 text-[9px] font-semibold text-ink-500 opacity-80 transition hover:border-ink-400 hover:bg-ink-950 hover:text-white focus-visible:border-ink-400 focus-visible:bg-ink-950 focus-visible:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 sm:opacity-0 sm:shadow-sm sm:group-hover/email-insert:opacity-100 sm:group-focus-within/email-insert:opacity-100"
+        onClick={onInsert}
+        title="Add a block here"
+        type="button"
+      >
+        <Plus className="h-3 w-3" />
+        <span>Add block</span>
+      </button>
     </div>
   );
 }
@@ -1612,10 +2122,120 @@ function extractEmailEditorValue(element: HTMLElement) {
     .replace(/\n+$/, '');
 }
 
+const PASTED_EMAIL_BLOCK_TAGS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'UL', 'OL', 'LI']);
+const PASTED_EMAIL_INLINE_TAGS = new Map([
+  ['B', 'strong'],
+  ['STRONG', 'strong'],
+  ['I', 'em'],
+  ['EM', 'em'],
+]);
+const DISCARDED_PASTED_EMAIL_TAGS = new Set([
+  'SCRIPT',
+  'STYLE',
+  'IFRAME',
+  'OBJECT',
+  'EMBED',
+  'SVG',
+  'MATH',
+  'IMG',
+]);
+
+function sanitisePastedEmailHtml(html: string) {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+
+  function sanitiseNode(node: Node): DocumentFragment {
+    const fragment = document.createDocumentFragment();
+    if (node.nodeType === Node.TEXT_NODE) {
+      fragment.append(document.createTextNode(node.textContent || ''));
+      return fragment;
+    }
+    if (!(node instanceof HTMLElement) || DISCARDED_PASTED_EMAIL_TAGS.has(node.tagName)) {
+      return fragment;
+    }
+
+    if (node.tagName === 'BR' || node.tagName === 'HR') {
+      fragment.append(document.createElement(node.tagName.toLowerCase()));
+      return fragment;
+    }
+
+    const content = document.createDocumentFragment();
+    node.childNodes.forEach((child) => content.append(sanitiseNode(child)));
+
+    const fontWeight = node.style.fontWeight.toLowerCase();
+    const styleIsBold = fontWeight === 'bold'
+      || fontWeight === 'bolder'
+      || (/^[6-9]00$/.test(fontWeight));
+    const styleIsItalic = node.style.fontStyle.toLowerCase() === 'italic'
+      || node.style.fontStyle.toLowerCase() === 'oblique';
+    let styledContent: DocumentFragment | HTMLElement = content;
+
+    if (styleIsItalic && node.tagName !== 'I' && node.tagName !== 'EM') {
+      const emphasis = document.createElement('em');
+      emphasis.append(styledContent);
+      styledContent = emphasis;
+    }
+    if (styleIsBold && node.tagName !== 'B' && node.tagName !== 'STRONG') {
+      const strong = document.createElement('strong');
+      strong.append(styledContent);
+      styledContent = strong;
+    }
+
+    if (node.tagName === 'A') {
+      const href = normaliseEmailLinkUrl(node.getAttribute('href') || '');
+      if (!href) {
+        fragment.append(styledContent);
+        return fragment;
+      }
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.style.color = 'inherit';
+      anchor.style.textDecoration = 'underline';
+      anchor.style.textUnderlineOffset = '2px';
+      anchor.append(styledContent);
+      fragment.append(anchor);
+      return fragment;
+    }
+
+    const inlineTag = PASTED_EMAIL_INLINE_TAGS.get(node.tagName);
+    const outputTag = inlineTag || (PASTED_EMAIL_BLOCK_TAGS.has(node.tagName)
+      ? node.tagName.toLowerCase()
+      : null);
+    if (!outputTag) {
+      fragment.append(styledContent);
+      return fragment;
+    }
+
+    const output = document.createElement(outputTag);
+    output.append(styledContent);
+    fragment.append(output);
+    return fragment;
+  }
+
+  const result = document.createDocumentFragment();
+  parsed.body.childNodes.forEach((node) => result.append(sanitiseNode(node)));
+  return result;
+}
+
+function pastedImageFiles(clipboardData: DataTransfer) {
+  const itemFiles = Array.from(clipboardData.items)
+    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+  const files = itemFiles.length > 0
+    ? itemFiles
+    : Array.from(clipboardData.files).filter((file) => file.type.startsWith('image/'));
+  return files.slice(0, 3);
+}
+
 const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
   ariaLabel: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, mode: EmailHistoryMode) => void;
   onFocus: () => void;
+  onInsertImage: (split: { after: string; before: string }) => void;
+  onInsertImageRow: (split: { after: string; before: string }) => void;
+  onPasteImages: (split: { after: string; before: string }, files: File[]) => void;
+  onMergeWithPrevious: () => boolean;
+  onSplit: (split: { after: string; before: string }) => void;
   placeholder: string;
   rows: number;
   value: string;
@@ -1623,15 +2243,36 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
   ariaLabel,
   onChange,
   onFocus,
+  onInsertImage,
+  onInsertImageRow,
+  onPasteImages,
+  onMergeWithPrevious,
+  onSplit,
   placeholder,
   rows,
   value,
 }, ref) {
+  const segmentRootRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
+  const formattingRangeRef = useRef<Range | null>(null);
+  const insertionRangeRef = useRef<Range | null>(null);
   const lastEmittedRef = useRef('');
+  const initialHtmlRef = useRef(renderEmailEditorHtml(value));
+  const initialValueRef = useRef(value);
+  const didInitialiseEditorRef = useRef(false);
   const [linkDraft, setLinkDraft] = useState<EmailLinkDraft | null>(null);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [selectionToolbar, setSelectionToolbar] = useState<{ left: number; top: number } | null>(null);
+
+  const attachEditorRef = useCallback((node: HTMLDivElement | null) => {
+    editorRef.current = node;
+    if (!node || didInitialiseEditorRef.current) return;
+    node.innerHTML = initialHtmlRef.current;
+    lastEmittedRef.current = initialValueRef.current;
+    didInitialiseEditorRef.current = true;
+  }, []);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -1661,6 +2302,16 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     return rangeAtEditorEnd();
   }
 
+  function rememberInsertionPoint() {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    if (range.commonAncestorContainer !== editor && !editor.contains(range.commonAncestorContainer)) return;
+    insertionRangeRef.current = range.cloneRange();
+  }
+
   function selectRange(range: Range) {
     const editor = editorRef.current;
     if (!editor) return;
@@ -1668,6 +2319,69 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
+  }
+
+  function updateSelectionToolbar() {
+    const editor = editorRef.current;
+    const root = segmentRootRef.current;
+    const selection = window.getSelection();
+    if (!editor || !root || !selection?.rangeCount) {
+      setSelectionToolbar(null);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const insideEditor = range.commonAncestorContainer === editor
+      || editor.contains(range.commonAncestorContainer);
+    if (!insideEditor || range.collapsed || !range.toString().trim()) {
+      setSelectionToolbar(null);
+      return;
+    }
+
+    const rangeRect = range.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
+    const left = Math.max(
+      58,
+      Math.min(rootRect.width - 58, rangeRect.left - rootRect.left + (rangeRect.width / 2))
+    );
+    formattingRangeRef.current = range.cloneRange();
+    setSlashMenuOpen(false);
+    setSelectionToolbar({
+      left,
+      top: rangeRect.top - rootRect.top - 42,
+    });
+  }
+
+  function focusAt(position: 'start' | 'end') {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(position === 'start');
+    selectRange(range);
+    onFocus();
+    rememberInsertionPoint();
+  }
+
+  function caretIsAtEditorStart() {
+    const editor = editorRef.current;
+    const range = currentEditorRange();
+    if (!editor || !range?.collapsed) return false;
+    const before = document.createRange();
+    before.selectNodeContents(editor);
+    before.setEnd(range.startContainer, range.startOffset);
+    return before.toString().length === 0;
+  }
+
+  function caretIsInsideList() {
+    const editor = editorRef.current;
+    const range = currentEditorRange();
+    if (!editor || !range) return false;
+    const element = range.startContainer instanceof HTMLElement
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    const listItem = element?.closest('li');
+    return Boolean(listItem && editor.contains(listItem));
   }
 
   function linkContaining(node: Node) {
@@ -1746,12 +2460,12 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     selectRange(nextRange);
   }
 
-  function emitChange() {
+  function emitChange(mode: EmailHistoryMode = 'typing') {
     const editor = editorRef.current;
     if (!editor) return;
     const nextValue = extractEmailEditorValue(editor);
     lastEmittedRef.current = nextValue;
-    onChange(nextValue);
+    onChange(nextValue, mode);
   }
 
   function listContainingRange(range: Range | null) {
@@ -1808,7 +2522,20 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     nextRange.setStartAfter(node);
     nextRange.collapse(true);
     selectRange(nextRange);
-    emitChange();
+    emitChange('structural');
+  }
+
+  function insertFragmentAtRange(range: Range, fragment: DocumentFragment) {
+    const lastNode = fragment.lastChild;
+    if (!lastNode) return false;
+    range.deleteContents();
+    range.insertNode(fragment);
+    const nextRange = document.createRange();
+    nextRange.setStartAfter(lastNode);
+    nextRange.collapse(true);
+    selectRange(nextRange);
+    emitChange('structural');
+    return true;
   }
 
   function openLinkEditor() {
@@ -1830,8 +2557,51 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     insertAtRange(range, document.createTextNode(value));
   }
 
-  function applyFormat(format: EmailFormatCommand) {
+  function splitAtCaret() {
+    const editor = editorRef.current;
+    const activeRange = editor && document.activeElement === editor
+      ? currentEditorRange()
+      : null;
+    const range = activeRange || insertionRangeRef.current?.cloneRange() || currentEditorRange();
+    insertionRangeRef.current = null;
+    if (!editor || !range) return { before: value, after: '' };
+
+    const markerValue = `MAGNETS_IMAGE_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const marker = document.createTextNode(markerValue);
+    range.deleteContents();
+    range.insertNode(marker);
+    const serialized = extractEmailEditorValue(editor);
+    const markerIndex = serialized.indexOf(markerValue);
+    marker.remove();
+    editor.normalize();
+
+    if (markerIndex < 0) return { before: serialized, after: '' };
+    const before = serialized.slice(0, markerIndex).replace(/\n+$/, '');
+    const after = serialized.slice(markerIndex + markerValue.length).replace(/^\n+/, '');
+
+    // The parent immediately turns this one text editor into
+    // text -> image -> text. Because the active contenteditable deliberately
+    // ignores prop-driven HTML updates while focused, update its visible DOM
+    // now as well; otherwise it continues showing the whole original body and
+    // makes the correctly inserted image look as though it was appended.
+    editor.innerHTML = renderEmailEditorHtml(before);
+    lastEmittedRef.current = before;
+
+    return { before, after };
+  }
+
+  function rememberSelection() {
     const range = currentEditorRange();
+    formattingRangeRef.current = range?.cloneRange() || null;
+  }
+
+  function discardRememberedSelection() {
+    formattingRangeRef.current = null;
+  }
+
+  function applyFormat(format: EmailFormatCommand) {
+    const range = formattingRangeRef.current || currentEditorRange();
+    formattingRangeRef.current = null;
     if (!range) return;
     selectRange(range);
 
@@ -1848,10 +2618,20 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     ) applyListFormat(format);
     if (format === 'divider') document.execCommand('insertHorizontalRule');
 
-    emitChange();
+    emitChange('structural');
+    setSelectionToolbar(null);
   }
 
-  useImperativeHandle(ref, () => ({ applyFormat, insertVariable, openLinkEditor }));
+  useImperativeHandle(ref, () => ({
+    applyFormat,
+    discardRememberedSelection,
+    focusAt,
+    insertVariable,
+    openLinkEditor,
+    rememberInsertionPoint,
+    rememberSelection,
+    splitAtCaret,
+  }));
 
   function addLink() {
     if (!linkDraft) return;
@@ -1885,28 +2665,127 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
   }
 
   return (
-    <div className="rounded-lg border border-ink-200 bg-white transition focus-within:border-ink-400 focus-within:ring-1 focus-within:ring-ink-200">
+    <div className="relative" ref={segmentRootRef}>
+      {selectionToolbar && (
+        <div
+          aria-label="Text selection formatting"
+          className="absolute z-[60] flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-black/10 bg-ink-950 p-1 text-white shadow-xl shadow-black/20"
+          role="toolbar"
+          style={{ left: selectionToolbar.left, top: selectionToolbar.top }}
+        >
+          <button
+            aria-label="Bold selected text"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-white/15"
+            onClick={() => applyFormat('bold')}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Bold"
+            type="button"
+          >
+            <Bold className="h-4 w-4" />
+          </button>
+          <button
+            aria-label="Italicize selected text"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-white/15"
+            onClick={() => applyFormat('italic')}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Italic"
+            type="button"
+          >
+            <Italic className="h-4 w-4" />
+          </button>
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-white/20" />
+          <button
+            aria-label="Link selected text"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-white/15"
+            onClick={() => {
+              setSelectionToolbar(null);
+              openLinkEditor();
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Add link"
+            type="button"
+          >
+            <Link2 className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       <div
         aria-label={ariaLabel}
         aria-multiline="true"
-        className="email-rich-editor relative w-full whitespace-pre-wrap break-words px-4 py-3 text-base leading-6 text-ink-900 outline-none sm:text-sm"
+        className="email-rich-editor relative w-full whitespace-pre-wrap break-words py-1.5 text-base leading-6 text-ink-900 outline-none sm:text-sm"
         contentEditable
         data-empty={!value || undefined}
         data-placeholder={placeholder}
         onBeforeInput={(event) => {
           unlinkForMutation((event.nativeEvent as InputEvent).inputType || '');
         }}
-        onBlur={emitChange}
+        onBlur={() => {
+          emitChange();
+          setSlashMenuOpen(false);
+          setSelectionToolbar(null);
+        }}
         onClick={(event) => {
           if ((event.target as HTMLElement).closest('a')) event.preventDefault();
         }}
-        onFocus={onFocus}
-        onInput={emitChange}
-        onPointerDown={onFocus}
+        onFocus={() => {
+          onFocus();
+          requestAnimationFrame(rememberInsertionPoint);
+        }}
+        onInput={() => {
+          setSelectionToolbar(null);
+          emitChange();
+          rememberInsertionPoint();
+        }}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === 'Escape' && slashMenuOpen) {
+            event.preventDefault();
+            setSlashMenuOpen(false);
+            return;
+          }
+          if (
+            event.key === '/'
+            && caretIsAtEditorStart()
+            && !(editorRef.current && extractEmailEditorValue(editorRef.current).trim())
+          ) {
+            event.preventDefault();
+            setSlashMenuOpen(true);
+            return;
+          }
+          if (event.key === 'Enter' && !event.shiftKey && !caretIsInsideList()) {
+            event.preventDefault();
+            setSlashMenuOpen(false);
+            onSplit(splitAtCaret());
+            return;
+          }
+          if (event.key === 'Backspace' && caretIsAtEditorStart() && onMergeWithPrevious()) {
+            event.preventDefault();
+            setSlashMenuOpen(false);
+          }
+        }}
+        onKeyUp={() => {
+          rememberInsertionPoint();
+          requestAnimationFrame(updateSelectionToolbar);
+        }}
+        onPointerDown={() => {
+          setSelectionToolbar(null);
+          onFocus();
+        }}
+        onPointerUp={() => {
+          rememberInsertionPoint();
+          requestAnimationFrame(updateSelectionToolbar);
+        }}
         onPaste={(event) => {
           event.preventDefault();
           unlinkForMutation('insertFromPaste');
+          const images = pastedImageFiles(event.clipboardData);
+          if (images.length > 0) {
+            onPasteImages(splitAtCaret(), images);
+            return;
+          }
+
           const pastedText = event.clipboardData.getData('text/plain');
+          const pastedHtml = event.clipboardData.getData('text/html');
           const range = currentEditorRange();
           if (!range) return;
 
@@ -1924,16 +2803,71 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
             return;
           }
 
+          if (pastedHtml) {
+            const fragment = sanitisePastedEmailHtml(pastedHtml);
+            if (insertFragmentAtRange(range, fragment)) return;
+          }
+
           insertAtRange(range, document.createTextNode(pastedText));
         }}
-        ref={editorRef}
+        ref={attachEditorRef}
         role="textbox"
-        style={{ minHeight: `${Math.max(rows, 2) * 1.5 + 0.5}rem` }}
+        style={{ minHeight: `${Math.max(rows, 1) * 1.5}rem` }}
         suppressContentEditableWarning
       />
 
+      {slashMenuOpen && (
+        <div
+          aria-label="Insert a block"
+          className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-ink-200 bg-white p-1.5 shadow-2xl"
+          role="menu"
+        >
+          <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-400">Basic blocks</p>
+          <button
+            className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-ink-50"
+            onClick={() => { setSlashMenuOpen(false); applyFormat('heading2'); }}
+            onMouseDown={(event) => event.preventDefault()}
+            role="menuitem"
+            type="button"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-ink-200 text-sm font-semibold">H</span>
+            <span><span className="block text-sm font-medium text-ink-900">Heading</span><span className="block text-xs text-ink-500">Start a new section</span></span>
+          </button>
+          <button
+            className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-ink-50"
+            onClick={() => { setSlashMenuOpen(false); onInsertImage(splitAtCaret()); }}
+            onMouseDown={(event) => event.preventDefault()}
+            role="menuitem"
+            type="button"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-ink-200"><ImageIcon className="h-4 w-4" /></span>
+            <span><span className="block text-sm font-medium text-ink-900">Image</span><span className="block text-xs text-ink-500">Upload at this position</span></span>
+          </button>
+          <button
+            className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-ink-50"
+            onClick={() => { setSlashMenuOpen(false); onInsertImageRow(splitAtCaret()); }}
+            onMouseDown={(event) => event.preventDefault()}
+            role="menuitem"
+            type="button"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-ink-200"><Columns2 className="h-4 w-4" /></span>
+            <span><span className="block text-sm font-medium text-ink-900">Image row</span><span className="block text-xs text-ink-500">Two or three images side by side</span></span>
+          </button>
+          <button
+            className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-ink-50"
+            onClick={() => { setSlashMenuOpen(false); applyFormat('divider'); }}
+            onMouseDown={(event) => event.preventDefault()}
+            role="menuitem"
+            type="button"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-ink-200"><Minus className="h-4 w-4" /></span>
+            <span><span className="block text-sm font-medium text-ink-900">Divider</span><span className="block text-xs text-ink-500">Separate two sections</span></span>
+          </button>
+        </div>
+      )}
+
       {linkDraft && (
-        <div className="m-1 space-y-2 rounded-md border border-ink-200 bg-ink-50 p-3">
+        <div className="my-2 space-y-2 rounded-md border border-ink-200 bg-ink-50 p-3">
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-[11px] font-medium text-ink-600">Text to display</span>
@@ -2002,6 +2936,100 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
   );
 });
 
+function EmailPreviewDialog({
+  body,
+  kind,
+  onClose,
+  previewText,
+  subject,
+}: {
+  body: string;
+  kind: 'delivery' | 'follow-up';
+  onClose: () => void;
+  previewText: string;
+  subject: string;
+}) {
+  useModalAccessibility(onClose);
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const documentHtml = useMemo(() => {
+    const sampleBody = body.replace(/{name}/g, 'Alex').replace(/{download_link}/g, '#');
+    const rendered = kind === 'follow-up'
+      ? renderFollowUpEmailHtml(sampleBody, previewText, '#')
+      : renderDeliveryEmailHtml(sampleBody, previewText);
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head><body style="margin:0;background:#f5f5f4">${rendered}</body></html>`;
+  }, [body, kind, previewText]);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex flex-col bg-black/55 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label="Email preview">
+      <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl">
+        <div className="flex flex-wrap items-center gap-3 border-b border-ink-200 px-4 py-3 sm:px-5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-ink-950">{subject || 'Untitled email'}</p>
+            <p className="truncate text-xs text-ink-500">{previewText || 'No preview text yet'}</p>
+          </div>
+          <div className="flex rounded-lg border border-ink-200 bg-ink-50 p-1">
+            {([
+              ['desktop', Monitor, 'Desktop'],
+              ['mobile', Smartphone, 'Mobile'],
+            ] as const).map(([value, Icon, label]) => (
+              <button
+                className={cn(
+                  'inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition',
+                  device === value ? 'bg-white text-ink-950 shadow-sm' : 'text-ink-500 hover:text-ink-900'
+                )}
+                key={value}
+                onClick={() => setDevice(value)}
+                type="button"
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            className="inline-flex h-9 items-center justify-center rounded-md border border-ink-200 px-3 text-sm font-medium text-ink-700 transition hover:bg-ink-50"
+            onClick={onClose}
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 justify-center overflow-auto bg-[#e8e6e1] p-3 sm:p-6">
+          <iframe
+            className="h-full min-h-[640px] bg-white shadow-xl transition-[width] duration-200"
+            sandbox="allow-popups allow-popups-to-escape-sandbox"
+            srcDoc={documentHtml}
+            style={{ width: device === 'mobile' ? 390 : '100%', maxWidth: device === 'mobile' ? 390 : 920 }}
+            title={`${subject || 'Email'} preview`}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MagnetsEmailFooterBlock({ edgeToEdge = false }: { edgeToEdge?: boolean }) {
+  return (
+    <div
+      className={cn(
+        'mt-7 rounded-xl bg-[#080d18] px-5 py-8 text-center sm:px-8',
+        edgeToEdge && '-mx-6 -mb-7 rounded-b-lg'
+      )}
+      aria-label="Email footer"
+    >
+      <a
+        className="inline-flex items-center gap-2 rounded-md border border-ink-300 bg-white px-4 py-2.5 text-sm font-semibold text-ink-800 shadow-sm transition hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-white/60"
+        href="https://magnets.so"
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        <MagnetsLogoMark className="h-5 w-5" tile />
+        Powered by Magnets
+      </a>
+    </div>
+  );
+}
+
 function EmailCanvas({
   account,
   isUploadingEmailImage,
@@ -2013,48 +3041,69 @@ function EmailCanvas({
   account: DashboardBasePayload['account'];
   isUploadingEmailImage: boolean;
   leadMagnet: LeadMagnet;
-  onAddImage: () => void;
+  onAddImage: (insertion: EmailImageInsertion, files?: File[]) => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   pendingImage: PendingEmailImage | null;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   return (
     <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
+      {previewOpen && (
+        <EmailPreviewDialog
+          body={leadMagnet.emailBody}
+          kind="delivery"
+          onClose={() => setPreviewOpen(false)}
+          previewText={leadMagnet.emailPreview}
+          subject={leadMagnet.emailSubject}
+        />
+      )}
       <div className="mx-auto max-w-2xl space-y-4">
         <div className="rounded-lg border border-ink-200 bg-white">
           <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs text-ink-500">
             <Mail className="h-4 w-4 text-ink-700" />
-            <span className="font-medium">Email preview</span>
-            <span className="ml-auto font-mono text-[10px]">{account.resendFromEmail || 'Magnets <hello@mail.magnets.so>'}</span>
-          </div>
-
-          <div className="space-y-2 border-b border-ink-200 bg-white px-5 py-4">
-            <label className="block">
-              <span className="text-[11px] font-medium text-ink-500">Subject</span>
-              <InlineText
-                ariaLabel="Email subject"
-                as="div"
-                className="block text-base font-semibold text-ink-900"
-                emptyPlaceholder="What people see in the inbox"
-                maxLength={140}
-                onChange={(value) => onPatch({ emailSubject: value })}
-                value={leadMagnet.emailSubject}
-              />
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-medium text-ink-500">Preview text</span>
-              <InlineText
-                ariaLabel="Email preview text"
-                as="div"
-                className="block text-sm text-ink-600"
-                emptyPlaceholder="A short teaser shown after the subject"
-                maxLength={160}
-                onChange={(value) => onPatch({ emailPreview: value })}
-                value={leadMagnet.emailPreview}
-              />
-            </label>
+            <span className="font-medium">Delivery email</span>
+            <span className="ml-auto hidden font-mono text-[10px] sm:block">{account.resendFromEmail || 'Magnets <hello@mail.magnets.so>'}</span>
+            <button
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 text-xs font-semibold text-ink-800 transition hover:bg-ink-50 disabled:cursor-wait disabled:opacity-50"
+              disabled={isUploadingEmailImage}
+              onClick={() => setPreviewOpen(true)}
+              type="button"
+            >
+              {isUploadingEmailImage
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Eye className="h-3.5 w-3.5" />}
+              {isUploadingEmailImage ? 'Uploading' : 'Preview'}
+            </button>
           </div>
 
           <div className="px-6 py-7">
+            <div className="mb-7 space-y-5 border-b border-ink-100 pb-6">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink-500">Subject</span>
+                <InlineText
+                  ariaLabel="Email subject"
+                  as="div"
+                  className="block text-2xl font-semibold leading-tight text-ink-950"
+                  emptyPlaceholder="What people see in the inbox"
+                  maxLength={140}
+                  onChange={(value) => onPatch({ emailSubject: value })}
+                  value={leadMagnet.emailSubject}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink-500">Preview text</span>
+                <InlineText
+                  ariaLabel="Email preview text"
+                  as="div"
+                  className="block text-sm leading-6 text-ink-600"
+                  emptyPlaceholder="A short teaser shown after the subject"
+                  maxLength={160}
+                  onChange={(value) => onPatch({ emailPreview: value })}
+                  value={leadMagnet.emailPreview}
+                />
+              </label>
+            </div>
             <p className="mb-3 text-xs font-medium text-ink-700">Body</p>
             <EmailBodyEditor
               ariaLabel="Email body"
@@ -2064,6 +3113,7 @@ function EmailCanvas({
               pendingImage={pendingImage}
               value={leadMagnet.emailBody}
             />
+            <MagnetsEmailFooterBlock edgeToEdge />
           </div>
         </div>
       </div>
@@ -2083,7 +3133,7 @@ function SequenceCanvas({
   account: DashboardBasePayload['account'];
   emailImageUploadTarget: EmailImageTarget | null;
   leadMagnet: LeadMagnet;
-  onAddImage: (emailId: string) => void;
+  onAddImage: (emailId: string, insertion: EmailImageInsertion, files?: File[]) => void;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   onUpdateEmail: (
     emailId: string,
@@ -2092,6 +3142,9 @@ function SequenceCanvas({
   pendingImage: PendingEmailImage | null;
 }) {
   const [delayDrafts, setDelayDrafts] = useState<Record<string, string>>({});
+  const [activeEmailId, setActiveEmailId] = useState(leadMagnet.followUpEmails[0]?.id || '');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const touchStartXRef = useRef<number | null>(null);
   const resendConfigured = account.resendConfigured;
   const calendarConnected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
   const calendarProviderLabel =
@@ -2122,12 +3175,35 @@ function SequenceCanvas({
 
   function addEmail() {
     if (!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10) return;
+    const email = newFollowUpEmail();
     onPatch({
       followUpEmails: [
         ...leadMagnet.followUpEmails,
-        newFollowUpEmail(),
+        email,
       ],
     });
+    setActiveEmailId(email.id);
+  }
+
+  useEffect(() => {
+    if (leadMagnet.followUpEmails.some((email) => email.id === activeEmailId)) return;
+    setActiveEmailId(leadMagnet.followUpEmails[0]?.id || '');
+  }, [activeEmailId, leadMagnet.followUpEmails]);
+
+  const activeIndex = Math.max(0, leadMagnet.followUpEmails.findIndex((email) => email.id === activeEmailId));
+  const activeEmail = leadMagnet.followUpEmails[activeIndex];
+
+  function selectRelativeEmail(direction: -1 | 1) {
+    if (leadMagnet.followUpEmails.length === 0) return;
+    const nextIndex = Math.max(0, Math.min(leadMagnet.followUpEmails.length - 1, activeIndex + direction));
+    setActiveEmailId(leadMagnet.followUpEmails[nextIndex].id);
+  }
+
+  function removeActiveEmail() {
+    if (!activeEmail) return;
+    const remaining = leadMagnet.followUpEmails.filter((email) => email.id !== activeEmail.id);
+    setActiveEmailId(remaining[Math.min(activeIndex, remaining.length - 1)]?.id || '');
+    onPatch({ followUpEmails: remaining });
   }
 
   return (
@@ -2210,135 +3286,189 @@ function SequenceCanvas({
           </div>
         </div>
 
-        <div className="space-y-3">
-          {leadMagnet.followUpEmails.length === 0 && (
-            <div className="rounded-lg border border-dashed border-ink-300 bg-white p-6 text-center">
-              <p className="text-sm font-semibold text-ink-950">No follow-up emails yet</p>
-              <p className="mt-1 text-xs text-ink-500">Add up to 10 emails to build this magnet&apos;s sequence.</p>
-            </div>
-          )}
+        {activeEmail && previewOpen && (
+          <EmailPreviewDialog
+            body={activeEmail.body}
+            kind="follow-up"
+            onClose={() => setPreviewOpen(false)}
+            previewText={activeEmail.preview}
+            subject={activeEmail.subject}
+          />
+        )}
 
-          {leadMagnet.followUpEmails.map((email, index) => {
-            const delayMinutes = followUpDelayMinutes(email);
-            const delayUnit = followUpDelayUnit(delayMinutes);
-            const delayValue = delayUnit === 'hours' ? delayMinutes / 60 : delayMinutes;
-            const delayInputValue = delayDrafts[email.id] ?? String(delayValue);
-
-            return (
-              <div key={email.id} className="rounded-lg border border-ink-200 bg-white">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 bg-ink-50 px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-ink-700" />
-                    <p className="text-sm font-semibold text-ink-950">Email {index + 1}</p>
-                  </div>
-                  <button
-                    aria-label={`Remove email ${index + 1}`}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 transition hover:bg-red-50"
-                    onClick={() =>
-                      onPatch({
-                        followUpEmails: leadMagnet.followUpEmails.filter((_, emailIndex) => emailIndex !== index),
-                      })
-                    }
-                    type="button"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Remove
-                  </button>
-                </div>
-
-                <div className="space-y-4 p-5">
-                  <label className="block">
-                    <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
-                      <Clock className="h-3.5 w-3.5" />
-                      Delay from previous email
-                    </span>
-                    <div className="flex max-w-sm items-center gap-2">
-                      <AceternityInput
-                        inputMode="numeric"
-                        onChange={(event) => {
-                          const rawValue = event.target.value.trim();
-                          if (!/^\d*$/.test(rawValue)) return;
-                          updateDelayDraft(email.id, rawValue);
-                          const value = rawValue === '' ? 0 : Number(rawValue);
-                          updateEmail(
-                            index,
-                            delayPatchFromMinutes(delayUnit === 'hours' ? value * 60 : value)
-                          );
-                        }}
-                        onBlur={() => clearDelayDraft(email.id)}
-                        pattern="[0-9]*"
-                        type="text"
-                        value={delayInputValue}
-                      />
-                      <select
-                        aria-label={`Delay unit for email ${index + 1}`}
-                        className="h-11 rounded-lg border border-ink-200 bg-white px-3 text-sm font-medium text-ink-800 outline-none transition focus:border-ink-500 focus:ring-2 focus:ring-ink-100"
-                        onChange={(event) => {
-                          const nextUnit = event.target.value === 'minutes' ? 'minutes' : 'hours';
-                          const value = delayInputValue === '' ? 0 : Number(delayInputValue);
-                          clearDelayDraft(email.id);
-                          updateEmail(
-                            index,
-                            delayPatchFromMinutes(nextUnit === 'hours' ? value * 60 : value)
-                          );
-                        }}
-                        value={delayUnit}
-                      >
-                        <option value="minutes">minutes</option>
-                        <option value="hours">hours</option>
-                      </select>
-                    </div>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Subject</span>
-                    <AceternityInput
-                      onChange={(event) => updateEmail(index, { subject: event.target.value })}
-                      placeholder="Quick follow-up"
-                      value={email.subject}
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink-700">Preview text</span>
-                    <AceternityInput
-                      onChange={(event) => updateEmail(index, { preview: event.target.value })}
-                      placeholder="Short inbox teaser"
-                      value={email.preview}
-                    />
-                  </label>
-
-                  <div className="block">
-                    <p className="mb-1.5 text-xs font-medium text-ink-700">Body</p>
-                    <EmailBodyEditor
-                      ariaLabel={`Body for email ${index + 1}`}
-                      isUploadingImage={Boolean(emailImageUploadTarget)}
-                      onAddImage={() => onAddImage(email.id)}
-                      onChange={(value) => onUpdateEmail(email.id, { body: value })}
-                      pendingImage={pendingImage?.target.kind === 'follow-up' && pendingImage.target.emailId === email.id
-                        ? pendingImage
-                        : null}
-                      value={email.body}
-                    />
-                  </div>
-                </div>
+        {leadMagnet.followUpEmails.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-ink-300 bg-white p-8 text-center">
+            <p className="text-sm font-semibold text-ink-950">No follow-up emails yet</p>
+            <p className="mt-1 text-xs text-ink-500">Add up to 10 emails to build this magnet&apos;s sequence.</p>
+            <AceternityButton className="mt-4" disabled={!leadMagnet.followUpEnabled} onClick={addEmail} variant="secondary">
+              <Plus className="h-4 w-4" />
+              Add first email
+            </AceternityButton>
+          </div>
+        ) : activeEmail ? (
+          <div className="overflow-clip rounded-lg border border-ink-200 bg-white lg:grid lg:grid-cols-[230px_minmax(0,1fr)]">
+            <aside className="border-b border-ink-200 bg-ink-50 lg:border-b-0 lg:border-r">
+              <div className="flex items-center justify-between px-3 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Sequence</p>
+                <button
+                  aria-label="Add email"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-600 hover:bg-white"
+                  disabled={!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10}
+                  onClick={addEmail}
+                  type="button"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </div>
-            );
-          })}
-        </div>
+              <div className="no-scrollbar flex gap-2 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1 lg:overflow-visible">
+                {leadMagnet.followUpEmails.map((email, index) => {
+                  const delay = followUpDelayMinutes(email);
+                  return (
+                    <button
+                      className={cn(
+                        'min-w-[180px] rounded-lg border p-3 text-left transition lg:block lg:w-full lg:min-w-0',
+                        email.id === activeEmail.id
+                          ? 'border-ink-950 bg-ink-950 text-white'
+                          : 'border-ink-200 bg-white text-ink-700 hover:border-ink-300'
+                      )}
+                      key={email.id}
+                      onClick={() => setActiveEmailId(email.id)}
+                      type="button"
+                    >
+                      <span className="flex items-center justify-between gap-2 text-xs font-semibold">
+                        Email {index + 1}
+                        <span className={email.id === activeEmail.id ? 'text-white/60' : 'text-ink-400'}>
+                          {delay >= 1440 ? `${Math.round(delay / 1440)}d` : delay >= 60 ? `${Math.round(delay / 60)}h` : `${delay}m`}
+                        </span>
+                      </span>
+                      <span className={cn('mt-1 block truncate text-[11px]', email.id === activeEmail.id ? 'text-white/70' : 'text-ink-500')}>
+                        {email.subject || 'Untitled email'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
 
-        <div className="flex justify-end">
-          <AceternityButton
-            disabled={!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10}
-            onClick={addEmail}
-            title={!leadMagnet.followUpEnabled ? 'Enable the follow-up sequence first.' : undefined}
-            type="button"
-            variant="secondary"
-          >
-            <Plus className="h-4 w-4" />
-            Add email
-          </AceternityButton>
-        </div>
+            <section
+              onTouchEnd={(event) => {
+                const start = touchStartXRef.current;
+                touchStartXRef.current = null;
+                if (start === null) return;
+                const distance = event.changedTouches[0]?.clientX - start;
+                if (Math.abs(distance) < 70) return;
+                selectRelativeEmail(distance < 0 ? 1 : -1);
+              }}
+              onTouchStart={(event) => {
+                touchStartXRef.current = event.touches[0]?.clientX ?? null;
+              }}
+            >
+              <div className="flex flex-wrap items-center gap-2 border-b border-ink-200 bg-white px-4 py-3 sm:px-5">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Mail className="h-4 w-4 shrink-0 text-ink-700" />
+                  <p className="truncate text-sm font-semibold text-ink-950">Email {activeIndex + 1}</p>
+                </div>
+                <button
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 px-2.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 disabled:cursor-wait disabled:opacity-50"
+                  disabled={Boolean(emailImageUploadTarget)}
+                  onClick={() => setPreviewOpen(true)}
+                  type="button"
+                >
+                  {emailImageUploadTarget
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Eye className="h-3.5 w-3.5" />}
+                  {emailImageUploadTarget ? 'Uploading' : 'Preview'}
+                </button>
+                <button
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                  onClick={removeActiveEmail}
+                  type="button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              </div>
+
+              {(() => {
+                const delayMinutes = followUpDelayMinutes(activeEmail);
+                const delayUnit = followUpDelayUnit(delayMinutes);
+                const delayValue = delayUnit === 'hours' ? delayMinutes / 60 : delayMinutes;
+                const delayInputValue = delayDrafts[activeEmail.id] ?? String(delayValue);
+                return (
+                  <div className="space-y-4 p-4 sm:p-5">
+                    <label className="block">
+                      <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
+                        <Clock className="h-3.5 w-3.5" />
+                        Delay from previous email
+                      </span>
+                      <div className="flex max-w-sm items-center gap-2">
+                        <AceternityInput
+                          inputMode="numeric"
+                          onBlur={() => clearDelayDraft(activeEmail.id)}
+                          onChange={(event) => {
+                            const rawValue = event.target.value.trim();
+                            if (!/^\d*$/.test(rawValue)) return;
+                            updateDelayDraft(activeEmail.id, rawValue);
+                            const value = rawValue === '' ? 0 : Number(rawValue);
+                            updateEmail(activeIndex, delayPatchFromMinutes(delayUnit === 'hours' ? value * 60 : value));
+                          }}
+                          pattern="[0-9]*"
+                          type="text"
+                          value={delayInputValue}
+                        />
+                        <select
+                          aria-label={`Delay unit for email ${activeIndex + 1}`}
+                          className="h-11 rounded-lg border border-ink-200 bg-white px-3 text-sm font-medium text-ink-800 outline-none transition focus:border-ink-500 focus:ring-2 focus:ring-ink-100"
+                          onChange={(event) => {
+                            const nextUnit = event.target.value === 'minutes' ? 'minutes' : 'hours';
+                            const value = delayInputValue === '' ? 0 : Number(delayInputValue);
+                            clearDelayDraft(activeEmail.id);
+                            updateEmail(activeIndex, delayPatchFromMinutes(nextUnit === 'hours' ? value * 60 : value));
+                          }}
+                          value={delayUnit}
+                        >
+                          <option value="minutes">minutes</option>
+                          <option value="hours">hours</option>
+                        </select>
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-ink-700">Subject</span>
+                      <AceternityInput onChange={(event) => updateEmail(activeIndex, { subject: event.target.value })} placeholder="Quick follow-up" value={activeEmail.subject} />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-ink-700">Preview text</span>
+                      <AceternityInput onChange={(event) => updateEmail(activeIndex, { preview: event.target.value })} placeholder="Short inbox teaser" value={activeEmail.preview} />
+                    </label>
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-ink-700">Body</p>
+                      <EmailBodyEditor
+                        ariaLabel={`Body for email ${activeIndex + 1}`}
+                        isUploadingImage={Boolean(emailImageUploadTarget)}
+                        onAddImage={(insertion, files) => onAddImage(activeEmail.id, insertion, files)}
+                        onChange={(value) => onUpdateEmail(activeEmail.id, { body: value })}
+                        pendingImage={pendingImage?.target.kind === 'follow-up' && pendingImage.target.emailId === activeEmail.id ? pendingImage : null}
+                        value={activeEmail.body}
+                      />
+                      <MagnetsEmailFooterBlock />
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-ink-100 pt-4">
+                      <button className="inline-flex h-8 items-center gap-1 text-xs font-medium text-ink-600 disabled:opacity-30" disabled={activeIndex === 0} onClick={() => selectRelativeEmail(-1)} type="button">
+                        <ChevronLeft className="h-4 w-4" /> Previous
+                      </button>
+                      <span className="text-[11px] font-medium text-ink-400">Swipe on mobile · {activeIndex + 1} of {leadMagnet.followUpEmails.length}</span>
+                      <button className="inline-flex h-8 items-center gap-1 text-xs font-medium text-ink-600 disabled:opacity-30" disabled={activeIndex === leadMagnet.followUpEmails.length - 1} onClick={() => selectRelativeEmail(1)} type="button">
+                        Next <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -2412,7 +3542,7 @@ function AfterSignupCanvas({
                 className={cn(
                   'rounded-lg border p-4 text-left transition',
                   leadMagnet.postSignupMode === mode
-                    ? 'border-ink-950 bg-ink-950 text-white dark:text-[#111111]'
+                    ? 'border-ink-950 bg-ink-950 text-white'
                     : 'border-ink-200 bg-white text-ink-800 hover:bg-ink-50'
                 )}
                 key={mode}
@@ -2426,7 +3556,7 @@ function AfterSignupCanvas({
                 <span className={cn(
                   'mt-1 block text-xs leading-5',
                   leadMagnet.postSignupMode === mode
-                    ? 'text-white/70 dark:text-[#4a2518]'
+                    ? 'text-white/70'
                     : 'text-ink-500'
                 )}>
                   {description}

@@ -1,6 +1,12 @@
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { APICallError, generateText, Output } from 'ai';
 import { z } from 'zod';
+import {
+  HUMAN_VOICE_GUARDRAILS,
+  humanVoiceRepairPrompt,
+  humanVoiceViolations,
+  OFFER_DRIVEN_WRITING_STYLE,
+} from '@/lib/ai-writing-guardrails';
 import type { AccountSettings } from '@/lib/types';
 
 export const generatedLeadMagnetSchema = z.object({
@@ -82,16 +88,43 @@ export async function generateLeadMagnetCopy({
   const deepseek = createDeepSeek({ apiKey });
   let output: GeneratedLeadMagnet | undefined;
   try {
+    const model = deepseek(process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat');
+    const writingInstructions = `You write concise, credible conversion copy. Follow the requested schema exactly.
+
+${OFFER_DRIVEN_WRITING_STYLE}
+
+${HUMAN_VOICE_GUARDRAILS}`;
+    const writingPrompt = promptFor({ account, brief });
     const result = await generateText({
-      model: deepseek(process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat'),
-      instructions: 'You write concise, credible conversion copy. Follow the requested schema exactly.',
-      prompt: promptFor({ account, brief }),
+      model,
+      instructions: writingInstructions,
+      prompt: writingPrompt,
       output: Output.object({ schema: generatedLeadMagnetSchema }),
       maxOutputTokens: 2200,
       temperature: 0.35,
       abortSignal: AbortSignal.timeout(45_000),
     });
     output = result.output;
+
+    const firstPassViolations = humanVoiceViolations(output);
+    if (output && firstPassViolations.length > 0) {
+      const repair = await generateText({
+        model,
+        instructions: writingInstructions,
+        messages: [
+          { role: 'user', content: writingPrompt },
+          { role: 'assistant', content: JSON.stringify(output) },
+          { role: 'user', content: humanVoiceRepairPrompt(firstPassViolations) },
+        ],
+        output: Output.object({ schema: generatedLeadMagnetSchema }),
+        maxOutputTokens: 2200,
+        temperature: 0.2,
+        abortSignal: AbortSignal.timeout(45_000),
+      });
+      output = repair.output;
+    }
+
+    if (output && humanVoiceViolations(output).length > 0) output = undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message.toLowerCase() : '';
     const statusCode = APICallError.isInstance(error) ? error.statusCode : undefined;

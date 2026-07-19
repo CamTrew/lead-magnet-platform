@@ -16,6 +16,7 @@ const schema = z.object({
   acceptedTerms: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the Terms of Service to continue.' }),
   }),
+  newsletterOptIn: z.boolean().optional().default(false),
 }).strict();
 
 export async function POST(request: NextRequest) {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, name } = parsed.data;
+    const { email, password, name, newsletterOptIn } = parsed.data;
     await enforceRateLimits([
       {
         identifier: requestIp(request),
@@ -48,9 +49,10 @@ export async function POST(request: NextRequest) {
 
     const user = await createRegisterSession(email, password, name);
 
-    // Best-effort: add the user to the Magnets product newsletter as
-    // disclosed on the register form. Never blocks the registration.
-    void subscribeToPlatformNewsletter({ email, name });
+    // Newsletter consent is optional and never blocks account creation.
+    if (newsletterOptIn) {
+      void subscribeToPlatformNewsletter({ email, name });
+    }
 
     return NextResponse.json({ user });
   } catch (err) {

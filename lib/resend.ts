@@ -1,7 +1,14 @@
 import { Resend } from 'resend';
-import { parseEmailImageLine } from './email-body-images';
-import { renderEmailFormattedHtml, renderEmailInlineText } from './email-body-links';
 import { log } from './logger';
+import {
+  cleanEmailText,
+  cleanPreviewText,
+  escapeEmailHtml,
+  MAGNETS_EMAIL_FOOTER_HTML,
+  MAGNETS_EMAIL_FOOTER_TEXT,
+  renderDeliveryEmailHtml,
+  renderEmailTextFallback,
+} from './email-render';
 import {
   platformResendApiKey,
   platformResendFromEmail,
@@ -17,81 +24,20 @@ export class EmailDeliveryError extends Error {
   }
 }
 
-export const MAGNETS_EMAIL_FOOTER_TEXT = 'Powered by Magnets: https://magnets.so';
-export const MAGNETS_EMAIL_FOOTER_HTML = '<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font:13px/1.5 Arial,sans-serif;color:#6b7280">Powered by <a href="https://magnets.so" style="color:#374151;text-decoration:underline">Magnets</a>.</div>';
-
 function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return escapeEmailHtml(value);
 }
 
-export function renderEmailTextFallback(text: string) {
-  return cleanEmailText(
-    text
-      .split('\n')
-      .map((line) => {
-        const image = parseEmailImageLine(line);
-        if (image) return `${image.alt}: ${image.url}`;
-        if (/^---\s*$/.test(line)) return '----------------------------------------';
-        return renderEmailInlineText(line.replace(/^#{1,3}\s+/, ''));
-      })
-      .join('\n')
-  );
-}
-
-function renderEmailBodyHtml(text: string) {
-  const chunks: string[] = [];
-  const textBuffer: string[] = [];
-
-  const flushText = () => {
-    const textChunk = cleanEmailText(textBuffer.join('\n'));
-    textBuffer.length = 0;
-    if (!textChunk) return;
-
-    chunks.push(renderEmailFormattedHtml(textChunk));
-  };
-
-  for (const line of text.split('\n')) {
-    const image = parseEmailImageLine(line);
-    if (!image) {
-      textBuffer.push(line);
-      continue;
-    }
-
-    flushText();
-    chunks.push(
-      `<div style="margin:20px 0"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:0;border-radius:12px" /></div>`
-    );
-  }
-
-  flushText();
-  return chunks.join('');
-}
-
-export function cleanEmailText(value: string) {
-  return value
-    .replace(/\r\n?/g, '\n')
-    .replace(/^\s+/, '')
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trimEnd();
-}
-
-export function cleanPreviewText(value: string) {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-export function renderPlainEmailHtml(text: string, previewText: string, footerHtml = '') {
-  const preheader = previewText
-    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;font-size:1px;line-height:1px">${escapeHtml(previewText)}</div>`
-    : '';
-
-  return `${preheader}${renderEmailBodyHtml(text)}${footerHtml}`;
-}
+export {
+  cleanEmailText,
+  cleanPreviewText,
+  MAGNETS_EMAIL_FOOTER_HTML,
+  MAGNETS_EMAIL_FOOTER_TEXT,
+  renderDeliveryEmailHtml,
+  renderFollowUpEmailHtml,
+  renderEmailTextFallback,
+  renderPlainEmailHtml,
+} from './email-render';
 
 export function scrubResendErrorMessage(message: string) {
   // The Resend SDK occasionally echoes the key back in error messages. Strip
@@ -199,7 +145,7 @@ export async function sendLeadMagnetEmail({
       to,
       subject: magnet.emailSubject,
       text,
-      html: renderPlainEmailHtml(body, previewText, MAGNETS_EMAIL_FOOTER_HTML),
+      html: renderDeliveryEmailHtml(body, previewText),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

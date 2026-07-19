@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { AuthCard } from '@/components/auth/auth-card';
+import { getCurrentDashboardBase, sessionCookieName } from '@/lib/auth';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
 
@@ -17,6 +20,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RegisterPage() {
+export default async function RegisterPage() {
+  const cookieStore = await cookies();
+  if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
+    redirect('/dashboard/pages');
+  }
+
   return <AuthCard mode="register" />;
 }

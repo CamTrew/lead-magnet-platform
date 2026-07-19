@@ -6,15 +6,13 @@ import {
   markFollowUpRunFailed as markFollowUpRunFailedInStore,
   stopFollowUpRunsForAccountEmail as stopFollowUpRunsForAccountEmailInStore,
   stopFollowUpRunForEmail as stopFollowUpRunForEmailInStore,
-  updateLeadMagnetFollowUpSync as updateLeadMagnetFollowUpSyncInStore,
 } from './platform-store';
 import {
   cleanEmailText,
   cleanPreviewText,
-  MAGNETS_EMAIL_FOOTER_HTML,
   MAGNETS_EMAIL_FOOTER_TEXT,
   renderEmailTextFallback,
-  renderPlainEmailHtml,
+  renderFollowUpEmailHtml,
   scrubResendErrorMessage,
 } from './resend';
 import { followUpStopUrl } from './follow-up-opt-out';
@@ -25,7 +23,7 @@ const RESEND_API_BASE = 'https://api.resend.com';
 // Increment whenever stored Resend templates need to be rebuilt with new HTML.
 // Version 3 replaces the legacy pre-wrapped Markdown output with real email
 // headings, emphasis, dividers, and lists.
-export const FOLLOW_UP_RENDER_VERSION = 3;
+export const FOLLOW_UP_RENDER_VERSION = 6;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
@@ -35,15 +33,17 @@ const TEMPLATE_VARIABLES = [
 ];
 const STOP_SEQUENCE_TEMPLATE_URL = '{{{STOP_SEQUENCE_URL}}}';
 const STOP_SEQUENCE_TEXT = `Stop these follow-up emails: ${STOP_SEQUENCE_TEMPLATE_URL}`;
-const STOP_SEQUENCE_HTML = `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font:13px/1.5 Arial,sans-serif;color:#6b7280">Don't want these follow-up emails? <a href="${STOP_SEQUENCE_TEMPLATE_URL}" style="color:#374151;text-decoration:underline">Stop this sequence</a>.</div>`;
 
 type ResendObject = {
   id?: string;
   object?: string;
+  data?: unknown[];
+  name?: string;
+  status?: string;
+  steps?: unknown[];
   error?: { code?: string; message?: string; name?: string } | string;
   code?: string;
   message?: string;
-  name?: string;
 };
 
 type FollowUpRunStore = {
@@ -53,7 +53,6 @@ type FollowUpRunStore = {
   markFollowUpRunFailed: typeof markFollowUpRunFailedInStore;
   stopFollowUpRunForEmail: typeof stopFollowUpRunForEmailInStore;
   stopFollowUpRunsForAccountEmail: typeof stopFollowUpRunsForAccountEmailInStore;
-  updateLeadMagnetFollowUpSync: typeof updateLeadMagnetFollowUpSyncInStore;
 };
 
 const defaultFollowUpRunStore: FollowUpRunStore = {
@@ -63,7 +62,6 @@ const defaultFollowUpRunStore: FollowUpRunStore = {
   markFollowUpRunFailed: markFollowUpRunFailedInStore,
   stopFollowUpRunForEmail: stopFollowUpRunForEmailInStore,
   stopFollowUpRunsForAccountEmail: stopFollowUpRunsForAccountEmailInStore,
-  updateLeadMagnetFollowUpSync: updateLeadMagnetFollowUpSyncInStore,
 };
 
 export class FollowUpSequenceError extends Error {
@@ -138,7 +136,7 @@ function hasSyncableFollowUpEmails(magnet: LeadMagnet) {
     .some((email) => email.subject && email.body);
 }
 
-function needsInitialFollowUpSync(magnet: LeadMagnet) {
+export function followUpAutomationNeedsProviderSync(magnet: LeadMagnet) {
   if (!magnet.followUpEnabled || !hasSyncableFollowUpEmails(magnet)) return false;
   if (Number(magnet.resendFollowUpRenderVersion || 0) < FOLLOW_UP_RENDER_VERSION) return true;
   if (!magnet.resendFollowUpAutomationId) return true;
@@ -156,7 +154,7 @@ export function followUpAutomationNeedsSync(previous: LeadMagnet | null, next: L
     return Boolean(next.resendFollowUpAutomationId);
   }
 
-  if (needsInitialFollowUpSync(next)) return true;
+  if (followUpAutomationNeedsProviderSync(next)) return true;
   if (!previous) return true;
 
   return previous.followUpEnabled !== next.followUpEnabled
@@ -181,7 +179,12 @@ function resendName(label: string, magnet: Pick<LeadMagnet, 'id' | 'slug' | 'tit
   return `${full.slice(0, maxPrefixLength).trimEnd()}${suffix}`;
 }
 
-function templatePayload(from: string, magnet: LeadMagnet, email: FollowUpEmail, index: number) {
+function templatePayload(
+  from: string,
+  magnet: LeadMagnet,
+  email: FollowUpEmail,
+  index: number
+) {
   const body = replaceTemplateVariables(email.body);
   const text = renderEmailTextFallback(
     [body, STOP_SEQUENCE_TEXT, MAGNETS_EMAIL_FOOTER_TEXT].filter(Boolean).join('\n\n')
@@ -192,11 +195,7 @@ function templatePayload(from: string, magnet: LeadMagnet, email: FollowUpEmail,
     from,
     subject: email.subject,
     text,
-    html: renderPlainEmailHtml(
-      cleanEmailText(body),
-      email.preview,
-      `${STOP_SEQUENCE_HTML}${MAGNETS_EMAIL_FOOTER_HTML}`
-    ),
+    html: renderFollowUpEmailHtml(body, email.preview, STOP_SEQUENCE_TEMPLATE_URL),
     variables: TEMPLATE_VARIABLES,
   };
 }
@@ -449,23 +448,67 @@ async function disableAutomationIfPresent(apiKey: string, automationId: string) 
   }
 }
 
-async function activateReplacementAutomation(
+function automationUsesTrigger(detail: ResendObject, triggerEvent: string) {
+  return Array.isArray(detail.steps) && detail.steps.some((value) => {
+    if (!isRecord(value) || value.type !== 'trigger' || !isRecord(value.config)) return false;
+    return value.config.event_name === triggerEvent;
+  });
+}
+
+async function findCompetingAutomationIds(
   apiKey: string,
+  magnet: LeadMagnet,
   previousAutomationId: string,
   replacementAutomationId: string
 ) {
-  if (!previousAutomationId) {
-    await enableAutomation(apiKey, replacementAutomationId);
-    return;
+  const result = await resendRequest<ResendObject>(apiKey, '/automations');
+  const expectedName = resendName('Magnets follow-up', magnet);
+  const triggerEvent = eventName('signup', magnet.id);
+  const competitors = new Set<string>();
+
+  if (previousAutomationId && previousAutomationId !== replacementAutomationId) {
+    competitors.add(previousAutomationId);
   }
 
+  for (const value of result.data || []) {
+    if (!isRecord(value)) continue;
+    const id = stringValue(value.id);
+    if (!id || id === replacementAutomationId || stringValue(value.name) !== expectedName) continue;
+
+    // Names narrow the provider scan, but the event is the authority. Two
+    // magnets may legitimately share a title, so never disable by name alone.
+    const detail = await resendRequest<ResendObject>(
+      apiKey,
+      `/automations/${encodeURIComponent(id)}`
+    );
+    if (automationUsesTrigger(detail, triggerEvent)) competitors.add(id);
+  }
+
+  return Array.from(competitors);
+}
+
+async function activateReplacementAutomation(
+  apiKey: string,
+  magnet: LeadMagnet,
+  previousAutomationId: string,
+  replacementAutomationId: string
+) {
   let previousDisabled = false;
   try {
     // Resend keeps existing runs alive after an Automation is stopped, but
-    // stops matching events from starting new runs. Create the replacement
-    // first, then perform this short disabled -> enabled handover so a signup
-    // can never trigger both versions.
-    previousDisabled = await disableAutomationIfPresent(apiKey, previousAutomationId);
+    // stops matching events from starting new runs. Reconcile same-event
+    // Automations as well as the ID stored locally, since older clients once
+    // could overwrite that ID with stale data and orphan an enabled workflow.
+    const competitors = await findCompetingAutomationIds(
+      apiKey,
+      magnet,
+      previousAutomationId,
+      replacementAutomationId
+    );
+    for (const automationId of competitors) {
+      const disabled = await disableAutomationIfPresent(apiKey, automationId);
+      if (automationId === previousAutomationId) previousDisabled = disabled;
+    }
     await enableAutomation(apiKey, replacementAutomationId);
   } catch (error) {
     await disableAutomationIfPresent(apiKey, replacementAutomationId).catch(() => undefined);
@@ -549,6 +592,7 @@ export async function syncLeadMagnetFollowUpAutomation(
   );
   await activateReplacementAutomation(
     readyResendApiKey,
+    magnet,
     magnet.resendFollowUpAutomationId,
     automationId
   );
@@ -557,36 +601,6 @@ export async function syncLeadMagnetFollowUpAutomation(
     automationId,
     emails: syncedEmails,
     renderVersion: FOLLOW_UP_RENDER_VERSION,
-  };
-}
-
-async function syncAndPersistFollowUpAutomation(
-  account: AccountSettings,
-  magnet: LeadMagnet,
-  store: FollowUpRunStore
-) {
-  const synced = await syncLeadMagnetFollowUpAutomation(account, magnet);
-  const automationId = synced.automationId || magnet.resendFollowUpAutomationId;
-  const changed =
-    automationId !== magnet.resendFollowUpAutomationId ||
-    followUpEmailsChanged(synced.emails, magnet.followUpEmails) ||
-    magnet.resendFollowUpRenderVersion !== synced.renderVersion;
-
-  if (!changed) {
-    return magnet;
-  }
-
-  const updated = await store.updateLeadMagnetFollowUpSync(account.id, magnet.id, {
-    followUpEmails: synced.emails,
-    resendFollowUpAutomationId: automationId,
-    resendFollowUpRenderVersion: synced.renderVersion,
-  });
-
-  return updated || {
-    ...magnet,
-    followUpEmails: synced.emails,
-    resendFollowUpAutomationId: automationId,
-    resendFollowUpRenderVersion: synced.renderVersion,
   };
 }
 
@@ -615,22 +629,13 @@ export async function startLeadMagnetFollowUpSequence({
     return { started: false, reason: 'not_configured' as const };
   }
 
-  let syncedMagnet = magnet;
-  if (needsInitialFollowUpSync(syncedMagnet)) {
-    syncedMagnet = await syncAndPersistFollowUpAutomation(account, syncedMagnet, store);
-  }
-
-  if (!syncedMagnet.resendFollowUpAutomationId) {
-    return { started: false, reason: 'not_configured' as const };
-  }
-
   const run = await store.createFollowUpRun({
     accountId: account.id,
-    leadMagnetId: syncedMagnet.id,
+    leadMagnetId: magnet.id,
     email,
     name,
-    sequenceFingerprint: followUpSequenceFingerprint(syncedMagnet),
-    scheduledEndAt: followUpSequenceEndDate(syncedMagnet),
+    sequenceFingerprint: followUpSequenceFingerprint(magnet),
+    scheduledEndAt: followUpSequenceEndDate(magnet),
   });
 
   if (!run.created) {
@@ -638,14 +643,19 @@ export async function startLeadMagnetFollowUpSequence({
   }
 
   try {
-    // The automation is synced when the magnet is saved. Re-patching the shared
-    // graph for every signup can disturb contacts already waiting in active runs.
-    await sendEvent(account, syncedMagnet.id, 'signup', email, {
+    // Automation creation and replacement belongs to the magnet save path.
+    // A signup must only emit the event: rebuilding multiple Resend resources
+    // here can time out after the submission is already accepted and silently
+    // leave the subscriber without a run.
+    if (!magnet.resendFollowUpAutomationId) {
+      throw new FollowUpSequenceError('The follow-up automation is not ready yet. Save the magnet and try again.');
+    }
+    await sendEvent(account, magnet.id, 'signup', email, {
       name: name.trim() || 'there',
-      downloadLink: syncedMagnet.downloadLink.trim(),
-      leadMagnetId: syncedMagnet.id,
-      leadMagnetTitle: syncedMagnet.title,
-      stopSequenceUrl: followUpStopUrl(account, syncedMagnet.id, email),
+      downloadLink: magnet.downloadLink.trim(),
+      leadMagnetId: magnet.id,
+      leadMagnetTitle: magnet.title,
+      stopSequenceUrl: followUpStopUrl(account, magnet.id, email),
     });
   } catch (error) {
     if (run.runId) {

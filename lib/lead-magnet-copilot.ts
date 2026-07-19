@@ -63,21 +63,45 @@ export const leadMagnetCopilotDraftSchema = z.object({
 }).strict();
 
 export const leadMagnetCopilotRequestSchema = z.object({
-  messages: z.array(leadMagnetCopilotMessageSchema).min(1).max(20),
+  message: z.string().trim().min(1).max(4000),
   draft: leadMagnetCopilotDraftSchema,
-}).strict().superRefine((value, ctx) => {
-  const conversationLength = value.messages.reduce((total, message) => total + message.content.length, 0);
-  if (conversationLength > 24_000) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'This chat is getting long. Start a new chat and continue from the updated draft.',
-      path: ['messages'],
-    });
-  }
-});
+}).strict();
+
+export type PersistedLeadMagnetCopilotMessage = LeadMagnetCopilotMessage & {
+  id: string;
+  updatedFields: string[];
+};
 
 export type LeadMagnetCopilotPatch = z.infer<typeof leadMagnetCopilotPatchSchema>;
 export type LeadMagnetCopilotFollowUpUpdate = z.infer<typeof leadMagnetCopilotFollowUpUpdateSchema>;
 export type LeadMagnetCopilotResponse = z.infer<typeof leadMagnetCopilotResponseSchema>;
 export type LeadMagnetCopilotMessage = z.infer<typeof leadMagnetCopilotMessageSchema>;
 export type LeadMagnetCopilotDraft = z.infer<typeof leadMagnetCopilotDraftSchema>;
+
+export const leadMagnetCopilotFieldLabels: Record<keyof LeadMagnetCopilotPatch, string> = {
+  title: 'headline',
+  subtitle: 'subheading',
+  description: 'page copy',
+  bullets: 'benefits',
+  bulletsHeading: 'benefits heading',
+  ctaText: 'button',
+  formHeading: 'form heading',
+  formSubtext: 'form copy',
+  emailSubject: 'email subject',
+  emailPreview: 'email preview',
+  emailBody: 'delivery email',
+  postSignupHeading: 'confirmation heading',
+  postSignupBody: 'confirmation copy',
+  postSignupCtaLabel: 'confirmation button',
+};
+
+export function leadMagnetCopilotChangedFieldLabels(
+  updates: LeadMagnetCopilotPatch,
+  followUpUpdates: LeadMagnetCopilotFollowUpUpdate[]
+) {
+  const labels = (Object.keys(updates) as Array<keyof LeadMagnetCopilotPatch>)
+    .map((field) => leadMagnetCopilotFieldLabels[field]);
+
+  if (followUpUpdates.length > 0) labels.push('follow-up emails');
+  return Array.from(new Set(labels));
+}

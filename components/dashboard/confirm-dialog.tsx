@@ -3,6 +3,7 @@
 import { type ReactNode } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { AceternityButton } from '@/components/ui/aceternity';
+import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 
 /**
  * Reusable "are you sure?" modal. Use this everywhere instead of
@@ -28,6 +29,8 @@ export function ConfirmDialog({
   pending?: boolean;
   title: string;
 }) {
+  useModalAccessibility(onCancel, Boolean(pending));
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/40 p-4 backdrop-blur-sm">
       <button

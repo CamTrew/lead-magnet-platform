@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  bigserial,
   boolean,
   index,
   integer,
@@ -176,6 +177,23 @@ export const leadMagnets = pgTable(
   ]
 );
 
+export const leadMagnetCopilotMessages = pgTable(
+  'magnets_lead_magnet_copilot_messages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    leadMagnetId: uuid('lead_magnet_id')
+      .notNull()
+      .references(() => leadMagnets.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    updatedFields: jsonb('updated_fields').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('magnets_copilot_messages_magnet_id_idx').on(table.leadMagnetId, table.id),
+  ]
+);
+
 export const followUpRuns = pgTable(
   'magnets_follow_up_runs',
   {
@@ -288,6 +306,14 @@ export const leadMagnetsRelations = relations(leadMagnets, ({ one, many }) => ({
   submissions: many(submissions),
   quizResponses: many(quizResponses),
   followUpRuns: many(followUpRuns),
+  copilotMessages: many(leadMagnetCopilotMessages),
+}));
+
+export const leadMagnetCopilotMessagesRelations = relations(leadMagnetCopilotMessages, ({ one }) => ({
+  leadMagnet: one(leadMagnets, {
+    fields: [leadMagnetCopilotMessages.leadMagnetId],
+    references: [leadMagnets.id],
+  }),
 }));
 
 export const submissionsRelations = relations(submissions, ({ one }) => ({

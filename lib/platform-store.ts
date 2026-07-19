@@ -32,6 +32,7 @@ import type {
   SignupQuizAnswer,
   Submission,
 } from './types';
+import type { PersistedLeadMagnetCopilotMessage } from './lead-magnet-copilot';
 
 const defaultBrand: BrandSettings = {
   primary: '#FE6F34',
@@ -57,12 +58,32 @@ export class AccountDomainMutationInProgressError extends Error {
   }
 }
 
+export class LeadMagnetMutationInProgressError extends Error {
+  constructor() {
+    super('Another save is already in progress for this page.');
+    this.name = 'LeadMagnetMutationInProgressError';
+  }
+}
+
 export async function withAccountDomainMutationLock<T>(
   accountId: string,
   callback: () => Promise<T>
 ) {
   const result = await withAdvisoryLock(`magnets:account-domain:${accountId}`, callback);
   if (!result.acquired) throw new AccountDomainMutationInProgressError();
+  return result.value;
+}
+
+export async function withLeadMagnetMutationLock<T>(
+  accountId: string,
+  leadMagnetId: string,
+  callback: () => Promise<T>
+) {
+  const result = await withAdvisoryLock(
+    `magnets:lead-magnet:${accountId}:${leadMagnetId}`,
+    callback
+  );
+  if (!result.acquired) throw new LeadMagnetMutationInProgressError();
   return result.value;
 }
 
@@ -160,6 +181,13 @@ type LeadMagnetImageSourceRow = {
   image_url: string;
   published: boolean;
   updated_at: Date;
+};
+
+type LeadMagnetCopilotMessageRow = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  updated_fields: string[] | string | null;
 };
 
 type AccountLogoSourceRow = {
@@ -1194,7 +1222,6 @@ export async function listEnabledFollowUpAutomationTargets() {
       select m.*
       from public.magnets_lead_magnets m
       where m.follow_up_enabled = true
-        and coalesce(m.resend_follow_up_automation_id, '') <> ''
       order by m.account_id, m.created_at
     `
   );
@@ -2312,6 +2339,123 @@ export async function findLeadMagnetForAccount(accountId: string, leadMagnetId: 
   );
 
   return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
+function parseCopilotUpdatedFields(value: LeadMagnetCopilotMessageRow['updated_fields']) {
+  if (Array.isArray(value)) return value.filter((field): field is string => typeof field === 'string');
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((field): field is string => typeof field === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function listLeadMagnetCopilotMessages(
+  accountId: string,
+  leadMagnetId: string,
+  limit = 60
+): Promise<PersistedLeadMagnetCopilotMessage[]> {
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 60));
+  const result = await query<LeadMagnetCopilotMessageRow>(
+    `
+      select recent.id, recent.role, recent.content, recent.updated_fields
+      from (
+        select
+          message.id::text as id,
+          message.role,
+          message.content,
+          message.updated_fields
+        from public.magnets_lead_magnet_copilot_messages message
+        join public.magnets_lead_magnets magnet on magnet.id = message.lead_magnet_id
+        where magnet.account_id = $1
+          and magnet.id = $2
+        order by message.id desc
+        limit $3
+      ) recent
+      order by recent.id::bigint asc
+    `,
+    [accountId, leadMagnetId, safeLimit]
+  );
+
+  return result.rows.flatMap((row) => {
+    if (row.role !== 'user' && row.role !== 'assistant') return [];
+    return [{
+      id: row.id,
+      role: row.role,
+      content: row.content,
+      updatedFields: parseCopilotUpdatedFields(row.updated_fields),
+    }];
+  });
+}
+
+export async function appendLeadMagnetCopilotExchange({
+  accountId,
+  leadMagnetId,
+  userContent,
+  assistantContent,
+  updatedFields,
+}: {
+  accountId: string;
+  leadMagnetId: string;
+  userContent: string;
+  assistantContent: string;
+  updatedFields: string[];
+}) {
+  return withTransaction(async (client) => {
+    const owned = await client.query(
+      'select id from public.magnets_lead_magnets where account_id = $1 and id = $2 for update',
+      [accountId, leadMagnetId]
+    );
+    if (!owned.rowCount) return false;
+
+    await client.query(
+      `
+        insert into public.magnets_lead_magnet_copilot_messages
+          (lead_magnet_id, role, content, updated_fields)
+        values
+          ($1, 'user', $2, '[]'::jsonb),
+          ($1, 'assistant', $3, $4::jsonb)
+      `,
+      [leadMagnetId, userContent, assistantContent, JSON.stringify(updatedFields)]
+    );
+
+    await client.query(
+      `
+        delete from public.magnets_lead_magnet_copilot_messages
+        where lead_magnet_id = $1
+          and id not in (
+            select id
+            from public.magnets_lead_magnet_copilot_messages
+            where lead_magnet_id = $1
+            order by id desc
+            limit 60
+          )
+      `,
+      [leadMagnetId]
+    );
+
+    return true;
+  });
+}
+
+export async function clearLeadMagnetCopilotMessages(accountId: string, leadMagnetId: string) {
+  const result = await query(
+    `
+      delete from public.magnets_lead_magnet_copilot_messages message
+      using public.magnets_lead_magnets magnet
+      where message.lead_magnet_id = magnet.id
+        and magnet.account_id = $1
+        and magnet.id = $2
+    `,
+    [accountId, leadMagnetId]
+  );
+
+  return Number(result.rowCount || 0);
 }
 
 export async function accountOwnsLeadMagnet(accountId: string, leadMagnetId: string) {

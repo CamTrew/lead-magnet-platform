@@ -40,26 +40,6 @@ async function runPostSubmissionWork({
 }) {
   const tasks = [
     {
-      name: 'follow-up sequence start',
-      run: async () => {
-        const followUp = await startLeadMagnetFollowUpSequence({
-          account,
-          magnet: leadMagnet,
-          email,
-          name,
-        });
-        if (!followUp.started) {
-          log.info('Follow-up sequence not started', {
-            route: ROUTE,
-            method: 'POST',
-            status: 200,
-            accountId: account.id,
-            extra: { leadMagnetId: leadMagnet.id, reason: followUp.reason },
-          });
-        }
-      },
-    },
-    {
       name: 'Beehiiv subscribe and tag',
       run: () => addToBeehiiv({ account, email, leadMagnet, name }),
     },
@@ -178,6 +158,35 @@ export async function POST(request: NextRequest) {
       name,
       email: normalizedEmail,
     });
+
+    // Starting the sequence is part of accepting a signup, not optional
+    // background enrichment. Await it so the run is always persisted before
+    // this request completes. Failures remain non-fatal for the subscriber,
+    // but are recorded as a failed run that can be retried from the dashboard.
+    try {
+      const followUp = await startLeadMagnetFollowUpSequence({
+        account: result.account,
+        magnet: result.leadMagnet,
+        email: normalizedEmail,
+        name,
+      });
+      if (!followUp.started) {
+        log.info('Follow-up sequence not started', {
+          route: ROUTE,
+          method: 'POST',
+          status: 200,
+          accountId,
+          extra: { leadMagnetId, reason: followUp.reason },
+        });
+      }
+    } catch (sequenceError) {
+      log.warn('Follow-up sequence start failed (signup retained)', {
+        route: ROUTE,
+        method: 'POST',
+        accountId,
+        extra: { leadMagnetId, error: sequenceError },
+      });
+    }
 
     after(() =>
       runPostSubmissionWork({

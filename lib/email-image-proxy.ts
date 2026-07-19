@@ -1,5 +1,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { parseEmailBodySegments } from './email-body-images';
+import {
+  emailImageMarkdown,
+  emailImageRowMarkdown,
+  parseEmailBodySegments,
+} from './email-body-images';
 
 const TOKEN_VERSION = 1;
 
@@ -114,6 +118,22 @@ export function proxyEmailImagesInBody({
 }) {
   return parseEmailBodySegments(body)
     .map((segment) => {
+      if (segment.kind === 'image-row') {
+        return emailImageRowMarkdown(segment.images.map((image) => {
+          if (
+            !isPrivateVercelBlobUrl(image.url) ||
+            !isAccountEmailImageBlobUrl(image.url, accountId, leadMagnetId)
+          ) {
+            return image;
+          }
+
+          return {
+            ...image,
+            url: publicEmailImageUrl(image.url, baseUrl),
+          };
+        }));
+      }
+
       if (
         segment.kind !== 'image' ||
         !isPrivateVercelBlobUrl(segment.url) ||
@@ -122,7 +142,10 @@ export function proxyEmailImagesInBody({
         return segment.raw;
       }
 
-      return `![${segment.alt}](${publicEmailImageUrl(segment.url, baseUrl)})`;
+      return emailImageMarkdown({
+        alt: segment.alt,
+        url: publicEmailImageUrl(segment.url, baseUrl),
+      });
     })
     .join('');
 }

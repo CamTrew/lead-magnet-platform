@@ -2,7 +2,7 @@
 
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Check, Loader2, Send, Sparkles, X } from 'lucide-react';
+import { Bot, Check, Loader2, RotateCcw, Send, Sparkles, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type {
   LeadMagnetCopilotDraft,
@@ -10,7 +10,9 @@ import type {
   LeadMagnetCopilotMessage,
   LeadMagnetCopilotPatch,
   LeadMagnetCopilotResponse,
+  PersistedLeadMagnetCopilotMessage,
 } from '@/lib/lead-magnet-copilot';
+import { leadMagnetCopilotChangedFieldLabels } from '@/lib/lead-magnet-copilot';
 import type { LeadMagnet } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -22,31 +24,15 @@ type DisplayMessage = LeadMagnetCopilotMessage & {
 const welcomeMessage: DisplayMessage = {
   id: 'welcome',
   role: 'assistant',
-  content: 'Tell me what this magnet is, who it is for, or what feels weak. I can improve the page and emails while you watch the draft update.',
+  content: 'Tell me what your lead magnet is about, who it helps, and what they should get from it. Rough notes are enough. I can turn them into a complete first draft for the page and emails.',
 };
 
 const quickPrompts = [
+  'Help me draft it from scratch',
   'Sharpen the headline',
   'Improve the signup form',
   'Rewrite the delivery email',
 ];
-
-const fieldLabels: Record<keyof LeadMagnetCopilotPatch, string> = {
-  title: 'headline',
-  subtitle: 'subheading',
-  description: 'page copy',
-  bullets: 'benefits',
-  bulletsHeading: 'benefits heading',
-  ctaText: 'button',
-  formHeading: 'form heading',
-  formSubtext: 'form copy',
-  emailSubject: 'email subject',
-  emailPreview: 'email preview',
-  emailBody: 'delivery email',
-  postSignupHeading: 'confirmation heading',
-  postSignupBody: 'confirmation copy',
-  postSignupCtaLabel: 'confirmation button',
-};
 
 function draftFrom(leadMagnet: LeadMagnet): LeadMagnetCopilotDraft {
   return {
@@ -73,17 +59,6 @@ function draftFrom(leadMagnet: LeadMagnet): LeadMagnetCopilotDraft {
   };
 }
 
-function changedFieldLabels(
-  updates: LeadMagnetCopilotPatch,
-  followUpUpdates: LeadMagnetCopilotFollowUpUpdate[]
-) {
-  const labels = (Object.keys(updates) as Array<keyof LeadMagnetCopilotPatch>)
-    .map((field) => fieldLabels[field]);
-
-  if (followUpUpdates.length > 0) labels.push('follow-up emails');
-  return Array.from(new Set(labels));
-}
-
 export function LeadMagnetCopilot({
   leadMagnet,
   onApply,
@@ -98,11 +73,49 @@ export function LeadMagnetCopilot({
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<DisplayMessage[]>([welcomeMessage]);
   const [busy, setBusy] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const launcherRef = useRef<HTMLButtonElement | null>(null);
   const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoadingHistory(true);
+    setMessages([welcomeMessage]);
+    setError('');
+
+    void fetch(`/api/lead-magnets/${leadMagnet.id}/copilot`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => null)) as {
+          messages?: PersistedLeadMagnetCopilotMessage[];
+          error?: string;
+        } | null;
+        if (!response.ok || !data) {
+          throw new Error(data?.error || 'The previous chat could not be loaded.');
+        }
+
+        if (data.messages?.length) {
+          setMessages(data.messages.map((message) => ({
+            id: `saved-${message.id}`,
+            role: message.role,
+            content: message.content,
+            updatedFields: message.updatedFields,
+          })));
+        }
+      })
+      .catch((caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === 'AbortError') return;
+        setError(caught instanceof Error ? caught.message : 'The previous chat could not be loaded.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingHistory(false);
+      });
+
+    return () => controller.abort();
+  }, [leadMagnet.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -130,7 +143,7 @@ export function LeadMagnetCopilot({
 
   async function sendMessage(messageText = input) {
     const content = messageText.trim();
-    if (!content || busy) return;
+    if (!content || busy || loadingHistory || resetting) return;
 
     const userMessage: DisplayMessage = {
       id: `user-${Date.now()}`,
@@ -149,7 +162,7 @@ export function LeadMagnetCopilot({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: nextMessages.map(({ role, content: text }) => ({ role, content: text })),
+          message: content,
           draft: draftFrom(leadMagnet),
         }),
       });
@@ -161,7 +174,7 @@ export function LeadMagnetCopilot({
         throw new Error(data?.error || 'The copilot could not respond. Please try again.');
       }
 
-      const updatedFields = changedFieldLabels(data.updates, data.followUpEmailUpdates);
+      const updatedFields = leadMagnetCopilotChangedFieldLabels(data.updates, data.followUpEmailUpdates);
       if (updatedFields.length > 0) {
         onApply(data.updates, data.followUpEmailUpdates);
       }
@@ -176,9 +189,34 @@ export function LeadMagnetCopilot({
         },
       ]);
     } catch (caught) {
+      setMessages((current) => current.filter((message) => message.id !== userMessage.id));
+      setInput(content);
       setError(caught instanceof Error ? caught.message : 'The copilot could not respond. Please try again.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function startNewChat() {
+    if (busy || loadingHistory || resetting) return;
+    if (!window.confirm('Start a new chat? This clears the saved conversation for this magnet.')) return;
+
+    setResetting(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/lead-magnets/${leadMagnet.id}/copilot`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'The chat could not be cleared.');
+      }
+      setMessages([welcomeMessage]);
+      setInput('');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The chat could not be cleared.');
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -229,14 +267,26 @@ export function LeadMagnetCopilot({
                 <p className="truncate text-xs text-ink-500">Working on {leadMagnet.title}</p>
               </div>
             </div>
-            <button
-              aria-label="Close writing copilot"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-950"
-              onClick={closeCopilot}
-              type="button"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                aria-label="Start a new chat"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-950 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={busy || loadingHistory || resetting}
+                onClick={() => void startNewChat()}
+                title="Start a new chat"
+                type="button"
+              >
+                {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              </button>
+              <button
+                aria-label="Close writing copilot"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-ink-500 transition hover:bg-ink-100 hover:text-ink-950"
+                onClick={closeCopilot}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" ref={scrollRef}>
@@ -265,7 +315,7 @@ export function LeadMagnetCopilot({
                 </div>
               ))}
 
-              {messages.length === 1 && (
+              {!loadingHistory && messages.length === 1 && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   {quickPrompts.map((prompt) => (
                     <button
@@ -277,6 +327,15 @@ export function LeadMagnetCopilot({
                       {prompt}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {loadingHistory && (
+                <div className="flex justify-start" aria-live="polite">
+                  <div className="flex items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-sm text-ink-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading this magnet&apos;s chat
+                  </div>
                 </div>
               )}
 
@@ -301,11 +360,11 @@ export function LeadMagnetCopilot({
               <textarea
                 aria-label="Message the writing copilot"
                 className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-sm leading-5 text-ink-950 outline-none placeholder:text-ink-400"
-                disabled={busy}
+                disabled={busy || loadingHistory || resetting}
                 maxLength={4000}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleInputKeyDown}
-                placeholder="Ask for a rewrite or improvement..."
+                placeholder="Describe the topic, audience, and result..."
                 ref={inputRef}
                 rows={1}
                 value={input}
@@ -313,7 +372,7 @@ export function LeadMagnetCopilot({
               <button
                 aria-label="Send message"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-ink-950 text-white transition hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={busy || !input.trim()}
+                disabled={busy || loadingHistory || resetting || !input.trim()}
                 type="submit"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

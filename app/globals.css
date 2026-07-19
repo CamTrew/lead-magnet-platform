@@ -233,6 +233,14 @@ button {
     border-top: 1px solid #d4d4d4;
   }
 
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Keep these names for backwards compatibility with components I haven't rewritten yet */
   .premium-page-bg {
     background: #f7f5f1;

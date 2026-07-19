@@ -5,8 +5,10 @@ import {
   deleteLeadMagnet,
   findLeadMagnetForAccount,
   getAccountWithSecrets,
+  LeadMagnetMutationInProgressError,
   updateLeadMagnet,
   updateLeadMagnetFollowUpSync,
+  withLeadMagnetMutationLock,
 } from '@/lib/platform-store';
 import {
   FollowUpSequenceError,
@@ -216,7 +218,10 @@ const schema = z.object({
   followUpEnabled: z.boolean(),
   followUpStopOnBooking: z.boolean(),
   followUpEmails: z.array(followUpEmailSchema).max(10),
-  resendFollowUpAutomationId: z.string().max(200),
+  // Accepted for compatibility with already-open editor tabs, but ignored.
+  // Provider resource IDs are server-owned and must never be restored from a
+  // stale browser payload.
+  resendFollowUpAutomationId: z.string().max(200).optional(),
   postSignupMode: z.enum(['message', 'redirect', 'page']),
   postSignupRedirectUrl: httpUrlSchema,
   postSignupHeading: z.string().max(160),
@@ -418,100 +423,116 @@ export async function PUT(
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
-    const updateData = {
-      ...parsed.data,
-      followUpStopOnBooking: parsed.data.followUpEnabled
-        && parsed.data.followUpStopOnBooking,
-      postSignupQuizEnabled: parsed.data.postSignupMode === 'page'
-        && parsed.data.postSignupQuizEnabled,
-      postSignupQuizRoutes: pruneQuizRouteConditions(
-        parsed.data.postSignupQuizQuestions,
-        parsed.data.postSignupQuizRoutes
-      ),
-      emailBody: proxyEmailImagesInBody({
-        accountId: payload.account.id,
-        baseUrl,
-        body: parsed.data.emailBody,
-        leadMagnetId: id,
-      }),
-      followUpEmails: parsed.data.followUpEmails.map((email) => ({
-        ...email,
-        body: proxyEmailImagesInBody({
+    return await withLeadMagnetMutationLock(payload.account.id, id, async () => {
+      const previousLeadMagnet = await findLeadMagnetForAccount(payload.account.id, id);
+      const previousTemplates = new Map(
+        previousLeadMagnet?.followUpEmails.map((email) => [email.id, email.resendTemplateId]) || []
+      );
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+      const updateData = {
+        ...parsed.data,
+        // These IDs identify live provider resources. Keeping the database
+        // values prevents a stale editor tab from orphaning an enabled
+        // Automation or restoring an obsolete template ID.
+        resendFollowUpAutomationId: previousLeadMagnet?.resendFollowUpAutomationId || '',
+        followUpStopOnBooking: parsed.data.followUpEnabled
+          && parsed.data.followUpStopOnBooking,
+        postSignupQuizEnabled: parsed.data.postSignupMode === 'page'
+          && parsed.data.postSignupQuizEnabled,
+        postSignupQuizRoutes: pruneQuizRouteConditions(
+          parsed.data.postSignupQuizQuestions,
+          parsed.data.postSignupQuizRoutes
+        ),
+        emailBody: proxyEmailImagesInBody({
           accountId: payload.account.id,
           baseUrl,
-          body: email.body,
+          body: parsed.data.emailBody,
           leadMagnetId: id,
         }),
-      })),
-    };
+        followUpEmails: parsed.data.followUpEmails.map((email) => ({
+          ...email,
+          resendTemplateId: previousTemplates.get(email.id) || '',
+          body: proxyEmailImagesInBody({
+            accountId: payload.account.id,
+            baseUrl,
+            body: email.body,
+            leadMagnetId: id,
+          }),
+        })),
+      };
 
-    const previousLeadMagnet = await findLeadMagnetForAccount(payload.account.id, id);
-    let leadMagnet = await updateLeadMagnet(payload.account.id, id, updateData);
+      let leadMagnet = await updateLeadMagnet(payload.account.id, id, updateData);
 
-    if (!leadMagnet) {
-      return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
-    }
-    invalidatePublishedLeadMagnetCache();
+      if (!leadMagnet) {
+        return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+      }
+      invalidatePublishedLeadMagnetCache();
 
-    try {
-      if (!followUpAutomationNeedsSync(previousLeadMagnet, leadMagnet)) {
-        log.info('Lead magnet updated', {
-          route: ROUTE,
-          method: 'PUT',
-          status: 200,
-          userId,
-          accountId,
-          durationMs: Date.now() - start,
-          extra: { leadMagnetId: id, published: leadMagnet.published },
+      try {
+        if (!followUpAutomationNeedsSync(previousLeadMagnet, leadMagnet)) {
+          log.info('Lead magnet updated', {
+            route: ROUTE,
+            method: 'PUT',
+            status: 200,
+            userId,
+            accountId,
+            durationMs: Date.now() - start,
+            extra: { leadMagnetId: id, published: leadMagnet.published },
+          });
+
+          return NextResponse.json({ leadMagnet });
+        }
+
+        const accountWithSecrets = await getAccountWithSecrets(payload.account.id);
+        if (!accountWithSecrets) {
+          return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+        }
+
+        const followUp = await syncLeadMagnetFollowUpAutomation(accountWithSecrets, leadMagnet);
+        const syncedLeadMagnet = await updateLeadMagnetFollowUpSync(payload.account.id, id, {
+          followUpEmails: followUp.emails,
+          resendFollowUpAutomationId: followUp.automationId,
+          resendFollowUpRenderVersion: followUp.renderVersion,
         });
-
-        return NextResponse.json({ leadMagnet });
+        if (syncedLeadMagnet) {
+          leadMagnet = syncedLeadMagnet;
+        }
+      } catch (syncError) {
+        if (syncError instanceof FollowUpSequenceError) {
+          log.warn('Follow-up automation sync failed', {
+            route: ROUTE,
+            method: 'PUT',
+            status: 502,
+            userId,
+            accountId,
+            extra: { leadMagnetId: id, error: syncError },
+          });
+          return NextResponse.json({ error: friendlyFollowUpSyncMessage(syncError) }, { status: 502 });
+        }
+        throw syncError;
       }
 
-      const accountWithSecrets = await getAccountWithSecrets(payload.account.id);
-      if (!accountWithSecrets) {
-        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-      }
-
-      const followUp = await syncLeadMagnetFollowUpAutomation(accountWithSecrets, leadMagnet);
-      const syncedLeadMagnet = await updateLeadMagnetFollowUpSync(payload.account.id, id, {
-        followUpEmails: followUp.emails,
-        resendFollowUpAutomationId: followUp.automationId,
-        resendFollowUpRenderVersion: followUp.renderVersion,
+      log.info('Lead magnet updated', {
+        route: ROUTE,
+        method: 'PUT',
+        status: 200,
+        userId,
+        accountId,
+        durationMs: Date.now() - start,
+        extra: { leadMagnetId: id, published: leadMagnet.published },
       });
-      if (syncedLeadMagnet) {
-        leadMagnet = syncedLeadMagnet;
-      }
-    } catch (syncError) {
-      if (syncError instanceof FollowUpSequenceError) {
-        log.warn('Follow-up automation sync failed', {
-          route: ROUTE,
-          method: 'PUT',
-          status: 502,
-          userId,
-          accountId,
-          extra: { leadMagnetId: id, error: syncError },
-        });
-        return NextResponse.json({ error: friendlyFollowUpSyncMessage(syncError) }, { status: 502 });
-      }
-      throw syncError;
-    }
 
-    log.info('Lead magnet updated', {
-      route: ROUTE,
-      method: 'PUT',
-      status: 200,
-      userId,
-      accountId,
-      durationMs: Date.now() - start,
-      extra: { leadMagnetId: id, published: leadMagnet.published },
+      return NextResponse.json({ leadMagnet });
     });
-
-    return NextResponse.json({ leadMagnet });
   } catch (err) {
     if (err instanceof RateLimitError) {
       return rateLimitResponse(err);
+    }
+    if (err instanceof LeadMagnetMutationInProgressError) {
+      return NextResponse.json(
+        { error: 'This page is already being saved. Wait a moment and try again.' },
+        { status: 409 }
+      );
     }
     if (isUniqueViolation(err)) {
       return NextResponse.json({ error: 'That page path is already in use.' }, { status: 409 });

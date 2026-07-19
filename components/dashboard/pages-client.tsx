@@ -16,6 +16,7 @@ import {
   AceternityCard,
   AceternityInput,
 } from '@/components/ui/aceternity';
+import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import type { DashboardBasePayload, LeadMagnet, LeadMagnetSummary } from '@/lib/types';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from '@/lib/limits';
@@ -77,6 +78,8 @@ function CreatePageModal({
   slugTouched: boolean;
   title: string;
 }) {
+  useModalAccessibility(onClose, isCreating);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/20 p-4 backdrop-blur-sm">
       <button

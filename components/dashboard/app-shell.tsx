@@ -259,6 +259,28 @@ export function DashboardLayoutShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const menuButton = mobileMenuButtonRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setMobileOpen(false);
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      menuButton?.focus();
+    };
+  }, [mobileOpen]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -335,6 +357,7 @@ export function DashboardLayoutShell({
               aria-label="Open navigation"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700"
               onClick={() => setMobileOpen(true)}
+              ref={mobileMenuButtonRef}
               type="button"
             >
               <Menu className="h-4 w-4" />
