@@ -64,6 +64,7 @@ import {
   AceternityCard,
   AceternityInput,
   AceternityTextarea,
+  aceternityButtonClassName,
 } from '@/components/ui/aceternity';
 import { ToolbarDropdown } from '@/components/ui/toolbar-dropdown';
 import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
@@ -87,6 +88,32 @@ type PendingEmailImage = {
   previewUrl: string;
   progress: number;
 };
+
+function editorLandingPageUrl(
+  account: DashboardBasePayload['account'],
+  leadMagnet: Pick<LeadMagnet, 'id' | 'slug'>
+) {
+  const attachedHost = account.domainAttachedHost?.trim();
+  if (attachedHost) return `https://${attachedHost}/${leadMagnet.slug}`;
+
+  if (account.username) {
+    const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '');
+    if (configuredSiteUrl) {
+      return `${configuredSiteUrl}/${account.username}/${leadMagnet.slug}`;
+    }
+
+    if (
+      typeof window !== 'undefined'
+      && (window.location.hostname === 'localhost' || window.location.hostname.startsWith('127.'))
+    ) {
+      return `${window.location.origin}/${account.username}/${leadMagnet.slug}`;
+    }
+
+    return `https://magnets.so/${account.username}/${leadMagnet.slug}`;
+  }
+
+  return `/p/${leadMagnet.id}`;
+}
 
 const EDITOR_STEPS: Array<{
   description: string;
@@ -693,6 +720,7 @@ export function PageEditorClient({
     const fallback = (account.logoText.trim() || 'Your Brand').slice(0, 24);
     return { fallback, hasImage: Boolean(account.logoUrl) };
   }, [account.logoText, account.logoUrl]);
+  const landingPageUrl = editorLandingPageUrl(account, leadMagnet);
 
   return (
     <>
@@ -760,6 +788,27 @@ export function PageEditorClient({
                 <span className="inline-flex h-9 items-center rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-700">
                   Could not save
                 </span>
+              )}
+              {leadMagnet.published ? (
+                <a
+                  className={aceternityButtonClassName({ variant: 'secondary' })}
+                  href={landingPageUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                  title="Open the published landing page in a new tab"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View page
+                </a>
+              ) : (
+                <AceternityButton
+                  disabled
+                  title="Publish this page before opening it"
+                  variant="secondary"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View page
+                </AceternityButton>
               )}
               <button
                 aria-label="Toggle published"
