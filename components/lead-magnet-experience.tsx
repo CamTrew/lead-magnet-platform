@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ArrowRight, Check, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import {
   isSafePostSignupDestination,
   postSignupVideoEmbedUrl,
@@ -159,16 +159,6 @@ function CustomSuccess({ magnet }: { magnet: LeadMagnet }) {
 
   return (
     <section className="mx-auto flex w-full max-w-[1040px] flex-col items-center text-center">
-      <div
-        className="mb-7 inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white sm:mb-8"
-        style={{
-          background: 'var(--brand-primary)',
-          boxShadow: '0 18px 42px rgb(var(--brand-primary-rgb) / 0.28)',
-        }}
-      >
-        <Check className="h-7 w-7" strokeWidth={3} />
-      </div>
-
       <h1
         className="magnet-page-heading max-w-4xl text-4xl font-semibold leading-[1.08] text-gray-950 outline-none sm:text-5xl lg:text-[64px] lg:leading-[1.02]"
         ref={headingRef}
