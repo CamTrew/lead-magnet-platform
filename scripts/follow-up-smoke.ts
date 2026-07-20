@@ -224,7 +224,14 @@ const account: AccountSettings = {
   beehiivApiKey: '',
   beehiivPublicationId: '',
   substackPublication: '',
+  kitAccessToken: '',
+  kitRefreshToken: '',
+  kitTokenExpiresAt: null,
+  kitAccountId: '',
+  kitAccountName: '',
+  kitConnected: false,
   slackWebhookUrl: '',
+  zapierWebhookUrl: '',
   pipedriveApiToken: '',
   resendReturnPath: 'send',
   calendarWebhookEnabled: true,
@@ -248,6 +255,57 @@ const account: AccountSettings = {
   createdAt: now,
   updatedAt: now,
 };
+
+const formattingMatrixBody = [
+  'Hi {name},',
+  '',
+  '# Heading 1',
+  '',
+  '## Heading 2',
+  '',
+  '### Heading 3',
+  '',
+  '#### Heading 4',
+  '',
+  '##### Heading 5',
+  '',
+  '###### Heading 6',
+  '',
+  '[[toc]]',
+  '',
+  '**Bold**, *italic*, and ***bold italic*** with [book a call](https://example.com/book).',
+  '',
+  '> A standard quote with **emphasis**.',
+  '',
+  '>> A strong side quote.',
+  '',
+  '>>> A centered quote.',
+  '',
+  '- Normal bullet 1',
+  '- Normal bullet 2',
+  '',
+  '– Dashed bullet 1',
+  '– Dashed bullet 2',
+  '',
+  '1. Numbered bullet 1',
+  '2. Numbered bullet 2',
+  '',
+  '---',
+  '',
+  ':::section Next section',
+  '',
+  ':::columns Left **column** ||| Right *column*',
+  '',
+  ':::footnote Source: **Magnets research**.',
+  '',
+  '![Audit preview](https://cdn.example.com/audit-preview.png){border=3,2,dashed,ff3366}{caption=Framed%20audit%20preview.}',
+  '',
+  '![Desktop view](https://cdn.example.com/desktop.png){caption=Desktop%20caption.} || ![Mobile view](https://cdn.example.com/mobile.png){border=2,4,dotted,334455}{caption=Mobile%20caption.}',
+  '',
+  ':::youtube https://youtu.be/dQw4w9WgXcQ',
+  '',
+  'Download it here: {download_link}',
+].join('\n');
 
 const magnet: LeadMagnet = {
   id: 'magnet_smoke',
@@ -275,7 +333,7 @@ const magnet: LeadMagnet = {
       delayHours: 0,
       subject: 'First follow-up for {name}',
       preview: 'First preview',
-      body: '## Your next step\n\nHi {name}, **[book a call](https://example.com/book)** or use the link below.\n\n- Review the guide\n- Pick one action\n\n![Audit preview](https://cdn.example.com/audit-preview.png)\n\n{download_link}',
+      body: formattingMatrixBody,
       resendTemplateId: '',
     },
     {
@@ -387,41 +445,22 @@ async function run() {
   assert.equal(resolveResendApiKey(account), 're_smoke_test');
   assert.equal(usesPlatformResendAccount(account), false);
 
-  const unreadableCustomerKeyAccount = {
+  const platformManagedCustomSenderAccount = {
     ...account,
     resendApiKey: '',
+    resendManagedByPlatform: true,
   };
-  assert.equal(resolveResendApiKey(unreadableCustomerKeyAccount), 're_platform_smoke');
-  assert.equal(resolveResendFromEmail(unreadableCustomerKeyAccount), 'Magnets <hello@mail.magnets.so>');
-  assert.equal(usesPlatformResendAccount(unreadableCustomerKeyAccount), true);
+  assert.equal(resolveResendApiKey(platformManagedCustomSenderAccount), 're_platform_smoke');
+  assert.equal(resolveResendFromEmail(platformManagedCustomSenderAccount), account.resendFromEmail);
+  assert.equal(usesPlatformResendAccount(platformManagedCustomSenderAccount), true);
+  assert.equal(
+    isEmailDeliveryReady(platformManagedCustomSenderAccount),
+    true,
+    'A verified custom sender created in the Magnets workspace must keep using that workspace.'
+  );
 
   resetRequests();
-  const formattedDeliveryBody = [
-    'Hi {name},',
-    '',
-    '---',
-    '',
-    '# Heading 1',
-    '',
-    '## Heading 2',
-    '',
-    '### Heading 3',
-    '',
-    '**Bold** and *italic* with [the guide](https://example.com/guide).',
-    '',
-    '- Normal bullet 1',
-    '- Normal bullet 2',
-    '',
-    '– Dashed bullet 1',
-    '– Dashed bullet 2',
-    '',
-    '1. Numbered bullet 1',
-    '2. Numbered bullet 2',
-    '',
-    '![Guide preview](https://cdn.example.com/guide-preview.png)',
-    '',
-    'Or use {download_link}.',
-  ].join('\n');
+  const formattedDeliveryBody = formattingMatrixBody;
   const ownedEmail = await sendLeadMagnetEmail({
     account,
     magnet: {
@@ -449,17 +488,41 @@ async function run() {
   assert.match(String(ownedEmailRequest?.body?.html), /<h1[^>]*>Heading 1<\/h1>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h2[^>]*>Heading 2<\/h2>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h3[^>]*>Heading 3<\/h3>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h4[^>]*>Heading 4<\/h4>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h5[^>]*>Heading 5<\/h5>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h6[^>]*>Heading 6<\/h6>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<strong[^>]*>Bold<\/strong>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<em[^>]*>italic<\/em>/);
-  assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/example\.com\/guide"[^>]*>the guide<\/a>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<strong[^>]*><em[^>]*>bold italic<\/em><\/strong>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/example\.com\/book"[^>]*>book a call<\/a>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<blockquote[^>]*border-left:4px solid #111827/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<blockquote[^>]*border-left:6px solid #111827/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<blockquote[^>]*text-align:center/);
   assert.match(String(ownedEmailRequest?.body?.html), /<ul[^>]*list-style-type:disc/);
   assert.match(String(ownedEmailRequest?.body?.html), /<ul[^>]*list-style-type:none/);
   assert.match(String(ownedEmailRequest?.body?.html), /<ol[^>]*list-style-type:decimal/);
-  assert.match(String(ownedEmailRequest?.body?.html), /<img src="https:\/\/cdn\.example\.com\/guide-preview\.png"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /class="magnets-text-columns"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /Left <strong[^>]*>column<\/strong>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /Right <em[^>]*>column<\/em>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /Next section/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<strong[^>]*>In this email<\/strong>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /href="#email-heading-heading-1"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<sup[^>]*>1<\/sup>.*Magnets research/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<img src="https:\/\/cdn\.example\.com\/audit-preview\.png"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /border:3px dashed #ff3366;border-radius:2px/);
+  assert.match(String(ownedEmailRequest?.body?.html), /Framed audit preview\./);
+  assert.equal((String(ownedEmailRequest?.body?.html).match(/class="magnets-image-column/g) || []).length, 2);
+  assert.match(String(ownedEmailRequest?.body?.html), /Desktop caption\./);
+  assert.match(String(ownedEmailRequest?.body?.html), /Mobile caption\./);
+  assert.match(String(ownedEmailRequest?.body?.html), /border:2px dotted #334455;border-radius:4px/);
+  assert.match(String(ownedEmailRequest?.body?.html), /src="https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
   assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/magnets\.so"/);
-  assert.doesNotMatch(String(ownedEmailRequest?.body?.html), /(?:^|>)#{1,3}\s|\*\*Bold\*\*|---/);
-  assert.match(String(ownedEmailRequest?.body?.text), /the guide \(https:\/\/example\.com\/guide\)/);
-  assert.match(String(ownedEmailRequest?.body?.text), /Guide preview: https:\/\/cdn\.example\.com\/guide-preview\.png/);
+  assert.doesNotMatch(String(ownedEmailRequest?.body?.html), /(?:^|>)#{1,6}\s|\*\*Bold\*\*|:::|\[\[toc\]\]|---/);
+  assert.match(String(ownedEmailRequest?.body?.text), /book a call \(https:\/\/example\.com\/book\)/);
+  assert.match(String(ownedEmailRequest?.body?.text), /Audit preview: https:\/\/cdn\.example\.com\/audit-preview\.png/);
+  assert.match(String(ownedEmailRequest?.body?.text), /Framed audit preview\./);
+  assert.match(String(ownedEmailRequest?.body?.text), /YouTube video: https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ/);
   assert.match(String(ownedEmailRequest?.body?.text), /Powered by Magnets: https:\/\/magnets\.so/);
 
   const legacySenderAccount = {
@@ -544,6 +607,34 @@ async function run() {
   assert.equal(
     followUpAutomationNeedsSync(currentSyncedMagnet, {
       ...currentSyncedMagnet,
+      followUpEmails: currentSyncedMagnet.followUpEmails.map((email) => ({
+        body: email.body,
+        delayHours: 999,
+        delayMinutes: email.delayMinutes,
+        id: email.id,
+        preview: email.preview,
+        resendTemplateId: '',
+        subject: email.subject,
+      })),
+    }),
+    false,
+    'Legacy delay fields and provider template metadata must not look like a follow-up content edit.'
+  );
+  assert.equal(
+    followUpAutomationNeedsSync(
+      { ...currentSyncedMagnet, resendFollowUpRenderVersion: synced.renderVersion - 1 },
+      {
+        ...currentSyncedMagnet,
+        resendFollowUpRenderVersion: synced.renderVersion - 1,
+        emailBody: `${currentSyncedMagnet.emailBody}\n\nDelivery-only edit.`,
+      }
+    ),
+    false,
+    'An unrelated autosave must not upgrade or replace an older live follow-up Automation.'
+  );
+  assert.equal(
+    followUpAutomationNeedsSync(currentSyncedMagnet, {
+      ...currentSyncedMagnet,
       followUpEmails: currentSyncedMagnet.followUpEmails.map((email, index) =>
         index === 0 ? { ...email, body: `${email.body}\n\nNew copy.` } : email
       ),
@@ -577,12 +668,37 @@ async function run() {
     'The follow-up provider template must be byte-for-byte identical to the shared preview renderer.'
   );
   assert.match(String(templateBody.html), /\{\{\{NAME\}\}\}/);
-  assert.match(String(templateBody.html), /<h2[^>]*>Your next step<\/h2>/);
-  assert.match(String(templateBody.html), /<strong[^>]*><a href="https:\/\/example\.com\/book"/);
+  assert.match(String(templateBody.html), /<h1[^>]*>Heading 1<\/h1>/);
+  assert.match(String(templateBody.html), /<h2[^>]*>Heading 2<\/h2>/);
+  assert.match(String(templateBody.html), /<h3[^>]*>Heading 3<\/h3>/);
+  assert.match(String(templateBody.html), /<h4[^>]*>Heading 4<\/h4>/);
+  assert.match(String(templateBody.html), /<h5[^>]*>Heading 5<\/h5>/);
+  assert.match(String(templateBody.html), /<h6[^>]*>Heading 6<\/h6>/);
+  assert.match(String(templateBody.html), /<strong[^>]*>Bold<\/strong>/);
+  assert.match(String(templateBody.html), /<em[^>]*>italic<\/em>/);
+  assert.match(String(templateBody.html), /<strong[^>]*><em[^>]*>bold italic<\/em><\/strong>/);
+  assert.match(String(templateBody.html), /<blockquote[^>]*border-left:4px solid #111827/);
+  assert.match(String(templateBody.html), /<blockquote[^>]*border-left:6px solid #111827/);
+  assert.match(String(templateBody.html), /<blockquote[^>]*text-align:center/);
   assert.match(String(templateBody.html), /<ul[^>]*list-style-type:disc/);
+  assert.match(String(templateBody.html), /<ul[^>]*list-style-type:none/);
+  assert.match(String(templateBody.html), /<ol[^>]*list-style-type:decimal/);
+  assert.match(String(templateBody.html), /<hr[^>]*\/>/);
+  assert.match(String(templateBody.html), /class="magnets-text-columns"/);
+  assert.match(String(templateBody.html), /Next section/);
+  assert.match(String(templateBody.html), /<strong[^>]*>In this email<\/strong>/);
+  assert.match(String(templateBody.html), /<sup[^>]*>1<\/sup>.*Magnets research/);
   assert.match(String(templateBody.html), /<img src="https:\/\/cdn\.example\.com\/audit-preview\.png"/);
   assert.match(String(templateBody.html), /href="https:\/\/example\.com\/book"[^>]*>book a call<\/a>/);
   assert.match(String(templateBody.html), /alt="Audit preview"/);
+  assert.match(String(templateBody.html), /border:3px dashed #ff3366;border-radius:2px/);
+  assert.match(String(templateBody.html), /Framed audit preview\./);
+  assert.equal((String(templateBody.html).match(/class="magnets-image-column/g) || []).length, 2);
+  assert.match(String(templateBody.html), /Desktop caption\./);
+  assert.match(String(templateBody.html), /Mobile caption\./);
+  assert.match(String(templateBody.html), /src="https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg"/);
+  assert.match(String(templateBody.html), /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
+  assert.doesNotMatch(String(templateBody.html), /(?:^|>)#{1,6}\s|\*\*Bold\*\*|:::|\[\[toc\]\]|---/);
   assert.match(String(templateBody.html), /Stop this sequence/);
   assert.match(String(templateBody.html), /\{\{\{STOP_SEQUENCE_URL\}\}\}/);
   assert.match(String(templateBody.text), /\{\{\{DOWNLOAD_LINK\}\}\}/);

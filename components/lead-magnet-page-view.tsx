@@ -2,6 +2,7 @@
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { LeadMagnetExperience } from '@/components/lead-magnet-experience';
+import { LeadMagnetAnalyticsTracker } from '@/components/lead-magnet-analytics-tracker';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import {
@@ -125,6 +126,7 @@ export function LeadMagnetPageView({
       className={`magnet-page relative flex min-h-screen flex-col ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`}
       style={brandStyle}
     >
+      <LeadMagnetAnalyticsTracker leadMagnetId={magnet.id} />
       {imageUrl && (
         <>
           {imageOrigin && <link rel="preconnect" href={imageOrigin} />}

@@ -5,7 +5,11 @@ import { senderMatchesAccountDomain } from './dns-records';
 import { platformUsernameStem } from './platform-username';
 import { hasPlatformResendApiKey } from './platform-resend';
 import { resolveQuizProgress } from './quiz-routing';
-import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from './limits';
+import {
+  MAX_HOSTED_RESOURCES_PER_ACCOUNT,
+  MAX_LEAD_MAGNETS_PER_ACCOUNT,
+} from './limits';
+import { hostedResourcePublicPath } from './hosted-resources';
 import {
   decryptSecret,
   encryptSecret,
@@ -21,7 +25,9 @@ import type {
   DashboardPayload,
   FollowUpEmail,
   FollowUpStatus,
+  HostedResource,
   LeadMagnet,
+  LeadMagnetAnalytics,
   LeadMagnetOption,
   LeadMagnetSummary,
   PlatformUser,
@@ -48,6 +54,13 @@ export class LeadMagnetLimitError extends Error {
   constructor() {
     super(`Accounts are limited to ${MAX_LEAD_MAGNETS_PER_ACCOUNT} pages.`);
     this.name = 'LeadMagnetLimitError';
+  }
+}
+
+export class HostedResourceLimitError extends Error {
+  constructor() {
+    super(`Accounts are limited to ${MAX_HOSTED_RESOURCES_PER_ACCOUNT} hosted resources.`);
+    this.name = 'HostedResourceLimitError';
   }
 }
 
@@ -87,6 +100,15 @@ export async function withLeadMagnetMutationLock<T>(
   return result.value;
 }
 
+export async function withAccountKitTokenLock<T>(
+  accountId: string,
+  callback: () => Promise<T>
+) {
+  const result = await withAdvisoryLock(`magnets:kit-token:${accountId}`, callback);
+  if (!result.acquired) throw new Error('Kit connection is already being refreshed.');
+  return result.value;
+}
+
 type UserRow = {
   id: string;
   email: string;
@@ -109,7 +131,13 @@ type AccountRow = {
   beehiiv_api_key: string;
   beehiiv_publication_id: string;
   substack_publication: string;
+  kit_access_token: string;
+  kit_refresh_token: string;
+  kit_token_expires_at: Date | null;
+  kit_account_id: string;
+  kit_account_name: string;
   slack_webhook_url: string;
+  zapier_webhook_url: string;
   pipedrive_api_token: string;
   resend_return_path: string;
   calendar_webhook_enabled: boolean;
@@ -196,6 +224,37 @@ type AccountLogoSourceRow = {
   updated_at: Date;
 };
 
+type HostedResourceRow = {
+  id: string;
+  account_id: string;
+  name: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  blob_url: string;
+  public_token: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type LeadMagnetAnalyticsSummaryRow = {
+  total_visits: number;
+  total_conversions: number;
+  total_video_plays: number;
+  total_quiz_completions: number;
+  average_engaged_seconds: number;
+  recent_visits: number;
+  recent_conversions: number;
+  recent_video_plays: number;
+  recent_quiz_completions: number;
+};
+
+type LeadMagnetAnalyticsDayRow = {
+  date: string;
+  visits: number;
+  conversions: number;
+};
+
 type SubmissionRow = {
   id: string;
   account_id: string;
@@ -262,7 +321,13 @@ type DashboardBaseRow = {
   account_beehiiv_api_key: string;
   account_beehiiv_publication_id: string;
   account_substack_publication: string;
+  account_kit_access_token: string;
+  account_kit_refresh_token: string;
+  account_kit_token_expires_at: Date | null;
+  account_kit_account_id: string;
+  account_kit_account_name: string;
   account_slack_webhook_url: string;
+  account_zapier_webhook_url: string;
   account_pipedrive_api_token: string;
   account_resend_return_path: string;
   account_calendar_webhook_enabled: boolean;
@@ -324,6 +389,21 @@ type LeadMagnetJsonRow = {
 
 function iso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function mapHostedResource(row: HostedResourceRow): HostedResource {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    name: row.name,
+    originalFilename: row.original_filename,
+    contentType: row.content_type,
+    sizeBytes: row.size_bytes,
+    publicToken: row.public_token,
+    publicUrl: hostedResourcePublicPath(row.public_token),
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
 }
 
 function parseBrand(value: AccountRow['brand']): BrandSettings {
@@ -582,7 +662,11 @@ function mapAccount(
       })
   );
   const usesOwnResendWorkspace = hasOwnResendApiKey && hasVerifiedOwnSender;
-  const resendManagedByPlatform = hasPlatformResendApiKey() && !usesOwnResendWorkspace;
+  // The managed workspace can verify and send from a customer's custom
+  // domain. The absence of a customer-owned key is therefore the authority
+  // for whether this account is managed by Magnets; domain verification alone
+  // must not flip the account into an unusable customer-workspace state.
+  const resendManagedByPlatform = hasPlatformResendApiKey() && !hasOwnResendApiKey;
 
   return {
     id: row.id,
@@ -604,9 +688,18 @@ function mapAccount(
       : redactSecret(row.beehiiv_api_key),
     beehiivPublicationId: row.beehiiv_publication_id,
     substackPublication: row.substack_publication,
+    kitAccessToken: options.revealSecrets ? decryptSecret(row.kit_access_token) : '',
+    kitRefreshToken: options.revealSecrets ? decryptSecret(row.kit_refresh_token) : '',
+    kitTokenExpiresAt: row.kit_token_expires_at ? iso(row.kit_token_expires_at) : null,
+    kitAccountId: row.kit_account_id,
+    kitAccountName: row.kit_account_name,
+    kitConnected: Boolean(row.kit_refresh_token && row.kit_account_id),
     slackWebhookUrl: options.revealSecrets
       ? decryptSecret(row.slack_webhook_url)
       : redactSecret(row.slack_webhook_url),
+    zapierWebhookUrl: options.revealSecrets
+      ? decryptSecret(row.zapier_webhook_url)
+      : redactSecret(row.zapier_webhook_url),
     pipedriveApiToken: options.revealSecrets
       ? decryptSecret(row.pipedrive_api_token)
       : redactSecret(row.pipedrive_api_token),
@@ -736,7 +829,13 @@ function mapDashboardBase(row: DashboardBaseRow): DashboardBasePayload {
         beehiiv_api_key: row.account_beehiiv_api_key,
         beehiiv_publication_id: row.account_beehiiv_publication_id,
         substack_publication: row.account_substack_publication,
+        kit_access_token: row.account_kit_access_token,
+        kit_refresh_token: row.account_kit_refresh_token,
+        kit_token_expires_at: row.account_kit_token_expires_at,
+        kit_account_id: row.account_kit_account_id,
+        kit_account_name: row.account_kit_account_name,
         slack_webhook_url: row.account_slack_webhook_url,
+        zapier_webhook_url: row.account_zapier_webhook_url,
         pipedrive_api_token: row.account_pipedrive_api_token,
         resend_return_path: row.account_resend_return_path,
         calendar_webhook_enabled: row.account_calendar_webhook_enabled,
@@ -817,7 +916,13 @@ async function getDashboardBaseByUserId(userId: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        coalesce(to_jsonb(a)->>'kit_access_token', '') as account_kit_access_token,
+        coalesce(to_jsonb(a)->>'kit_refresh_token', '') as account_kit_refresh_token,
+        nullif(to_jsonb(a)->>'kit_token_expires_at', '')::timestamptz as account_kit_token_expires_at,
+        coalesce(to_jsonb(a)->>'kit_account_id', '') as account_kit_account_id,
+        coalesce(to_jsonb(a)->>'kit_account_name', '') as account_kit_account_name,
         a.slack_webhook_url as account_slack_webhook_url,
+        coalesce(to_jsonb(a)->>'zapier_webhook_url', '') as account_zapier_webhook_url,
         a.pipedrive_api_token as account_pipedrive_api_token,
         a.resend_return_path as account_resend_return_path,
         a.calendar_webhook_enabled as account_calendar_webhook_enabled,
@@ -904,7 +1009,13 @@ async function getDashboardBaseBySessionToken(token: string) {
         a.beehiiv_api_key as account_beehiiv_api_key,
         a.beehiiv_publication_id as account_beehiiv_publication_id,
         a.substack_publication as account_substack_publication,
+        coalesce(to_jsonb(a)->>'kit_access_token', '') as account_kit_access_token,
+        coalesce(to_jsonb(a)->>'kit_refresh_token', '') as account_kit_refresh_token,
+        nullif(to_jsonb(a)->>'kit_token_expires_at', '')::timestamptz as account_kit_token_expires_at,
+        coalesce(to_jsonb(a)->>'kit_account_id', '') as account_kit_account_id,
+        coalesce(to_jsonb(a)->>'kit_account_name', '') as account_kit_account_name,
         a.slack_webhook_url as account_slack_webhook_url,
+        coalesce(to_jsonb(a)->>'zapier_webhook_url', '') as account_zapier_webhook_url,
         a.pipedrive_api_token as account_pipedrive_api_token,
         a.resend_return_path as account_resend_return_path,
         a.calendar_webhook_enabled as account_calendar_webhook_enabled,
@@ -1211,6 +1322,86 @@ export async function getAccountWithSecrets(accountId: string) {
   return result.rows[0] ? mapAccount(result.rows[0], { revealSecrets: true }) : null;
 }
 
+export async function saveKitConnection(input: {
+  accountId: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt: Date;
+  kitAccountId: string;
+  kitAccountName: string;
+}) {
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set
+        kit_access_token = $2,
+        kit_refresh_token = $3,
+        kit_token_expires_at = $4,
+        kit_account_id = $5,
+        kit_account_name = $6,
+        updated_at = now()
+      where id = $1
+      returning *
+    `,
+    [
+      input.accountId,
+      encryptSecret(input.accessToken),
+      encryptSecret(input.refreshToken),
+      input.tokenExpiresAt,
+      input.kitAccountId,
+      input.kitAccountName.slice(0, 200),
+    ]
+  );
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+}
+
+export async function updateKitConnectionTokens(input: {
+  accountId: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt: Date;
+}) {
+  const result = await query<{ id: string }>(
+    `
+      update public.magnets_accounts
+      set
+        kit_access_token = $2,
+        kit_refresh_token = $3,
+        kit_token_expires_at = $4,
+        updated_at = now()
+      where id = $1
+        and kit_account_id <> ''
+      returning id
+    `,
+    [
+      input.accountId,
+      encryptSecret(input.accessToken),
+      encryptSecret(input.refreshToken),
+      input.tokenExpiresAt,
+    ]
+  );
+  return Boolean(result.rows[0]);
+}
+
+export async function disconnectKitAccount(accountId: string) {
+  const result = await query<AccountRow>(
+    `
+      update public.magnets_accounts
+      set
+        kit_access_token = '',
+        kit_refresh_token = '',
+        kit_token_expires_at = null,
+        kit_account_id = '',
+        kit_account_name = '',
+        updated_at = now()
+      where id = $1
+      returning *
+    `,
+    [accountId]
+  );
+  return result.rows[0] ? mapAccount(result.rows[0]) : null;
+}
+
 /**
  * Finds persisted follow-up automations that need a one-off provider sync.
  * The caller must fetch each account separately with secrets before calling
@@ -1476,6 +1667,10 @@ export async function updateAccount(
   const existingAccount = existing.rows[0];
   if (!existingAccount) return null;
 
+  // AI/MAINTAINER CONTEXT: dashboard account payloads contain masked secrets.
+  // A mask means “leave encrypted bytes untouched”; an explicit empty string
+  // means disconnect. Preserve optional fields when an older rolling-deploy
+  // client omits them entirely.
   const beehiivApiKey = isMaskedSecret(updates.beehiivApiKey)
     ? existingAccount.beehiiv_api_key
     : encryptSecret(updates.beehiivApiKey);
@@ -1485,6 +1680,12 @@ export async function updateAccount(
   const slackWebhookUrl = isMaskedSecret(updates.slackWebhookUrl)
     ? existingAccount.slack_webhook_url
     : encryptSecret(updates.slackWebhookUrl);
+  // Optional during rolling deployments so an older open dashboard tab cannot
+  // erase a Zapier connection saved by the newer UI.
+  const zapierWebhookUrl =
+    updates.zapierWebhookUrl === undefined || isMaskedSecret(updates.zapierWebhookUrl)
+      ? existingAccount.zapier_webhook_url
+      : encryptSecret(updates.zapierWebhookUrl);
   const pipedriveApiToken = isMaskedSecret(updates.pipedriveApiToken)
     ? existingAccount.pipedrive_api_token
     : encryptSecret(updates.pipedriveApiToken);
@@ -1563,6 +1764,7 @@ export async function updateAccount(
         substack_publication = $12,
         slack_webhook_url = $18,
         pipedrive_api_token = $19,
+        zapier_webhook_url = $20,
         resend_return_path = $14,
         calendar_webhook_enabled = $15,
         calendar_webhook_token = $16,
@@ -1594,6 +1796,7 @@ export async function updateAccount(
       domainVerificationToken,
       slackWebhookUrl,
       pipedriveApiToken,
+      zapierWebhookUrl,
     ]
   );
 
@@ -2316,6 +2519,364 @@ export async function listLeadMagnetOptions(
   return result.rows.map((row) => ({ id: row.id, title: row.title, slug: row.slug }));
 }
 
+export async function listHostedResources(accountId: string): Promise<HostedResource[]> {
+  // Account scoping belongs in SQL, not as an in-memory filter after reading
+  // every customer's resource metadata.
+  const result = await query<HostedResourceRow>(
+    `
+      select
+        id,
+        account_id,
+        name,
+        original_filename,
+        content_type,
+        size_bytes,
+        blob_url,
+        public_token,
+        created_at,
+        updated_at
+      from public.magnets_hosted_resources
+      where account_id = $1
+      order by created_at desc, id desc
+    `,
+    [accountId]
+  );
+  return result.rows.map(mapHostedResource);
+}
+
+export async function createHostedResource(input: {
+  id: string;
+  accountId: string;
+  name: string;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  blobUrl: string;
+}): Promise<HostedResource> {
+  // Serialize the count+insert per account so concurrent uploads cannot both
+  // observe one remaining slot and exceed the plan limit.
+  const lock = await withAdvisoryLock(`magnets:hosted-resources:${input.accountId}`, async () => {
+    const countResult = await query<{ resource_count: number }>(
+      `select count(*)::int as resource_count from public.magnets_hosted_resources where account_id = $1`,
+      [input.accountId]
+    );
+    if ((countResult.rows[0]?.resource_count || 0) >= MAX_HOSTED_RESOURCES_PER_ACCOUNT) {
+      throw new HostedResourceLimitError();
+    }
+
+    const result = await query<HostedResourceRow>(
+      `
+        insert into public.magnets_hosted_resources (
+          id,
+          account_id,
+          name,
+          original_filename,
+          content_type,
+          size_bytes,
+          blob_url,
+          updated_at
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, now())
+        returning
+          id,
+          account_id,
+          name,
+          original_filename,
+          content_type,
+          size_bytes,
+          blob_url,
+          public_token,
+          created_at,
+          updated_at
+      `,
+      [
+        input.id,
+        input.accountId,
+        input.name,
+        input.originalFilename,
+        input.contentType,
+        input.sizeBytes,
+        input.blobUrl,
+      ]
+    );
+    return mapHostedResource(result.rows[0]);
+  });
+
+  if (!lock.acquired) throw new Error('Another hosted resource upload is already being saved.');
+  return lock.value;
+}
+
+export async function getHostedResourceSourceByToken(publicToken: string) {
+  // This is the only intentionally public lookup. The unguessable token is a
+  // capability URL; callers must never accept accountId/blobUrl from the visitor.
+  const result = await query<HostedResourceRow>(
+    `
+      select
+        id,
+        account_id,
+        name,
+        original_filename,
+        content_type,
+        size_bytes,
+        blob_url,
+        public_token,
+        created_at,
+        updated_at
+      from public.magnets_hosted_resources
+      where public_token = $1
+      limit 1
+    `,
+    [publicToken]
+  );
+  const row = result.rows[0];
+  return row ? { ...mapHostedResource(row), blobUrl: row.blob_url } : null;
+}
+
+export async function deleteHostedResource(accountId: string, resourceId: string) {
+  const result = await query<HostedResourceRow>(
+    `
+      delete from public.magnets_hosted_resources
+      where account_id = $1 and id = $2
+      returning
+        id,
+        account_id,
+        name,
+        original_filename,
+        content_type,
+        size_bytes,
+        blob_url,
+        public_token,
+        created_at,
+        updated_at
+    `,
+    [accountId, resourceId]
+  );
+  const row = result.rows[0];
+  return row ? { ...mapHostedResource(row), blobUrl: row.blob_url } : null;
+}
+
+/**
+ * Record one anonymous browser session per magnet. Reloads in the same tab
+ * update the existing row, while engaged time only ever moves forwards.
+ */
+export async function recordLeadMagnetVisit(input: {
+  leadMagnetId: string;
+  sessionId: string;
+  engagedSeconds: number;
+}) {
+  const result = await query<{ id: number }>(
+    `
+      insert into public.magnets_lead_magnet_visits as existing_visit (
+        account_id,
+        lead_magnet_id,
+        session_id,
+        engaged_seconds,
+        last_seen_at
+      )
+      select
+        lead_magnet.account_id,
+        lead_magnet.id,
+        $2::uuid,
+        least(greatest($3::int, 0), 21600),
+        now()
+      from public.magnets_lead_magnets lead_magnet
+      where lead_magnet.id = $1::uuid
+        and lead_magnet.published = true
+      on conflict (lead_magnet_id, session_id)
+      do update set
+        engaged_seconds = greatest(
+          existing_visit.engaged_seconds,
+          excluded.engaged_seconds
+        ),
+        last_seen_at = now()
+      returning id
+    `,
+    [input.leadMagnetId, input.sessionId, input.engagedSeconds]
+  );
+  return Boolean(result.rows[0]);
+}
+
+/** Mark only successful public form submissions as analytics conversions. */
+export async function markLeadMagnetVisitConverted(input: {
+  accountId: string;
+  leadMagnetId: string;
+  sessionId: string;
+}) {
+  const result = await query<{ id: number }>(
+    `
+      insert into public.magnets_lead_magnet_visits as existing_visit (
+        account_id,
+        lead_magnet_id,
+        session_id,
+        converted_at,
+        last_seen_at
+      )
+      select
+        lead_magnet.account_id,
+        lead_magnet.id,
+        $3::uuid,
+        now(),
+        now()
+      from public.magnets_lead_magnets lead_magnet
+      where lead_magnet.id = $2::uuid
+        and lead_magnet.account_id = $1::uuid
+      on conflict (lead_magnet_id, session_id)
+      do update set
+        converted_at = coalesce(
+          existing_visit.converted_at,
+          excluded.converted_at
+        ),
+        last_seen_at = now()
+      returning id
+    `,
+    [input.accountId, input.leadMagnetId, input.sessionId]
+  );
+  return Boolean(result.rows[0]);
+}
+
+/**
+ * Count one explicit post-signup video start per successful submission. The
+ * submission UUID is the public capability, while the magnet/configuration
+ * checks prevent arbitrary analytics events from being accepted.
+ */
+export async function recordPostSignupVideoPlay(input: {
+  leadMagnetId: string;
+  submissionId: string;
+}) {
+  const result = await query<{ id: string }>(
+    `
+      update public.magnets_submissions submission
+      set post_signup_video_played_at = coalesce(
+        submission.post_signup_video_played_at,
+        now()
+      )
+      from public.magnets_lead_magnets lead_magnet
+      where submission.id = $1::uuid
+        and submission.lead_magnet_id = $2::uuid
+        and lead_magnet.id = submission.lead_magnet_id
+        and lead_magnet.published = true
+        and lead_magnet.post_signup_mode = 'page'
+        and nullif(trim(lead_magnet.post_signup_video_url), '') is not null
+      returning submission.id
+    `,
+    [input.submissionId, input.leadMagnetId]
+  );
+  return Boolean(result.rows[0]);
+}
+
+export async function getLeadMagnetAnalytics(
+  accountId: string,
+  leadMagnetId: string
+): Promise<LeadMagnetAnalytics> {
+  const [summaryResult, dailyResult] = await Promise.all([
+    query<LeadMagnetAnalyticsSummaryRow>(
+      `
+        select
+          count(*)::int as total_visits,
+          count(*) filter (where converted_at is not null)::int as total_conversions,
+          coalesce(avg(engaged_seconds), 0)::float8 as average_engaged_seconds,
+          count(*) filter (
+            where first_seen_at >= date_trunc('day', now()) - interval '29 days'
+          )::int as recent_visits,
+          count(*) filter (
+            where converted_at >= date_trunc('day', now()) - interval '29 days'
+          )::int as recent_conversions,
+          coalesce(outcomes.total_video_plays, 0)::int as total_video_plays,
+          coalesce(outcomes.total_quiz_completions, 0)::int as total_quiz_completions,
+          coalesce(outcomes.recent_video_plays, 0)::int as recent_video_plays,
+          coalesce(outcomes.recent_quiz_completions, 0)::int as recent_quiz_completions
+        from public.magnets_lead_magnet_visits
+        cross join lateral (
+          select
+            count(*) filter (where post_signup_video_played_at is not null)::int as total_video_plays,
+            count(*) filter (where post_signup_quiz_completed_at is not null)::int as total_quiz_completions,
+            count(*) filter (
+              where post_signup_video_played_at >= date_trunc('day', now()) - interval '29 days'
+            )::int as recent_video_plays,
+            count(*) filter (
+              where post_signup_quiz_completed_at >= date_trunc('day', now()) - interval '29 days'
+            )::int as recent_quiz_completions
+          from public.magnets_submissions
+          where account_id = $1::uuid
+            and lead_magnet_id = $2::uuid
+        ) outcomes
+        where account_id = $1::uuid
+          and lead_magnet_id = $2::uuid
+        group by
+          outcomes.total_video_plays,
+          outcomes.total_quiz_completions,
+          outcomes.recent_video_plays,
+          outcomes.recent_quiz_completions
+      `,
+      [accountId, leadMagnetId]
+    ),
+    query<LeadMagnetAnalyticsDayRow>(
+      `
+        with days as (
+          select generate_series(
+            date_trunc('day', now()) - interval '29 days',
+            date_trunc('day', now()),
+            interval '1 day'
+          ) as day
+        )
+        select
+          to_char(days.day, 'YYYY-MM-DD') as date,
+          count(visit.id) filter (
+            where visit.first_seen_at >= days.day
+              and visit.first_seen_at < days.day + interval '1 day'
+          )::int as visits,
+          count(visit.id) filter (
+            where visit.converted_at >= days.day
+              and visit.converted_at < days.day + interval '1 day'
+          )::int as conversions
+        from days
+        left join public.magnets_lead_magnet_visits visit
+          on visit.account_id = $1::uuid
+          and visit.lead_magnet_id = $2::uuid
+          and (
+            visit.first_seen_at >= date_trunc('day', now()) - interval '29 days'
+            or visit.converted_at >= date_trunc('day', now()) - interval '29 days'
+          )
+        group by days.day
+        order by days.day
+      `,
+      [accountId, leadMagnetId]
+    ),
+  ]);
+
+  const summary = summaryResult.rows[0] || {
+    total_visits: 0,
+    total_conversions: 0,
+    total_video_plays: 0,
+    total_quiz_completions: 0,
+    average_engaged_seconds: 0,
+    recent_visits: 0,
+    recent_conversions: 0,
+    recent_video_plays: 0,
+    recent_quiz_completions: 0,
+  };
+  const totalVisits = Number(summary.total_visits || 0);
+  const totalConversions = Number(summary.total_conversions || 0);
+
+  return {
+    totalVisits,
+    totalConversions,
+    totalVideoPlays: Number(summary.total_video_plays || 0),
+    totalQuizCompletions: Number(summary.total_quiz_completions || 0),
+    conversionRate: totalVisits > 0 ? (totalConversions / totalVisits) * 100 : 0,
+    averageEngagedSeconds: Math.round(Number(summary.average_engaged_seconds || 0)),
+    recentVisits: Number(summary.recent_visits || 0),
+    recentConversions: Number(summary.recent_conversions || 0),
+    recentVideoPlays: Number(summary.recent_video_plays || 0),
+    recentQuizCompletions: Number(summary.recent_quiz_completions || 0),
+    daily: dailyResult.rows.map((row) => ({
+      date: row.date,
+      visits: Number(row.visits || 0),
+      conversions: Number(row.conversions || 0),
+    })),
+  };
+}
+
 export async function findLatestPublishedLeadMagnetForAccount(accountId: string) {
   const result = await query<LeadMagnetRow>(
     `
@@ -2358,9 +2919,9 @@ function parseCopilotUpdatedFields(value: LeadMagnetCopilotMessageRow['updated_f
 export async function listLeadMagnetCopilotMessages(
   accountId: string,
   leadMagnetId: string,
-  limit = 60
+  limit = 100
 ): Promise<PersistedLeadMagnetCopilotMessage[]> {
-  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 60));
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 200));
   const result = await query<LeadMagnetCopilotMessageRow>(
     `
       select recent.id, recent.role, recent.content, recent.updated_fields
@@ -2393,6 +2954,48 @@ export async function listLeadMagnetCopilotMessages(
   });
 }
 
+export async function listLeadMagnetCopilotMemoryMessages(
+  accountId: string,
+  leadMagnetId: string,
+  recentLimit = 196
+): Promise<PersistedLeadMagnetCopilotMessage[]> {
+  const safeRecentLimit = Math.max(1, Math.min(Math.floor(recentLimit), 196));
+  const result = await query<LeadMagnetCopilotMessageRow>(
+    `
+      with owned_messages as (
+        select
+          message.id,
+          message.role,
+          message.content,
+          message.updated_fields
+        from public.magnets_lead_magnet_copilot_messages message
+        join public.magnets_lead_magnets magnet on magnet.id = message.lead_magnet_id
+        where magnet.account_id = $1
+          and magnet.id = $2
+      ),
+      selected as (
+        (select * from owned_messages order by id asc limit 4)
+        union
+        (select * from owned_messages order by id desc limit $3)
+      )
+      select id::text, role, content, updated_fields
+      from selected
+      order by id asc
+    `,
+    [accountId, leadMagnetId, safeRecentLimit]
+  );
+
+  return result.rows.flatMap((row) => {
+    if (row.role !== 'user' && row.role !== 'assistant') return [];
+    return [{
+      id: row.id,
+      role: row.role,
+      content: row.content,
+      updatedFields: parseCopilotUpdatedFields(row.updated_fields),
+    }];
+  });
+}
+
 export async function appendLeadMagnetCopilotExchange({
   accountId,
   leadMagnetId,
@@ -2406,6 +3009,9 @@ export async function appendLeadMagnetCopilotExchange({
   assistantContent: string;
   updatedFields: string[];
 }) {
+  // Lock the owned magnet and append both sides in one transaction so memory
+  // never contains a user turn without its matching assistant response (or
+  // vice versa). The ownership query is also the authorization check.
   return withTransaction(async (client) => {
     const owned = await client.query(
       'select id from public.magnets_lead_magnets where account_id = $1 and id = $2 for update',
@@ -2424,26 +3030,13 @@ export async function appendLeadMagnetCopilotExchange({
       [leadMagnetId, userContent, assistantContent, JSON.stringify(updatedFields)]
     );
 
-    await client.query(
-      `
-        delete from public.magnets_lead_magnet_copilot_messages
-        where lead_magnet_id = $1
-          and id not in (
-            select id
-            from public.magnets_lead_magnet_copilot_messages
-            where lead_magnet_id = $1
-            order by id desc
-            limit 60
-          )
-      `,
-      [leadMagnetId]
-    );
-
     return true;
   });
 }
 
 export async function clearLeadMagnetCopilotMessages(accountId: string, leadMagnetId: string) {
+  // Delete through the owned magnet join; a raw message id is never sufficient
+  // authorization to reset another account's conversation.
   const result = await query(
     `
       delete from public.magnets_lead_magnet_copilot_messages message
@@ -2799,6 +3392,23 @@ export async function recordQuizResponse(input: {
     leadMagnet.postSignupQuizRoutes,
     selectedAnswers
   );
+
+  if (progress.completed) {
+    // Completion is an immutable outcome of this successful signup. Updating
+    // the same nullable timestamp makes retries and double-clicks idempotent.
+    await query(
+      `
+        update public.magnets_submissions
+        set post_signup_quiz_completed_at = coalesce(
+          post_signup_quiz_completed_at,
+          now()
+        )
+        where id = $1::uuid
+          and lead_magnet_id = $2::uuid
+      `,
+      [input.submissionId, input.leadMagnetId]
+    );
+  }
 
   return {
     response: mapQuizResponse(saved),

@@ -73,7 +73,7 @@ export default function TermsPage() {
 
       <LegalSection title="5. Optional integrations">
         <p>
-          You may connect supported third-party services, including Beehiiv, Substack, Slack, Pipedrive, Calendly, and
+          You may connect supported third-party services, including Beehiiv, Substack, Kit, Slack, Pipedrive, Zapier, Calendly, and
           Cal.com. If you do, you authorise Magnets to send the information needed to perform the selected action, such
           as adding a subscriber, posting a signup notification, creating or updating a contact, or stopping a sequence.
           Your use of those services is also governed by their terms, privacy notices, pricing, and limits.

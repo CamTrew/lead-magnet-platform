@@ -59,6 +59,97 @@ function isAllowedBlobUrl(value: string) {
   }
 }
 
+function isLocalHostname(hostname: string) {
+  const value = hostname.toLowerCase();
+  return value === 'localhost' || value === '::1' || value === '[::1]' || value.startsWith('127.');
+}
+
+function liveUploadOrigin() {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (!isLocalHostname(url.hostname)) return url.origin;
+    } catch {
+      // Fall through to the canonical production origin.
+    }
+  }
+  return 'https://magnets.so';
+}
+
+async function relayLocalPresignedUploadRequest(
+  request: NextRequest,
+  leadMagnetId: string,
+  body: ReturnType<typeof parsePresignedUploadBody>
+) {
+  if (
+    process.env.NODE_ENV !== 'development'
+    || !isLocalHostname(request.nextUrl.hostname)
+    || body?.type !== 'blob.generate-presigned-url'
+  ) {
+    return null;
+  }
+
+  // Development OIDC credentials expire after a few hours. Rather than ever
+  // writing localhost-only image URLs into a real email, ask the deployed app
+  // for the same short-lived, account-scoped Vercel Blob upload URL. The live
+  // endpoint repeats authentication, ownership, rate-limit and path checks.
+  const response = await fetch(
+    new URL(`/api/lead-magnets/${leadMagnetId}/email-image`, liveUploadOrigin()),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: request.headers.get('cookie') || '',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    }
+  );
+  const data = await response.json().catch(() => null);
+  if (!data) {
+    return NextResponse.json(
+      { error: 'Image storage returned an invalid response' },
+      { status: 502 }
+    );
+  }
+  return NextResponse.json(data, { status: response.status });
+}
+
+async function relayLocalEmailImageFinalisation(
+  request: NextRequest,
+  leadMagnetId: string,
+  body: z.infer<typeof finaliseImageSchema>
+) {
+  if (process.env.NODE_ENV !== 'development' || !isLocalHostname(request.nextUrl.hostname)) {
+    return null;
+  }
+
+  // The production endpoint must create the private-image proxy token too: it
+  // owns the production signing secret and guarantees the resulting URL works
+  // in both the preview and the delivered email.
+  const response = await fetch(
+    new URL(`/api/lead-magnets/${leadMagnetId}/email-image`, liveUploadOrigin()),
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: request.headers.get('cookie') || '',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    }
+  );
+  const data = await response.json().catch(() => null);
+  if (!data) {
+    return NextResponse.json(
+      { error: 'Image storage returned an invalid response' },
+      { status: 502 }
+    );
+  }
+  return NextResponse.json(data, { status: response.status });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -74,6 +165,23 @@ export async function POST(
   const body = parsePresignedUploadBody(await request.json().catch(() => null));
   if (!body) {
     return NextResponse.json({ error: 'Invalid upload request' }, { status: 400 });
+  }
+
+  try {
+    const relayed = await relayLocalPresignedUploadRequest(request, leadMagnetId, body);
+    if (relayed) return relayed;
+  } catch (err) {
+    log.warn('Local email image upload relay failed', {
+      route: ROUTE,
+      method: 'POST',
+      status: 502,
+      durationMs: Date.now() - start,
+      extra: { leadMagnetId, error: err },
+    });
+    return NextResponse.json(
+      { error: 'Image storage could not be reached. Please try again.' },
+      { status: 502 }
+    );
   }
 
   try {
@@ -219,14 +327,23 @@ export async function PUT(
 
     const body = await request.json().catch(() => null);
     const parsed = finaliseImageSchema.safeParse(body);
-    if (
-      !parsed.success ||
-      !isAccountEmailImageBlobUrl(parsed.data.blobUrl, payload.account.id, leadMagnetId)
-    ) {
+    if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid uploaded image URL' }, { status: 400 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+    const relayed = await relayLocalEmailImageFinalisation(request, leadMagnetId, parsed.data);
+    if (relayed) return relayed;
+
+    if (!isAccountEmailImageBlobUrl(parsed.data.blobUrl, payload.account.id, leadMagnetId)) {
+      return NextResponse.json({ error: 'Invalid uploaded image URL' }, { status: 400 });
+    }
+
+    // Email image URLs must remain reachable after the local editor closes.
+    // Private Blob objects are served through the signed production proxy, not
+    // a localhost URL that would break in previews and delivered emails.
+    const baseUrl = isLocalHostname(request.nextUrl.hostname)
+      ? liveUploadOrigin()
+      : process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
     const imageUrl = publicEmailImageUrl(parsed.data.blobUrl, baseUrl);
 
     log.info('Email image ready', {

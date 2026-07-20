@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Canonical maintainer context:** read `AGENTS.md` completely before changing code. It contains the current product invariants, signup ordering, email storage protocol, editor compatibility rules, hosted-resource security model, analytics constraints, copilot memory rules, integration behavior, and deployment checklist. `AGENTS.md` is the source of truth when this older compatibility file disagrees.
+
 ## Commands
 
 Package manager is **pnpm**. Node + Next 15 (App Router) on React 19, Geist font, Tailwind 3.4 with a neutral `ink-*` palette (defined in `tailwind.config.ts`).

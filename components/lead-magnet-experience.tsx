@@ -10,10 +10,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2, Play } from 'lucide-react';
 import {
   isSafePostSignupDestination,
+  postSignupVideoAutoplayUrl,
   postSignupVideoEmbedUrl,
+  postSignupVideoThumbnailUrl,
   resolvePostSignupExperience,
 } from '@/lib/post-signup';
 import type { LeadMagnet, PostSignupQuizOption, PostSignupQuizQuestion } from '@/lib/types';
@@ -108,7 +110,7 @@ function PostSignupLandingPage({
               submissionId={submissionId}
             />
           ) : (
-            <CustomSuccess magnet={magnet} />
+            <CustomSuccess magnet={magnet} submissionId={submissionId} />
           )}
         </div>
       </main>
@@ -146,16 +148,42 @@ function PostSignupBrandLockup({ brand }: { brand: PostSignupBrand }) {
   );
 }
 
-function CustomSuccess({ magnet }: { magnet: LeadMagnet }) {
+function CustomSuccess({
+  magnet,
+  submissionId,
+}: {
+  magnet: LeadMagnet;
+  submissionId: string;
+}) {
   const heading = magnet.postSignupHeading.trim() || 'You are in.';
   const body = magnet.postSignupBody.trim() || 'Check your inbox for the resource.';
   const embedUrl = postSignupVideoEmbedUrl(magnet.postSignupVideoUrl);
+  const autoplayUrl = postSignupVideoAutoplayUrl(magnet.postSignupVideoUrl);
+  const thumbnailUrl = postSignupVideoThumbnailUrl(magnet.postSignupVideoUrl);
   const ctaUrl = isSafePostSignupDestination(magnet.postSignupCtaUrl) ? magnet.postSignupCtaUrl : '';
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const playStartedRef = useRef(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
   }, []);
+
+  function startVideo() {
+    if (!embedUrl || playStartedRef.current) return;
+    playStartedRef.current = true;
+    setIsPlaying(true);
+
+    // This metric is intentionally tied to an explicit Play action and a
+    // successful submission. The server deduplicates repeat requests for the
+    // same submission, so reloads cannot inflate the result.
+    void fetch('/api/analytics/video-play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadMagnetId: magnet.id, submissionId }),
+      keepalive: true,
+    }).catch(() => undefined);
+  }
 
   return (
     <section className="mx-auto flex w-full max-w-[1040px] flex-col items-center text-center">
@@ -175,14 +203,37 @@ function CustomSuccess({ magnet }: { magnet: LeadMagnet }) {
           className="magnet-post-signup-media mt-10 w-full overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-950 shadow-2xl sm:mt-12 sm:rounded-[24px]"
           style={{ boxShadow: '0 36px 100px -48px rgb(15 23 42 / 0.7)' }}
         >
-          <div className="aspect-video">
-            <iframe
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="h-full w-full"
-              src={embedUrl}
-              title="Next step video"
-            />
+          <div className="relative aspect-video">
+            {isPlaying ? (
+              <iframe
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="h-full w-full"
+                src={autoplayUrl || embedUrl}
+                title="Next step video"
+              />
+            ) : (
+              <button
+                aria-label="Play next step video"
+                className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-gray-950"
+                onClick={startVideo}
+                type="button"
+              >
+                {thumbnailUrl && (
+                  // YouTube exposes a stable public thumbnail. Loom does not,
+                  // so Loom keeps the same clean dark player placeholder.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover opacity-80 transition group-hover:scale-[1.02] group-hover:opacity-90"
+                    src={thumbnailUrl}
+                  />
+                )}
+                <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white text-gray-950 shadow-2xl transition group-hover:scale-105">
+                  <Play className="ml-1 h-7 w-7 fill-current" />
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -271,7 +322,7 @@ function QuizExperience({
   }
 
   if (!question) {
-    return <CustomSuccess magnet={magnet} />;
+    return <CustomSuccess magnet={magnet} submissionId={submissionId} />;
   }
 
   return (

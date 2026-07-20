@@ -10,6 +10,8 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/auth/password-reset',
+  '/api/analytics/visit',
+  '/api/analytics/video-play',
   '/api/submit',
   '/api/quiz-responses',
   '/api/calendar-webhooks',
@@ -28,6 +30,7 @@ const RESERVED_PUBLIC_PATHS = new Set([
   'privacy',
   'register',
   'reset-password',
+  'resources',
   'robots.txt',
   'sequence',
   'sitemap.xml',
@@ -35,6 +38,11 @@ const RESERVED_PUBLIC_PATHS = new Set([
 ]);
 
 function isPublicApi(pathname: string) {
+  // Kit may send a creator here from its App Store before they have signed in
+  // to Magnets. The route itself redirects unauthenticated users through the
+  // normal login flow and resumes this exact URL afterwards.
+  if (pathname === '/api/account/kit/connect') return true;
+
   if (PUBLIC_API_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return true;
   }
@@ -42,7 +50,8 @@ function isPublicApi(pathname: string) {
   // Vercel Blob calls this route after a browser upload completes. The route
   // still requires a signed Blob callback or a dashboard session, depending on
   // the event type, so only this exact callback/token endpoint is public.
-  return /^\/api\/lead-magnets\/[0-9a-f-]{36}\/(?:image|email-image)$/i.test(pathname);
+  return /^\/api\/lead-magnets\/[0-9a-f-]{36}\/(?:image|email-image)$/i.test(pathname)
+    || /^\/api\/hosted-resources\/[0-9a-f-]{36}$/i.test(pathname);
 }
 
 function applySecurityHeaders(response: NextResponse, request: NextRequest) {

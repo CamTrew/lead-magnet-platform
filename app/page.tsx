@@ -72,7 +72,7 @@ const features = [
   {
     icon: Users,
     title: 'Send leads where work happens',
-    description: 'Keep signups in Magnets or send them to Beehiiv, Slack, Pipedrive, and your existing workflow.',
+    description: 'Keep signups in Magnets or send them to Beehiiv, Kit, Slack, Pipedrive, Zapier, and your existing workflow.',
   },
 ];
 
@@ -145,7 +145,7 @@ const structuredData = {
         'Instant resource delivery',
         'Follow-up email sequences',
         'Custom domains',
-        'Beehiiv, Slack, and Pipedrive integrations',
+        'Beehiiv, Kit, Slack, Pipedrive, and Zapier integrations',
       ],
       offers: {
         '@type': 'Offer',
@@ -299,7 +299,7 @@ export default function HomePage() {
               <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand-soft text-brand-coral"><Globe2 className="h-5 w-5" /></span>
             </div>
             <div className="mt-6 space-y-3">
-              {['Magnets page', 'Instant delivery', 'Follow-up sequence', 'Beehiiv, Slack, or Pipedrive'].map((item, index) => (
+              {['Magnets page', 'Instant delivery', 'Follow-up sequence', 'Beehiiv, Kit, Slack, Pipedrive, or Zapier'].map((item, index) => (
                 <div key={item} className="flex items-center gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-950 text-xs font-bold text-white">{index + 1}</span>
                   <span className="text-sm font-medium text-ink-800">{item}</span>

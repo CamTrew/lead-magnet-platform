@@ -43,6 +43,7 @@ import {
   MIN_BRAND_HIGHLIGHT_INTENSITY,
 } from '@/lib/brand-highlight';
 import { isValidSlackWebhookUrl } from '@/lib/slack';
+import { isValidZapierWebhookUrl } from '@/lib/zapier';
 import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
 
 const ROUTE = '/api/account';
@@ -178,6 +179,17 @@ const schema = z.object({
       (value) => value === '' || isMaskedSecret(value) || isValidSlackWebhookUrl(value),
       'Paste a valid Slack incoming-webhook URL.'
     ),
+  // Optional during rolling deployments so older open dashboard tabs remain
+  // valid and cannot clear a Zapier URL they never received.
+  zapierWebhookUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine(
+      (value) => value === '' || isMaskedSecret(value) || isValidZapierWebhookUrl(value),
+      'Paste a valid Zapier Catch Hook URL.'
+    )
+    .optional(),
   pipedriveApiToken: z.string().trim().max(2000),
   calendarWebhookEnabled: z.boolean(),
 }).strict();

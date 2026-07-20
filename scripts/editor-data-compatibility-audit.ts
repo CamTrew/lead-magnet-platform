@@ -6,9 +6,11 @@ import {
   serializeEmailBodyBlocks,
 } from '../lib/email-body-images';
 import {
+  renderDeliveryEmailHtml,
   renderEmailTextFallback,
-  renderPlainEmailHtml,
+  renderFollowUpEmailHtml,
 } from '../lib/email-render';
+import { parseYouTubeVideoUrl } from '../lib/email-body-links';
 
 type StoredMagnet = {
   email_body: string;
@@ -37,12 +39,18 @@ let bodyCount = 0;
 let followUpCount = 0;
 let imageCount = 0;
 let imageRowCount = 0;
+let youtubeCount = 0;
 
 function meaningfulText(value: string) {
   return renderEmailTextFallback(value).replace(/\s+/g, ' ').trim();
 }
 
-function auditBody(label: string, body: string, previewText = '') {
+function auditBody(
+  label: string,
+  body: string,
+  previewText = '',
+  kind: 'delivery' | 'follow-up' = 'delivery'
+) {
   const blocks = parseEmailBodyBlocks(body);
   const serialized = serializeEmailBodyBlocks(blocks);
   const segments = parseEmailBodySegments(body);
@@ -52,6 +60,11 @@ function auditBody(label: string, body: string, previewText = '') {
     return count;
   }, 0);
   const expectedRows = segments.filter((segment) => segment.kind === 'image-row').length;
+  const expectedYouTubeVideos = body.replace(/\r\n?/g, '\n').split('\n')
+    .filter((line) => {
+      const match = line.match(/^:::youtube(?:\s+(.+))?$/);
+      return Boolean(match && parseYouTubeVideoUrl(match[1] || ''));
+    }).length;
 
   assert.equal(
     meaningfulText(serialized),
@@ -59,13 +72,22 @@ function auditBody(label: string, body: string, previewText = '') {
     `${label}: editing round-trip changed the readable content`
   );
 
-  const html = renderPlainEmailHtml(body, previewText);
+  // Exercise the same complete renderer that the preview and Resend payload
+  // use. This makes the database audit sensitive to regressions in the real
+  // footer and follow-up opt-out wrappers as well as the block parser itself.
+  const html = kind === 'follow-up'
+    ? renderFollowUpEmailHtml(body, previewText, 'https://magnets.so/follow-up/stop/audit')
+    : renderDeliveryEmailHtml(body, previewText);
   assert.match(html, /class="magnets-email-card"/, `${label}: missing responsive email shell`);
+  assert.match(html, /Powered by Magnets/, `${label}: missing required email footer`);
+  if (kind === 'follow-up') {
+    assert.match(html, /Stop this sequence/, `${label}: missing follow-up opt-out`);
+  }
   assert.doesNotMatch(html, /(?:javascript|data):/i, `${label}: unsafe protocol reached rendered HTML`);
   assert.equal(
     Array.from(html.matchAll(/<img\s/g)).length,
-    expectedImages,
-    `${label}: rendered image count differs from stored image count`
+    expectedImages + expectedYouTubeVideos + 1,
+    `${label}: rendered image count differs from stored images, YouTube thumbnails, and footer logo`
   );
   assert.equal(
     Array.from(html.matchAll(/<table[^>]+table-layout:fixed/g)).length,
@@ -76,6 +98,7 @@ function auditBody(label: string, body: string, previewText = '') {
   bodyCount += 1;
   imageCount += expectedImages;
   imageRowCount += expectedRows;
+  youtubeCount += expectedYouTubeVideos;
 }
 
 function followUpsFrom(value: unknown): StoredFollowUp[] {
@@ -89,13 +112,30 @@ function followUpsFrom(value: unknown): StoredFollowUp[] {
   }
 }
 
+function isTransientConnectionError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = `${error.message} ${error.cause instanceof Error ? error.cause.message : ''}`;
+  return message.includes('connection timeout') || message.includes('Connection terminated unexpectedly');
+}
+
+async function loadStoredMagnets() {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await pool.query<StoredMagnet>(`
+        select id, email_body, follow_up_emails
+        from magnets_lead_magnets
+        order by created_at asc
+      `);
+    } catch (error) {
+      if (attempt === 3 || !isTransientConnectionError(error)) throw error;
+    }
+  }
+  throw new Error('Stored editor data could not be loaded.');
+}
+
 async function main() {
   try {
-    const result = await pool.query<StoredMagnet>(`
-      select id, email_body, follow_up_emails
-      from magnets_lead_magnets
-      order by created_at asc
-    `);
+    const result = await loadStoredMagnets();
 
     for (const magnet of result.rows) {
       auditBody(`magnet ${magnet.id} delivery`, magnet.email_body || '');
@@ -103,13 +143,13 @@ async function main() {
         const body = typeof followUp.body === 'string' ? followUp.body : '';
         const preview = typeof followUp.preview === 'string' ? followUp.preview : '';
         const emailId = typeof followUp.id === 'string' ? followUp.id : String(index + 1);
-        auditBody(`magnet ${magnet.id} follow-up ${emailId}`, body, preview);
+        auditBody(`magnet ${magnet.id} follow-up ${emailId}`, body, preview, 'follow-up');
         followUpCount += 1;
       }
     }
 
     console.log(
-      `Stored editor data audit passed: ${result.rowCount ?? result.rows.length} magnets, ${bodyCount} email bodies, ${followUpCount} follow-ups, ${imageCount} images, and ${imageRowCount} image rows.`
+      `Stored editor data audit passed: ${result.rowCount ?? result.rows.length} magnets, ${bodyCount} email bodies, ${followUpCount} follow-ups, ${imageCount} images, ${imageRowCount} image rows, and ${youtubeCount} YouTube embeds.`
     );
   } finally {
     await pool.end();

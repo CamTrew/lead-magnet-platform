@@ -166,6 +166,7 @@ export function BrandClient({
           beehiivPublicationId: draft.beehiivPublicationId,
           substackPublication: draft.substackPublication,
           slackWebhookUrl: draft.slackWebhookUrl,
+          zapierWebhookUrl: draft.zapierWebhookUrl,
           pipedriveApiToken: draft.pipedriveApiToken,
           calendarWebhookEnabled: draft.calendarWebhookEnabled,
         }),

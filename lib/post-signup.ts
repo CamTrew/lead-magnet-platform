@@ -62,3 +62,20 @@ export function postSignupVideoEmbedUrl(value: string) {
 
   return '';
 }
+
+export function postSignupVideoAutoplayUrl(value: string) {
+  const embedUrl = postSignupVideoEmbedUrl(value);
+  if (!embedUrl) return '';
+  const url = new URL(embedUrl);
+  url.searchParams.set('autoplay', '1');
+  return url.toString();
+}
+
+export function postSignupVideoThumbnailUrl(value: string) {
+  const embedUrl = postSignupVideoEmbedUrl(value);
+  if (!embedUrl) return '';
+  const url = new URL(embedUrl);
+  if (url.hostname !== 'www.youtube.com') return '';
+  const videoId = url.pathname.split('/').filter(Boolean).at(-1);
+  return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '';
+}

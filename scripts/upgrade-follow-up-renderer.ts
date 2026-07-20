@@ -8,9 +8,18 @@ import {
   followUpAutomationNeedsProviderSync,
   syncLeadMagnetFollowUpAutomation,
 } from '../lib/follow-up-sequences';
-import { resolveResendApiKey } from '../lib/platform-resend';
+import { resolveResendApiKey, resolveResendFromEmail } from '../lib/platform-resend';
 
-const apply = process.argv.includes('--apply');
+const applyInProduction = process.argv.includes('--apply-if-production');
+if (applyInProduction && process.env.VERCEL_ENV !== 'production') {
+  console.log(JSON.stringify({
+    mode: 'skipped',
+    reason: 'Not a Vercel production build',
+  }, null, 2));
+  process.exit(0);
+}
+
+const apply = process.argv.includes('--apply') || applyInProduction;
 
 async function main() {
   const enabled = await listEnabledFollowUpAutomationTargets();
@@ -21,7 +30,11 @@ async function main() {
 
   for (const magnet of targets) {
     const account = await getAccountWithSecrets(magnet.accountId);
-    const ready = Boolean(account && resolveResendApiKey(account));
+    const ready = Boolean(
+      account
+        && resolveResendApiKey(account)
+        && resolveResendFromEmail(account)
+    );
 
     if (!apply) {
       report.push({
@@ -48,7 +61,8 @@ async function main() {
     try {
       // The sync creates new templates and a replacement Automation. Resend
       // keeps runs on the stopped Automation alive, so existing subscribers
-      // finish the exact sequence they entered while new signups use v6.
+      // finish the exact sequence they entered while new signups use the
+      // current renderer and sender configuration.
       const result = await syncLeadMagnetFollowUpAutomation(account, magnet);
       await updateLeadMagnetFollowUpSync(account.id, magnet.id, {
         followUpEmails: result.emails,

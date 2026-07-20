@@ -42,23 +42,27 @@ function hasUsableAccountKey(account: ResendAccount) {
   return Boolean(accountKey && !isMaskedSecret(accountKey));
 }
 
-function usesAccountResendWorkspace(account: ResendAccount) {
-  return hasUsableAccountKey(account) && hasVerifiedAccountSender(account);
-}
-
 export function resolveResendApiKey(account: ResendAccount) {
   const accountKey = account.resendApiKey?.trim() || '';
 
-  // A Resend API key can only send from domains verified in that same Resend
-  // account. Use an account-owned key only with its verified account sender.
-  // Otherwise, use the Magnets key and Magnets sender together.
-  if (usesAccountResendWorkspace(account)) return accountKey;
+  // A verified custom sender can belong either to a customer-owned Resend
+  // workspace or to the Magnets-managed workspace. Prefer an explicit
+  // customer key, but keep using the platform key for accounts whose custom
+  // domain was created and verified through the managed setup flow.
+  if (hasVerifiedAccountSender(account)) {
+    return hasUsableAccountKey(account) ? accountKey : platformResendApiKey();
+  }
 
   return platformResendApiKey() || (hasUsableAccountKey(account) ? accountKey : '');
 }
 
 export function usesPlatformResendAccount(account: ResendAccount) {
-  return Boolean(platformResendApiKey()) && !usesAccountResendWorkspace(account);
+  if (!platformResendApiKey()) return false;
+  // Before a custom sender is verified, the resolver deliberately stays on
+  // the protected platform sender even if the user has pasted a customer key.
+  // Once verified, an explicit customer key owns the sender; otherwise the
+  // same custom address remains managed by Magnets.
+  return !hasVerifiedAccountSender(account) || !hasUsableAccountKey(account);
 }
 
 /**
@@ -69,8 +73,8 @@ export function usesPlatformResendAccount(account: ResendAccount) {
 export function resolveResendFromEmail(
   account: ResendAccount
 ) {
-  if (usesAccountResendWorkspace(account)) {
-    return account.resendFromEmail.trim();
+  if (hasVerifiedAccountSender(account)) {
+    return resolveResendApiKey(account) ? account.resendFromEmail.trim() : '';
   }
 
   return hasPlatformResendApiKey() ? platformResendFromEmail() : '';

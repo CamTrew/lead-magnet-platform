@@ -1,0 +1,2 @@
+ALTER TABLE "magnets_submissions" ADD COLUMN "post_signup_video_played_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "magnets_submissions" ADD COLUMN "post_signup_quiz_completed_at" timestamp with time zone;

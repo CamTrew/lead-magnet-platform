@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   },
 };
 
-const EFFECTIVE = 'July 14, 2026';
+const EFFECTIVE = 'July 20, 2026';
 
 export default function PrivacyPage() {
   return (
@@ -56,7 +56,7 @@ export default function PrivacyPage() {
           <li>Your name, email address, authentication details, and account timestamps. Passwords are stored as hashes, not plaintext.</li>
           <li>Your chosen Magnets username, custom-domain settings, brand settings, sender settings, and page configuration.</li>
           <li>The copy, images, resource links, email content, and follow-up sequences you create.</li>
-          <li>Integration settings and credentials you choose to add, including email, newsletter, calendar, Slack, and Pipedrive connections.</li>
+          <li>Integration settings and credentials you choose to add, including email, newsletter, calendar, Slack, Pipedrive, and Zapier connections.</li>
           <li>Technical and security information, including IP address information used for abuse prevention and rate limiting, request metadata, and error logs.</li>
         </ul>
       </LegalSection>
@@ -66,6 +66,12 @@ export default function PrivacyPage() {
           When a person submits a Magnets form, we process the name and email address they provide, the page they signed
           up on, and the submission time. When a follow-up sequence is enabled, we also keep the information needed to
           track whether that sequence is active, completed, stopped, or failed for that email address.
+        </p>
+        <p>
+          Page analytics use a random browser-tab session identifier to count visits and visible-page engagement without
+          analytics cookies or raw IP addresses. For successful signups, we may also record whether that signup explicitly
+          started a configured post-signup video or completed a configured quiz. These outcome timestamps are used only to
+          provide aggregate performance reporting to the account holder.
         </p>
         <p>
           Forms can appear on a Magnets-hosted URL or an account holder&apos;s custom domain. The host does not change which
@@ -80,7 +86,7 @@ export default function PrivacyPage() {
           <li>Host and serve lead-magnet pages, uploaded images, and the resource email requested by a subscriber.</li>
           <li>Run follow-up email sequences configured by an account holder and honour a recipient&apos;s request to stop those follow-ups.</li>
           <li>Stop a configured follow-up sequence when a connected calendar provider reports that the same person booked a call, if the account holder has enabled that option.</li>
-          <li>Send signup data to the optional integrations selected by the account holder, such as Beehiiv, Substack, Slack, or Pipedrive.</li>
+          <li>Send signup data to the optional integrations selected by the account holder, such as Beehiiv, Substack, Kit, Slack, Pipedrive, or Zapier.</li>
           <li>Send account holders product updates and important service notices. You can unsubscribe from product marketing emails without deleting your account.</li>
           <li>Respond to support requests and enforce our Terms.</li>
         </ul>
@@ -94,8 +100,8 @@ export default function PrivacyPage() {
         </p>
         <p>
           Optional integrations are activated by the account holder. Depending on what they connect, signup information
-          may be sent to Beehiiv or Substack for newsletter subscription, Slack for a notification, Pipedrive to create
-          or update a person, or Calendly or Cal.com to stop an enabled follow-up sequence after a booking. Each third
+          may be sent to Beehiiv, Substack, or Kit for newsletter subscription, Slack for a notification, Pipedrive to create
+          or update a person, Zapier to trigger an account holder&apos;s automation, or Calendly or Cal.com to stop an enabled follow-up sequence after a booking. Each third
           party processes information under its own terms and privacy notice.
         </p>
       </LegalSection>
@@ -108,7 +114,7 @@ export default function PrivacyPage() {
           <li><strong>Vercel</strong> for application hosting, content delivery, and file storage.</li>
           <li><strong>Neon</strong> for hosted database and authentication infrastructure.</li>
           <li><strong>Resend</strong> for email delivery and follow-up automation.</li>
-          <li><strong>Beehiiv, Substack, Slack, Pipedrive, Calendly, and Cal.com</strong> when an account holder elects to connect those services.</li>
+          <li><strong>Beehiiv, Substack, Kit, Slack, Pipedrive, Zapier, Calendly, and Cal.com</strong> when an account holder elects to connect those services.</li>
         </ul>
         <p>
           We may also disclose information where required by law, to protect the rights and safety of Magnets and others,

@@ -8,7 +8,9 @@ import {
 import { validateQuizConfiguration } from '../lib/lead-magnet-validation';
 import {
   isSafePostSignupDestination,
+  postSignupVideoAutoplayUrl,
   postSignupVideoEmbedUrl,
+  postSignupVideoThumbnailUrl,
   resolvePostSignupExperience,
 } from '../lib/post-signup';
 
@@ -42,6 +44,15 @@ assert.equal(postSignupVideoEmbedUrl('https://www.youtube.com/watch?v=watch-id')
 assert.equal(postSignupVideoEmbedUrl('https://www.loom.com/share/loom-id'), 'https://www.loom.com/embed/loom-id');
 assert.equal(postSignupVideoEmbedUrl('https://example.com/video'), '');
 assert.equal(postSignupVideoEmbedUrl('https://notyoutube.com/watch?v=fake'), '');
+assert.equal(
+  postSignupVideoAutoplayUrl('https://youtu.be/video-id'),
+  'https://www.youtube.com/embed/video-id?autoplay=1'
+);
+assert.equal(
+  postSignupVideoThumbnailUrl('https://www.youtube.com/watch?v=watch-id'),
+  'https://i.ytimg.com/vi/watch-id/hqdefault.jpg'
+);
+assert.equal(postSignupVideoThumbnailUrl('https://www.loom.com/share/loom-id'), '');
 
 const experienceBase = {
   postSignupMode: 'message' as const,

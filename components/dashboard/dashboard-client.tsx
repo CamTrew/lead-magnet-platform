@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Newspaper,
   ScrollText,
+  Webhook,
 } from 'lucide-react';
 import {
   AceternityCard,
@@ -626,6 +627,200 @@ function SlackNotificationsSetup({
   );
 }
 
+function ZapierSetup({
+  account,
+  onCommit,
+  onPatch,
+  onTest,
+  saveState,
+  testMessage,
+  testState,
+}: {
+  account: AccountSettings;
+  onCommit: () => void;
+  onPatch: (updates: Partial<AccountSettings>) => void;
+  onTest: () => void;
+  saveState: SaveState;
+  testMessage: string;
+  testState: SaveState;
+}) {
+  const connected = Boolean(account.zapierWebhookUrl);
+
+  return (
+    <details className={connectionCardClass}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
+        <div className="flex min-w-0 gap-3">
+          <ConnectionIcon icon={Webhook} tone="orange" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-ink-950">Zapier</p>
+              {connected && <ConnectionStatus>Connected</ConnectionStatus>}
+            </div>
+            <p className="mt-0.5 text-xs leading-5 text-ink-600">
+              Trigger a Zap whenever a new lead signs up.
+            </p>
+          </div>
+        </div>
+        <ConnectionChevron />
+      </summary>
+
+      <div className="space-y-4 border-t border-ink-200 p-4">
+        <div className="rounded-lg border border-ink-200 bg-ink-50 px-3 py-3 text-xs leading-5 text-ink-600">
+          In Zapier, choose <strong>Webhooks by Zapier</strong> as the trigger, select <strong>Catch Hook</strong>, then copy its webhook URL.
+        </div>
+        <Field
+          label="Zapier Catch Hook URL"
+          hint="Paste the unique hooks.zapier.com URL from the Test tab. Leave it blank to disconnect."
+        >
+          <AceternityInput
+            autoComplete="new-password"
+            onBlur={onCommit}
+            onChange={(event) => onPatch({ zapierWebhookUrl: event.target.value })}
+            placeholder="https://hooks.zapier.com/hooks/catch/..."
+            type="password"
+            value={account.zapierWebhookUrl}
+          />
+        </Field>
+
+        <div className="flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-ink-500">
+            Each event includes the lead, signup ID, lead magnet, and public page URL. Zapier never blocks the signup or resource email.
+          </p>
+          <AceternityButton
+            disabled={!connected || saveState === 'saving' || testState === 'saving'}
+            onClick={onTest}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {testState === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Webhook className="h-3.5 w-3.5" />}
+            Send test
+          </AceternityButton>
+        </div>
+
+        {testMessage && (
+          <p className={testState === 'error' ? 'text-xs font-medium text-red-700' : 'text-xs font-medium text-emerald-700'}>
+            {testMessage}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function KitConnectionSetup({
+  account,
+  onAccountUpdated,
+}: {
+  account: AccountSettings;
+  onAccountUpdated: (account: AccountSettings) => void;
+}) {
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get('kit');
+    if (!result) return;
+
+    if (result === 'connected') setMessage('Kit connected. New signups will sync automatically.');
+    if (result === 'denied') setError('Kit connection was cancelled.');
+    if (result === 'error') setError('Kit could not be connected. Please try again.');
+    url.searchParams.delete('kit');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  async function disconnect() {
+    if (disconnecting || !account.kitConnected) return;
+    setDisconnecting(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/account/kit', { method: 'DELETE' });
+      const data = (await response.json().catch(() => null)) as {
+        account?: AccountSettings;
+        error?: string;
+      } | null;
+      if (!response.ok || !data?.account) {
+        throw new Error(data?.error || 'Kit could not be disconnected.');
+      }
+      onAccountUpdated(data.account);
+      setMessage('Kit disconnected.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Kit could not be disconnected.');
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  return (
+    <details className={connectionCardClass}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
+        <div className="flex min-w-0 gap-3">
+          <ConnectionIcon icon={Mail} tone="orange" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-ink-950">Kit</p>
+              {account.kitConnected && <ConnectionStatus>Connected</ConnectionStatus>}
+            </div>
+            <p className="mt-0.5 text-xs leading-5 text-ink-600">
+              Add every signup to Kit and tag the lead magnet they requested.
+            </p>
+          </div>
+        </div>
+        <ConnectionChevron />
+      </summary>
+
+      <div className="space-y-4 border-t border-ink-200 p-4">
+        {account.kitConnected ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              {account.kitAccountName || 'Kit account'} is connected
+            </p>
+            <p className="mt-1 text-xs leading-5 text-emerald-800">
+              Existing subscribers are updated by email. Each signup receives a “Lead magnet: …” tag in Kit.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm leading-6 text-ink-600">
+            Connect with Kit&apos;s secure authorization screen. Magnets never asks you to paste an API key and never exposes Kit credentials in the browser.
+          </p>
+        )}
+
+        <div className="flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-ink-500">
+            Kit sync runs after the resource email is accepted, so a temporary Kit issue never blocks the signup.
+          </p>
+          {account.kitConnected ? (
+            <AceternityButton
+              disabled={disconnecting}
+              onClick={() => void disconnect()}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              {disconnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Disconnect
+            </AceternityButton>
+          ) : (
+            <AceternityButton
+              onClick={() => window.location.assign('/api/account/kit/connect')}
+              size="sm"
+              type="button"
+            >
+              Connect Kit
+            </AceternityButton>
+          )}
+        </div>
+
+        {message && <p className="text-xs font-medium text-emerald-700">{message}</p>}
+        {error && <p className="text-xs font-medium text-red-700" role="alert">{error}</p>}
+      </div>
+    </details>
+  );
+}
+
 function PipedriveSetup({
   account,
   onCommit,
@@ -720,6 +915,8 @@ export function DashboardClient({
   const [error, setError] = useState('');
   const [slackTestState, setSlackTestState] = useState<SaveState>('idle');
   const [slackTestMessage, setSlackTestMessage] = useState('');
+  const [zapierTestState, setZapierTestState] = useState<SaveState>('idle');
+  const [zapierTestMessage, setZapierTestMessage] = useState('');
   const [pipedriveTestState, setPipedriveTestState] = useState<SaveState>('idle');
   const [pipedriveTestMessage, setPipedriveTestMessage] = useState('');
   // Once a value is committed (for example, a root domain is attached),
@@ -746,6 +943,8 @@ export function DashboardClient({
     setError('');
     setSlackTestState('idle');
     setSlackTestMessage('');
+    setZapierTestState('idle');
+    setZapierTestMessage('');
     setPipedriveTestState('idle');
     setPipedriveTestMessage('');
     setUnlockDomain(false);
@@ -805,6 +1004,7 @@ export function DashboardClient({
           beehiivPublicationId: snapshot.beehiivPublicationId,
           substackPublication: snapshot.substackPublication,
           slackWebhookUrl: snapshot.slackWebhookUrl,
+          zapierWebhookUrl: snapshot.zapierWebhookUrl,
           pipedriveApiToken: snapshot.pipedriveApiToken,
           calendarWebhookEnabled: snapshot.calendarWebhookEnabled,
         }),
@@ -892,6 +1092,27 @@ export function DashboardClient({
     } catch (testError) {
       setPipedriveTestState('error');
       setPipedriveTestMessage(testError instanceof Error ? testError.message : 'Could not test the Pipedrive connection.');
+    }
+  }
+
+  async function testZapier() {
+    setZapierTestState('saving');
+    setZapierTestMessage('');
+    const savedAccount = dirty.current.delivery ? await saveAccount('delivery') : accountRef.current;
+    if (!savedAccount?.zapierWebhookUrl) {
+      setZapierTestState('error');
+      setZapierTestMessage('Add a Zapier Catch Hook URL before sending a test.');
+      return;
+    }
+    try {
+      const response = await fetch('/api/account/zapier/test', { method: 'POST' });
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error || 'Could not send a Zapier test webhook.');
+      setZapierTestState('saved');
+      setZapierTestMessage('Test event sent. Return to Zapier and test the trigger.');
+    } catch (testError) {
+      setZapierTestState('error');
+      setZapierTestMessage(testError instanceof Error ? testError.message : 'Could not send a Zapier test webhook.');
     }
   }
 
@@ -1161,6 +1382,16 @@ export function DashboardClient({
                 testState={slackTestState}
               />
 
+              <ZapierSetup
+                account={account}
+                onCommit={() => commitSection('delivery')}
+                onPatch={(updates) => patchAccount(updates, 'delivery')}
+                onTest={() => void testZapier()}
+                saveState={sectionState.delivery}
+                testMessage={zapierTestMessage}
+                testState={zapierTestState}
+              />
+
               <PipedriveSetup
                 account={account}
                 onCommit={() => commitSection('delivery')}
@@ -1171,6 +1402,14 @@ export function DashboardClient({
                 testState={pipedriveTestState}
               />
 
+              <KitConnectionSetup
+                account={account}
+                onAccountUpdated={(nextAccount) => {
+                  accountRef.current = nextAccount;
+                  setAccount(nextAccount);
+                }}
+              />
+
               <details className={`${connectionCardClass} lg:col-span-2`}>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
                   <div className="flex min-w-0 gap-3">
@@ -1178,7 +1417,7 @@ export function DashboardClient({
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink-950">Newsletter</p>
                       <p className="mt-0.5 text-xs leading-5 text-ink-600">
-                        Forward signups to Beehiiv or Substack. They are always saved in Magnets too.
+                        Forward signups to Beehiiv, Substack, or Kit. They are always saved in Magnets too.
                       </p>
                     </div>
                   </div>

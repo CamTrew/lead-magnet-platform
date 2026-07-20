@@ -48,7 +48,14 @@ export interface AccountSettings {
   beehiivApiKey: string;
   beehiivPublicationId: string;
   substackPublication: string;
+  kitAccessToken: string;
+  kitRefreshToken: string;
+  kitTokenExpiresAt: string | null;
+  kitAccountId: string;
+  kitAccountName: string;
+  kitConnected: boolean;
   slackWebhookUrl: string;
+  zapierWebhookUrl: string;
   pipedriveApiToken: string;
   resendReturnPath: string;
   calendarWebhookEnabled: boolean;
@@ -158,6 +165,39 @@ export interface LeadMagnet {
   published: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HostedResource {
+  id: string;
+  accountId: string;
+  name: string;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  publicToken: string;
+  publicUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadMagnetAnalyticsDay {
+  date: string;
+  visits: number;
+  conversions: number;
+}
+
+export interface LeadMagnetAnalytics {
+  totalVisits: number;
+  totalConversions: number;
+  totalVideoPlays: number;
+  totalQuizCompletions: number;
+  conversionRate: number;
+  averageEngagedSeconds: number;
+  recentVisits: number;
+  recentConversions: number;
+  recentVideoPlays: number;
+  recentQuizCompletions: number;
+  daily: LeadMagnetAnalyticsDay[];
 }
 
 export type LeadMagnetSummary = Pick<

@@ -59,7 +59,7 @@ export function encryptSecret(value: string | undefined) {
   const key = encryptionKey();
   if (!key) {
     // No silent plaintext storage, ever. The previous behaviour wrote the raw
-    // Resend/Beehiiv key into Postgres when NODE_ENV !== 'production', which
+    // Resend/Beehiiv key (or Kit OAuth token) into Postgres when NODE_ENV !== 'production', which
     // meant a misconfigured deploy or a forgotten env var on a dev box could
     // leak credentials. Refuse instead — the caller surfaces this as a 500.
     throw new SecretConfigurationError();

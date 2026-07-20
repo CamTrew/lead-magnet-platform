@@ -15,6 +15,7 @@ const SECRET_KEY_PATTERNS = [
   /sk_[A-Za-z0-9_-]{8,}/g, // generic "secret"-style API keys
   /Bearer\s+[A-Za-z0-9._-]{8,}/gi,
   /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9_/-]+/g,
+  /https:\/\/hooks\.zapier\.com\/hooks\/catch\/[A-Za-z0-9_/-]+/g,
 ];
 
 const FORBIDDEN_FIELDS = new Set([
@@ -34,8 +35,14 @@ const FORBIDDEN_FIELDS = new Set([
   'authorization',
   'resendApiKey',
   'beehiivApiKey',
+  'kitAccessToken',
+  'kit_access_token',
+  'kitRefreshToken',
+  'kit_refresh_token',
   'slackWebhookUrl',
   'slack_webhook_url',
+  'zapierWebhookUrl',
+  'zapier_webhook_url',
   'pipedriveApiToken',
   'pipedrive_api_token',
   'apiKey',

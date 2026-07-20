@@ -47,7 +47,13 @@ export const accounts = pgTable(
     beehiivApiKey: text('beehiiv_api_key').notNull().default(''),
     beehiivPublicationId: text('beehiiv_publication_id').notNull().default(''),
     substackPublication: text('substack_publication').notNull().default(''),
+    kitAccessToken: text('kit_access_token').notNull().default(''),
+    kitRefreshToken: text('kit_refresh_token').notNull().default(''),
+    kitTokenExpiresAt: timestamp('kit_token_expires_at', { withTimezone: true }),
+    kitAccountId: text('kit_account_id').notNull().default(''),
+    kitAccountName: text('kit_account_name').notNull().default(''),
     slackWebhookUrl: text('slack_webhook_url').notNull().default(''),
+    zapierWebhookUrl: text('zapier_webhook_url').notNull().default(''),
     pipedriveApiToken: text('pipedrive_api_token').notNull().default(''),
     // Subdomain we tell Resend to put the sending DNS under (MX / SPF / DKIM).
     // Empty until the user enters a sending domain in Configure; we probe their
@@ -177,6 +183,8 @@ export const leadMagnets = pgTable(
   ]
 );
 
+// AI/MAINTAINER CONTEXT: conversation memory belongs to one magnet and cascades
+// with it. Ownership is derived through leadMagnets; no public lookup by id.
 export const leadMagnetCopilotMessages = pgTable(
   'magnets_lead_magnet_copilot_messages',
   {
@@ -194,6 +202,71 @@ export const leadMagnetCopilotMessages = pgTable(
   ]
 );
 
+// Blob data is private. publicToken is the revocable customer-facing capability;
+// blobUrl is internal storage metadata and must never be exposed as the share URL.
+export const hostedResources = pgTable(
+  'magnets_hosted_resources',
+  {
+    id: uuid('id').primaryKey(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    blobUrl: text('blob_url').notNull(),
+    publicToken: uuid('public_token').defaultRandom().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('magnets_hosted_resources_blob_url_unique').on(table.blobUrl),
+    uniqueIndex('magnets_hosted_resources_public_token_unique').on(table.publicToken),
+    index('magnets_hosted_resources_account_created_idx').on(table.accountId, table.createdAt),
+  ]
+);
+
+// One anonymous browser session per magnet. The unique key makes heartbeats an
+// upsert target and prevents page refreshes from inflating the visit count.
+export const leadMagnetVisits = pgTable(
+  'magnets_lead_magnet_visits',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    leadMagnetId: uuid('lead_magnet_id')
+      .notNull()
+      .references(() => leadMagnets.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id').notNull(),
+    engagedSeconds: integer('engaged_seconds').notNull().default(0),
+    convertedAt: timestamp('converted_at', { withTimezone: true }),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('magnets_lead_magnet_visits_magnet_session_unique').on(
+      table.leadMagnetId,
+      table.sessionId
+    ),
+    index('magnets_lead_magnet_visits_account_first_seen_idx').on(
+      table.accountId,
+      table.firstSeenAt
+    ),
+    index('magnets_lead_magnet_visits_magnet_first_seen_idx').on(
+      table.leadMagnetId,
+      table.firstSeenAt
+    ),
+    index('magnets_lead_magnet_visits_magnet_converted_idx').on(
+      table.leadMagnetId,
+      table.convertedAt
+    ),
+  ]
+);
+
+// The magnet/email unique key is the final duplicate-send guard for repeated or
+// concurrent form submissions. Sequence edits repair automation separately.
 export const followUpRuns = pgTable(
   'magnets_follow_up_runs',
   {
@@ -234,6 +307,8 @@ export const submissions = pgTable(
       .references(() => leadMagnets.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     email: text('email').notNull(),
+    postSignupVideoPlayedAt: timestamp('post_signup_video_played_at', { withTimezone: true }),
+    postSignupQuizCompletedAt: timestamp('post_signup_quiz_completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -293,9 +368,29 @@ export const rateLimits = pgTable(
 
 export const accountsRelations = relations(accounts, ({ many }) => ({
   leadMagnets: many(leadMagnets),
+  leadMagnetVisits: many(leadMagnetVisits),
+  hostedResources: many(hostedResources),
   submissions: many(submissions),
   quizResponses: many(quizResponses),
   followUpRuns: many(followUpRuns),
+}));
+
+export const hostedResourcesRelations = relations(hostedResources, ({ one }) => ({
+  account: one(accounts, {
+    fields: [hostedResources.accountId],
+    references: [accounts.id],
+  }),
+}));
+
+export const leadMagnetVisitsRelations = relations(leadMagnetVisits, ({ one }) => ({
+  account: one(accounts, {
+    fields: [leadMagnetVisits.accountId],
+    references: [accounts.id],
+  }),
+  leadMagnet: one(leadMagnets, {
+    fields: [leadMagnetVisits.leadMagnetId],
+    references: [leadMagnets.id],
+  }),
 }));
 
 export const leadMagnetsRelations = relations(leadMagnets, ({ one, many }) => ({
@@ -306,6 +401,7 @@ export const leadMagnetsRelations = relations(leadMagnets, ({ one, many }) => ({
   submissions: many(submissions),
   quizResponses: many(quizResponses),
   followUpRuns: many(followUpRuns),
+  visits: many(leadMagnetVisits),
   copilotMessages: many(leadMagnetCopilotMessages),
 }));
 

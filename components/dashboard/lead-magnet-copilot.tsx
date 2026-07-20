@@ -24,7 +24,7 @@ type DisplayMessage = LeadMagnetCopilotMessage & {
 const welcomeMessage: DisplayMessage = {
   id: 'welcome',
   role: 'assistant',
-  content: 'Tell me what your lead magnet is about, who it helps, and what they should get from it. Rough notes are enough. I can turn them into a complete first draft for the page and emails.',
+  content: 'What are you making, who is it for, and what should it help them do? Paste rough notes. I can shape the page and emails without inventing claims.',
 };
 
 const quickPrompts = [
@@ -35,6 +35,8 @@ const quickPrompts = [
 ];
 
 function draftFrom(leadMagnet: LeadMagnet): LeadMagnetCopilotDraft {
+  // Keep this an explicit allowlist. Passing the whole LeadMagnet would expose
+  // URLs, publishing, integration, quiz, and timing controls to model updates.
   return {
     title: leadMagnet.title,
     subtitle: leadMagnet.subtitle,
@@ -82,6 +84,8 @@ export function LeadMagnetCopilot({
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
+    // Chat history is magnet-scoped on the server. Reset local state on id
+    // changes so a previous magnet's memory never flashes into the next one.
     const controller = new AbortController();
     setLoadingHistory(true);
     setMessages([welcomeMessage]);
@@ -264,7 +268,7 @@ export function LeadMagnetCopilot({
               </span>
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-semibold text-ink-950">Writing copilot</h2>
-                <p className="truncate text-xs text-ink-500">Working on {leadMagnet.title}</p>
+                <p className="truncate text-xs text-ink-500">Remembers this magnet&apos;s chat</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -379,7 +383,7 @@ export function LeadMagnetCopilot({
               </button>
             </div>
             <p className="mt-2 px-1 text-[11px] leading-4 text-ink-500">
-              Changes update this draft. Click Save when you are ready.
+              This chat is saved to this magnet. Changes update the draft until you save.
             </p>
           </form>
           </motion.section>

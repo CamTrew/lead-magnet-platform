@@ -218,6 +218,10 @@ const schema = z.object({
   followUpEnabled: z.boolean(),
   followUpStopOnBooking: z.boolean(),
   followUpEmails: z.array(followUpEmailSchema).max(10),
+  // Provider resources are replaced only when the editor explicitly reports
+  // a follow-up edit. Full-form autosaves from older tabs otherwise make
+  // unrelated Delivery changes look like sequence mutations.
+  syncFollowUp: z.boolean().optional().default(false),
   // Accepted for compatibility with already-open editor tabs, but ignored.
   // Provider resource IDs are server-owned and must never be restored from a
   // stale browser payload.
@@ -429,8 +433,9 @@ export async function PUT(
         previousLeadMagnet?.followUpEmails.map((email) => [email.id, email.resendTemplateId]) || []
       );
       const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+      const { syncFollowUp, ...persistedData } = parsed.data;
       const updateData = {
-        ...parsed.data,
+        ...persistedData,
         // These IDs identify live provider resources. Keeping the database
         // values prevents a stale editor tab from orphaning an enabled
         // Automation or restoring an obsolete template ID.
@@ -469,7 +474,7 @@ export async function PUT(
       invalidatePublishedLeadMagnetCache();
 
       try {
-        if (!followUpAutomationNeedsSync(previousLeadMagnet, leadMagnet)) {
+        if (!syncFollowUp || !followUpAutomationNeedsSync(previousLeadMagnet, leadMagnet)) {
           log.info('Lead magnet updated', {
             route: ROUTE,
             method: 'PUT',

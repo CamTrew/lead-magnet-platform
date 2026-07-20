@@ -187,7 +187,7 @@ export async function GET(
     }
 
     if (isLeadMagnetDisplayImageUrl(source.imageUrl)) {
-      return streamBlob(request, source.imageUrl, source.published);
+      return await streamBlob(request, source.imageUrl, source.published);
     }
 
     // Never hold up the visitor while creating a smaller rendition. Serve the
@@ -218,10 +218,13 @@ export async function GET(
       return legacyCloudinaryImageResponse(source.imageUrl, source.published);
     }
 
-    return streamBlob(request, source.imageUrl, source.published);
+    return await streamBlob(request, source.imageUrl, source.published);
   } catch (err) {
-    const message = err instanceof Error ? err.message : '';
-    const fallback = isPublished && message.includes('No blob credentials found')
+    // A locally cached Vercel OIDC token can exist but be expired or invalid,
+    // which produces a 403 instead of the SDK's "No blob credentials" error.
+    // Published pages on a local host can safely use the live public proxy for
+    // any Blob read failure. Production hosts never enter this fallback.
+    const fallback = isPublished
       ? localPublishedImageFallback(request, leadMagnetId)
       : null;
 

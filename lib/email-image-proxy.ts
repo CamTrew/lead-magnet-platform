@@ -144,6 +144,8 @@ export function proxyEmailImagesInBody({
 
       return emailImageMarkdown({
         alt: segment.alt,
+        border: segment.border,
+        caption: segment.caption,
         url: publicEmailImageUrl(segment.url, baseUrl),
       });
     })

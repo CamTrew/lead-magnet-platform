@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/run-tsx.mjs scripts/upgrade-follow-up-renderer.ts --apply-if-production",
     "start": "next start",
     "lint": "eslint .",
     "smoke:follow-up": "node scripts/follow-up-smoke.mjs",
@@ -16,6 +17,10 @@
     "images:optimise": "node scripts/run-tsx.mjs scripts/migrate-lead-magnet-display-images.ts",
     "test:domain-lifecycle": "node scripts/run-tsx.mjs scripts/domain-lifecycle-smoke.ts",
     "test:quiz-routing": "node scripts/run-tsx.mjs scripts/quiz-routing-smoke.ts",
+    "test:hosted-resources": "node scripts/run-tsx.mjs scripts/hosted-resources-smoke.ts",
+    "test:lead-magnet-copilot": "node scripts/run-tsx.mjs scripts/lead-magnet-copilot-smoke.ts",
+    "test:kit-integration": "node scripts/run-tsx.mjs scripts/kit-integration-smoke.ts",
+    "test:zapier-webhook": "node scripts/run-tsx.mjs scripts/zapier-webhook-smoke.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",

@@ -1,4 +1,31 @@
-export type EmailImage = { alt: string; url: string };
+// AI/MAINTAINER CONTEXT:
+// Email bodies are persisted as a backwards-compatible text protocol. These
+// parsers therefore sit on a storage boundary: extend the grammar additively,
+// preserve unknown/legacy text, and keep parse -> serialize round trips stable.
+// A row is intentionally represented by multiple image tokens on one line so
+// old string records remain sendable without a separate editor-state column.
+export type EmailImageBorderStyle = 'dashed' | 'dotted' | 'solid';
+
+export type EmailImageBorder = {
+  color: string;
+  radius: number;
+  style: EmailImageBorderStyle;
+  width: number;
+};
+
+export const DEFAULT_EMAIL_IMAGE_BORDER: EmailImageBorder = {
+  color: '78716c',
+  radius: 12,
+  style: 'solid',
+  width: 1,
+};
+
+export type EmailImage = {
+  alt: string;
+  border?: EmailImageBorder | true;
+  caption?: string;
+  url: string;
+};
 
 export type EmailBodySegment =
   | { kind: 'text'; raw: string }
@@ -17,18 +44,105 @@ export type EmailImageInsertion = {
   targetMedia?: string;
 };
 
-const emailImageLinePattern = /^!\[([^\]\n]{0,120})\]\((https?:\/\/[^\s)]+)\)$/;
+const emailImageLinePattern = /^!\[([^\]\n]{0,120})\]\((https?:\/\/[^\s)]+)\)((?:\{[^}\n]+\})*)$/;
+
+export function normaliseEmailImageBorder(
+  border: EmailImage['border']
+): EmailImageBorder | null {
+  if (!border) return null;
+  if (border === true) return { ...DEFAULT_EMAIL_IMAGE_BORDER };
+  return {
+    color: /^[0-9a-f]{6}$/i.test(border.color) ? border.color.toLowerCase() : DEFAULT_EMAIL_IMAGE_BORDER.color,
+    radius: Math.max(0, Math.min(32, Math.round(border.radius))),
+    style: ['dashed', 'dotted', 'solid'].includes(border.style)
+      ? border.style
+      : DEFAULT_EMAIL_IMAGE_BORDER.style,
+    width: Math.max(1, Math.min(8, Math.round(border.width))),
+  };
+}
+
+export function emailImageWithBorder(
+  image: EmailImage,
+  border: EmailImageBorder | undefined
+): EmailImage {
+  return { ...image, border };
+}
+
+function parseEmailImageBorder(value: string) {
+  if (!value) return null;
+  if (value === 'border') return { ...DEFAULT_EMAIL_IMAGE_BORDER };
+  if (!value.startsWith('border=')) return null;
+
+  const [rawWidth, rawRadius, rawStyle, rawColor] = value.slice('border='.length).split(',');
+  const width = Number(rawWidth);
+  const radius = Number(rawRadius);
+  if (
+    !Number.isInteger(width)
+    || width < 1
+    || width > 8
+    || !Number.isInteger(radius)
+    || radius < 0
+    || radius > 32
+    || !['dashed', 'dotted', 'solid'].includes(rawStyle)
+    || !/^[0-9a-f]{6}$/i.test(rawColor || '')
+  ) return null;
+
+  return {
+    color: rawColor.toLowerCase(),
+    radius,
+    style: rawStyle as EmailImageBorderStyle,
+    width,
+  };
+}
+
+function safeImageCaption(value: string) {
+  return value.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
+function parseEmailImageModifiers(value: string) {
+  let border: EmailImageBorder | null = null;
+  let caption = '';
+  const modifiers = Array.from(value.matchAll(/\{([^}]+)\}/g), (match) => match[1]);
+
+  for (const modifier of modifiers) {
+    if (modifier === 'border' || modifier.startsWith('border=')) {
+      if (border) return null;
+      border = parseEmailImageBorder(modifier);
+      if (!border) return null;
+      continue;
+    }
+
+    if (modifier.startsWith('caption=')) {
+      if (caption) return null;
+      try {
+        caption = safeImageCaption(decodeURIComponent(modifier.slice('caption='.length)));
+      } catch {
+        return null;
+      }
+      if (!caption) return null;
+      continue;
+    }
+
+    return null;
+  }
+
+  return { border, caption };
+}
 
 export function parseEmailImageLine(line: string) {
   const match = line.trim().match(emailImageLinePattern);
   if (!match) return null;
 
-  const [, alt = '', rawUrl = ''] = match;
+  const [, alt = '', rawUrl = '', rawModifiers = ''] = match;
+  const modifiers = parseEmailImageModifiers(rawModifiers);
+  if (!modifiers) return null;
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
     return {
       alt: alt.trim() || 'Email image',
+      ...(modifiers.border ? { border: modifiers.border } : {}),
+      ...(modifiers.caption ? { caption: modifiers.caption } : {}),
       url: url.toString(),
     };
   } catch {
@@ -57,7 +171,20 @@ function safeImageAlt(value: string) {
 }
 
 export function emailImageMarkdown(image: EmailImage) {
-  return `![${safeImageAlt(image.alt)}](${image.url})`;
+  const border = normaliseEmailImageBorder(image.border);
+  const modifiers: string[] = [];
+  if (border) {
+    const isDefault = border.color === DEFAULT_EMAIL_IMAGE_BORDER.color
+      && border.radius === DEFAULT_EMAIL_IMAGE_BORDER.radius
+      && border.style === DEFAULT_EMAIL_IMAGE_BORDER.style
+      && border.width === DEFAULT_EMAIL_IMAGE_BORDER.width;
+    modifiers.push(isDefault
+      ? '{border}'
+      : `{border=${border.width},${border.radius},${border.style},${border.color}}`);
+  }
+  const caption = safeImageCaption(image.caption || '');
+  if (caption) modifiers.push(`{caption=${encodeURIComponent(caption)}}`);
+  return `![${safeImageAlt(image.alt)}](${image.url})${modifiers.join('')}`;
 }
 
 export function emailImageRowMarkdown(images: EmailImage[]) {
@@ -117,7 +244,7 @@ export function serializeEmailBodyBlocks(blocks: EmailBodyBlock[]) {
 }
 
 function imagesInEmailBodyBlock(block: EmailBodyBlock) {
-  if (block.kind === 'image') return [{ alt: block.alt, url: block.url }];
+  if (block.kind === 'image') return [{ alt: block.alt, border: block.border, caption: block.caption, url: block.url }];
   if (block.kind === 'image-row') return block.images;
   return [];
 }
@@ -204,7 +331,7 @@ export function insertEmailImages(
     const target = blocks[insertion.segmentIndex];
     if (target?.kind === 'image') {
       const row = emailImageRowMarkdown([
-        { alt: target.alt, url: target.url },
+        { alt: target.alt, border: target.border, caption: target.caption, url: target.url },
         ...cleanImages,
       ]);
       return joinInsertedSegments(

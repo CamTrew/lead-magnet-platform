@@ -1,9 +1,21 @@
 import {
+  normaliseEmailImageBorder,
   parseEmailImageLine,
   parseEmailImageRowLine,
 } from './email-body-images';
-import { renderEmailFormattedHtml, renderEmailInlineText } from './email-body-links';
+import {
+  collectEmailHeadings,
+  parseYouTubeVideoUrl,
+  renderEmailFormattedHtml,
+  renderEmailInlineText,
+  type EmailMarkupContext,
+} from './email-body-links';
 
+// AI/MAINTAINER CONTEXT:
+// These functions are the canonical output for editor preview, immediate
+// delivery, and follow-up templates. Use conservative email-safe HTML (tables,
+// inline styles, explicit widths). If output changes, check whether the stored
+// follow-up render version must be bumped and run both email smoke suites.
 export const MAGNETS_EMAIL_FOOTER_TEXT = 'Powered by Magnets: https://magnets.so';
 export const MAGNETS_EMAIL_FOOTER_HTML = '<table class="magnets-email-footer" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#080d18;border-radius:0 0 12px 12px"><tr><td align="center" style="padding:30px 20px"><a href="https://magnets.so" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:11px 16px;background:#ffffff;border:1px solid #d6d3d1;border-radius:6px;font:600 14px/20px Arial,sans-serif;color:#292524;text-decoration:none"><img src="https://magnets.so/brand/magnets-mark.png" alt="" width="22" height="22" style="display:inline-block;width:22px;height:22px;margin-right:8px;border:0;vertical-align:middle" /><span style="vertical-align:middle">Powered by Magnets</span></a></td></tr></table>';
 
@@ -30,30 +42,68 @@ export function cleanPreviewText(value: string) {
 }
 
 export function renderEmailTextFallback(text: string) {
+  // Plain text is a real delivery part, not debug output. Every structural
+  // token added to the HTML renderer needs a useful degradation here too.
+  const headings = collectEmailHeadings(text);
+  let footnoteNumber = 0;
   return cleanEmailText(
     text
       .split('\n')
       .map((line) => {
         const row = parseEmailImageRowLine(line);
-        if (row) return row.map((image) => `${image.alt}: ${image.url}`).join('\n');
+        if (row) return row.map((image) => (
+          `${image.alt}: ${image.url}${image.caption ? `\n${image.caption}` : ''}`
+        )).join('\n');
         const image = parseEmailImageLine(line);
-        if (image) return `${image.alt}: ${image.url}`;
+        if (image) return `${image.alt}: ${image.url}${image.caption ? `\n${image.caption}` : ''}`;
         if (/^---\s*$/.test(line)) return '----------------------------------------';
-        return renderEmailInlineText(line.replace(/^#{1,3}\s+/, ''));
+        if (/^\[\[toc\]\]\s*$/.test(line)) {
+          return headings.length > 0
+            ? `In this email:\n${headings.map((heading, index) => `${index + 1}. ${heading.label}`).join('\n')}`
+            : '';
+        }
+        const section = line.match(/^:::section(?:\s+(.+))?$/);
+        if (section) return section[1] || 'Section';
+        const columns = line.match(/^:::columns\s+(.+?)\s+\|\|\|\s+(.+)$/);
+        if (columns) return `${renderEmailInlineText(columns[1])}\n${renderEmailInlineText(columns[2])}`;
+        const footnote = line.match(/^:::footnote(?:\s+(.+))?$/);
+        if (footnote) return `Footnote ${++footnoteNumber}: ${renderEmailInlineText(footnote[1] || 'Footnote')}`;
+        const youtube = line.match(/^:::youtube(?:\s+(.+))?$/);
+        if (youtube) {
+          const video = parseYouTubeVideoUrl(youtube[1] || '');
+          return video ? `YouTube video: ${video.url}` : '';
+        }
+        return renderEmailInlineText(line.replace(/^(?:#{1,6}|>{1,3})\s+/, ''));
       })
       .join('\n')
   );
 }
 
-function renderSingleImage(image: { alt: string; url: string }) {
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0"><tr><td align="center"><img src="${escapeEmailHtml(image.url)}" alt="${escapeEmailHtml(image.alt)}" width="440" style="display:block;width:100%;max-width:440px;height:auto;margin:0 auto;border:0;border-radius:12px" /></td></tr></table>`;
+function emailImageStyles(image: Parameters<typeof normaliseEmailImageBorder>[0]) {
+  const border = normaliseEmailImageBorder(image);
+  return {
+    border: border ? `${border.width}px ${border.style} #${border.color}` : '0',
+    radius: border?.radius ?? 12,
+  };
 }
 
-function renderImageRow(images: Array<{ alt: string; url: string }>) {
+function renderSingleImage(image: NonNullable<ReturnType<typeof parseEmailImageLine>>) {
+  const styles = emailImageStyles(image.border);
+  const caption = image.caption
+    ? `<div style="max-width:440px;margin:8px auto 0;font:italic 13px/1.45 Arial,sans-serif;color:#6b7280;text-align:center">${escapeEmailHtml(image.caption)}</div>`
+    : '';
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0"><tr><td align="center"><img src="${escapeEmailHtml(image.url)}" alt="${escapeEmailHtml(image.alt)}" width="440" style="display:block;box-sizing:border-box;width:100%;max-width:440px;height:auto;margin:0 auto;border:${styles.border};border-radius:${styles.radius}px" />${caption}</td></tr></table>`;
+}
+
+function renderImageRow(images: NonNullable<ReturnType<typeof parseEmailImageRowLine>>) {
   const width = Math.floor(100 / images.length);
   const cells = images.map((image, index) => {
     const side = index === 0 ? 'right' : index === images.length - 1 ? 'left' : 'left-right';
-    return `<td class="magnets-image-column magnets-image-column--${side}" width="${width}%" valign="top" style="width:${width}%;padding:${index === 0 ? '0 6px 0 0' : index === images.length - 1 ? '0 0 0 6px' : '0 6px'}"><img src="${escapeEmailHtml(image.url)}" alt="${escapeEmailHtml(image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:0;border-radius:12px" /></td>`;
+    const styles = emailImageStyles(image.border);
+    const caption = image.caption
+      ? `<div style="margin-top:8px;font:italic 13px/1.45 Arial,sans-serif;color:#6b7280;text-align:center">${escapeEmailHtml(image.caption)}</div>`
+      : '';
+    return `<td class="magnets-image-column magnets-image-column--${side}" width="${width}%" valign="top" style="width:${width}%;padding:${index === 0 ? '0 6px 0 0' : index === images.length - 1 ? '0 0 0 6px' : '0 6px'}"><img src="${escapeEmailHtml(image.url)}" alt="${escapeEmailHtml(image.alt)}" style="display:block;box-sizing:border-box;width:100%;max-width:100%;height:auto;border:${styles.border};border-radius:${styles.radius}px" />${caption}</td>`;
   }).join('');
 
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0;table-layout:fixed"><tr>${cells}</tr></table>`;
@@ -62,11 +112,16 @@ function renderImageRow(images: Array<{ alt: string; url: string }>) {
 export function renderEmailBodyHtml(text: string) {
   const chunks: string[] = [];
   const textBuffer: string[] = [];
+  const context: EmailMarkupContext = {
+    footnoteCursor: { value: 0 },
+    headingCursor: { value: 0 },
+    headings: collectEmailHeadings(text),
+  };
 
   const flushText = () => {
     const textChunk = cleanEmailText(textBuffer.join('\n'));
     textBuffer.length = 0;
-    if (textChunk) chunks.push(renderEmailFormattedHtml(textChunk));
+    if (textChunk) chunks.push(renderEmailFormattedHtml(textChunk, 'email', context));
   };
 
   for (const line of text.split('\n')) {
@@ -104,7 +159,7 @@ export function renderPlainEmailHtml(
     ? `<tr><td class="magnets-email-footer-cell" style="padding:0">${footerHtml}</td></tr>`
     : '';
 
-  return `${preheader}<style>@media only screen and (max-width:520px){.magnets-email-shell{padding:0!important}.magnets-email-card{border-radius:0!important;border-left:0!important;border-right:0!important}.magnets-email-content{padding:24px 18px!important}.magnets-email-footer{border-radius:0!important}.magnets-image-column{display:block!important;width:100%!important;padding:0 0 12px!important}}</style><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;background:#ffffff"><tr><td class="magnets-email-shell" align="center" style="padding:32px 16px"><table class="magnets-email-card" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:14px"><tr><td class="magnets-email-content" style="padding:34px 24px;font-family:Arial,sans-serif;color:#111827">${content}</td></tr>${footerRow}</table></td></tr></table>`;
+  return `${preheader}<style>@media only screen and (max-width:520px){.magnets-email-shell{padding:0!important}.magnets-email-card{border-radius:0!important;border-left:0!important;border-right:0!important}.magnets-email-content{padding:24px 18px!important}.magnets-email-footer{border-radius:0!important}.magnets-image-column,.magnets-text-column{display:block!important;width:100%!important;padding:0 0 12px!important}}</style><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;background:#ffffff"><tr><td class="magnets-email-shell" align="center" style="padding:32px 16px"><table class="magnets-email-card" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:14px"><tr><td class="magnets-email-content" style="padding:34px 24px;font-family:Arial,sans-serif;color:#111827">${content}</td></tr>${footerRow}</table></td></tr></table>`;
 }
 
 export function renderFollowUpOptOutHtml(stopUrl: string) {

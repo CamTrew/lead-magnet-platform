@@ -2,7 +2,12 @@ import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addToBeehiiv } from '@/lib/beehiiv';
 import { addToSubstack } from '@/lib/substack';
-import { findLeadMagnet, recordSubmission } from '@/lib/platform-store';
+import { addToKit } from '@/lib/kit';
+import {
+  findLeadMagnet,
+  markLeadMagnetVisitConverted,
+  recordSubmission,
+} from '@/lib/platform-store';
 import { isEmailDeliveryReady } from '@/lib/setup';
 import {
   enforceRateLimits,
@@ -15,6 +20,7 @@ import { startLeadMagnetFollowUpSequence } from '@/lib/follow-up-sequences';
 import { log } from '@/lib/logger';
 import { sendSlackSignupNotification } from '@/lib/slack';
 import { upsertPipedrivePerson } from '@/lib/pipedrive';
+import { sendZapierSignupWebhook } from '@/lib/zapier';
 import type { AccountSettings, LeadMagnet } from '@/lib/types';
 
 const ROUTE = '/api/submit';
@@ -25,6 +31,7 @@ const schema = z.object({
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/),
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254),
+  analyticsSessionId: z.string().uuid().optional(),
 }).strict();
 
 async function runPostSubmissionWork({
@@ -32,12 +39,17 @@ async function runPostSubmissionWork({
   email,
   leadMagnet,
   name,
+  submissionId,
 }: {
   account: AccountSettings;
   leadMagnet: LeadMagnet;
   name: string;
   email: string;
+  submissionId: string;
 }) {
+  // AI/MAINTAINER CONTEXT: these are optional fan-out destinations. allSettled
+  // is intentional: one provider outage must not suppress another provider or
+  // retroactively fail a signup whose email/submission were already accepted.
   const tasks = [
     {
       name: 'Beehiiv subscribe and tag',
@@ -45,8 +57,16 @@ async function runPostSubmissionWork({
     },
     { name: 'Substack subscribe', run: () => addToSubstack(account, email) },
     {
+      name: 'Kit subscribe and tag',
+      run: () => addToKit({ account, email, leadMagnet, name }),
+    },
+    {
       name: 'Slack signup notification',
       run: () => sendSlackSignupNotification({ account, leadMagnet, email, name }),
+    },
+    {
+      name: 'Zapier signup webhook',
+      run: () => sendZapierSignupWebhook({ account, leadMagnet, email, name, submissionId }),
     },
     { name: 'Pipedrive signup sync', run: () => upsertPipedrivePerson({ account, email, name }) },
   ];
@@ -67,7 +87,7 @@ async function runPostSubmissionWork({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
-    const { accountId, leadMagnetId, slug, name, email } = schema.parse(body);
+    const { accountId, analyticsSessionId, leadMagnetId, slug, name, email } = schema.parse(body);
     const normalizedEmail = email.toLowerCase();
 
     await enforceRateLimits([{
@@ -159,6 +179,24 @@ export async function POST(request: NextRequest) {
       email: normalizedEmail,
     });
 
+    if (analyticsSessionId) {
+      try {
+        await markLeadMagnetVisitConverted({
+          accountId,
+          leadMagnetId,
+          sessionId: analyticsSessionId,
+        });
+      } catch (analyticsError) {
+        // Analytics can never make an otherwise successful signup fail.
+        log.warn('Lead magnet conversion attribution failed (signup retained)', {
+          route: ROUTE,
+          method: 'POST',
+          accountId,
+          extra: { leadMagnetId, error: analyticsError },
+        });
+      }
+    }
+
     // Starting the sequence is part of accepting a signup, not optional
     // background enrichment. Await it so the run is always persisted before
     // this request completes. Failures remain non-fatal for the subscriber,
@@ -188,12 +226,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Next's after() keeps best-effort provider work attached to the request
+    // lifecycle without making the visitor wait. Do not move recordSubmission
+    // or sequence-run persistence into this callback.
     after(() =>
       runPostSubmissionWork({
         account: result.account,
         leadMagnet: result.leadMagnet,
         email: normalizedEmail,
         name,
+        submissionId: submission.id,
       })
     );
 

@@ -104,6 +104,23 @@ const bannedPhrases = [
   "there's a lot to work with here",
   'plenty of meat on the bone',
   'easy win',
+  "in today's fast-paced world",
+  "in today's digital landscape",
+  "whether you're",
+  'not just',
+  'more than just',
+  'imagine if',
+  'ultimate guide',
+  'powerful tool',
+  'seamless experience',
+  'comprehensive solution',
+  'valuable insights',
+  'actionable insights',
+  'take your business to the next level',
+  'embark on a journey',
+  'navigate the complexities',
+  'ever-evolving',
+  'in a world where',
 ] as const;
 
 const headingFields = new Set([

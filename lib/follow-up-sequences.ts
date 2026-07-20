@@ -20,10 +20,11 @@ import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
-// Increment whenever stored Resend templates need to be rebuilt with new HTML.
-// Version 3 replaces the legacy pre-wrapped Markdown output with real email
-// headings, emphasis, dividers, and lists.
-export const FOLLOW_UP_RENDER_VERSION = 7;
+// AI/MAINTAINER CONTEXT: increment whenever stored Resend templates need to be
+// rebuilt with new HTML. This is deliberately separate from a magnet's content
+// fingerprint: renderer upgrades and copy edits are different reasons to
+// repair an automation. Never reset active run rows merely to refresh markup.
+export const FOLLOW_UP_RENDER_VERSION = 8;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
@@ -85,6 +86,8 @@ function ensureResendReady(account: AccountSettings) {
 }
 
 function eventName(kind: 'signup' | 'booked', leadMagnetId: string) {
+  // Magnet-scoped event names prevent one sequence's signup/booking event from
+  // starting or stopping a different magnet's automation in the same account.
   return `magnets.lead_magnet.${leadMagnetId}.${kind}`;
 }
 
@@ -146,7 +149,20 @@ export function followUpAutomationNeedsProviderSync(magnet: LeadMagnet) {
 }
 
 function followUpEmailsChanged(a: FollowUpEmail[], b: FollowUpEmail[]) {
-  return JSON.stringify(a) !== JSON.stringify(b);
+  const contentSignature = (emails: FollowUpEmail[]) => normaliseFollowUpEmails(emails)
+    .map((email) => ({
+      body: email.body,
+      delayMinutes: email.delayMinutes,
+      id: email.id,
+      preview: email.preview,
+      subject: email.subject,
+    }));
+
+  // Provider template IDs, legacy delayHours values, and object property order
+  // are implementation metadata. Comparing raw JSON made an old editor bundle
+  // look like it had changed follow-up copy during an unrelated Delivery edit,
+  // which unnecessarily attempted a Resend replacement on every autosave.
+  return JSON.stringify(contentSignature(a)) !== JSON.stringify(contentSignature(b));
 }
 
 export function followUpAutomationNeedsSync(previous: LeadMagnet | null, next: LeadMagnet) {
@@ -154,8 +170,12 @@ export function followUpAutomationNeedsSync(previous: LeadMagnet | null, next: L
     return Boolean(next.resendFollowUpAutomationId);
   }
 
-  if (followUpAutomationNeedsProviderSync(next)) return true;
-  if (!previous) return true;
+  // An older provider render version is upgraded by the dedicated production
+  // upgrade job. Do not replace a live Automation merely because somebody
+  // edited the landing page or delivery email: those fields are unrelated,
+  // and a local environment may intentionally be unable to decrypt production
+  // provider credentials. Real follow-up changes still create a replacement.
+  if (!previous) return followUpAutomationNeedsProviderSync(next);
 
   return previous.followUpEnabled !== next.followUpEnabled
     || previous.followUpStopOnBooking !== next.followUpStopOnBooking

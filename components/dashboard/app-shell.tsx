@@ -9,6 +9,7 @@ import {
   Bug,
   CircleHelp,
   FileText,
+  FolderOpen,
   LayoutDashboard,
   Loader2,
   LogOut,
@@ -25,6 +26,7 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard/pages', icon: FileText, label: 'Pages', requiresSetup: true },
+  { href: '/dashboard/resources', icon: FolderOpen, label: 'Hosted resource', requiresSetup: false },
   { href: '/dashboard/signups', icon: Users, label: 'Signups', requiresSetup: true },
   {
     href: '/dashboard',

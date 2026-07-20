@@ -1,9 +1,10 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  BarChart3,
   ExternalLink,
   ImageIcon,
   Loader2,
@@ -18,11 +19,34 @@ import {
 } from '@/components/ui/aceternity';
 import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 import { PageHeader } from '@/components/dashboard/app-shell';
-import type { DashboardBasePayload, LeadMagnet, LeadMagnetSummary } from '@/lib/types';
+import { LeadMagnetAnalyticsView } from '@/components/dashboard/lead-magnet-analytics-view';
+import type {
+  DashboardBasePayload,
+  LeadMagnet,
+  LeadMagnetAnalytics,
+  LeadMagnetSummary,
+} from '@/lib/types';
 import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from '@/lib/limits';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+type AnalyticsLeadMagnet = Pick<
+  LeadMagnet,
+  | 'id'
+  | 'title'
+  | 'published'
+  | 'postSignupMode'
+  | 'postSignupVideoUrl'
+  | 'postSignupQuizEnabled'
+  | 'postSignupQuizQuestions'
+>;
+
+type AnalyticsResponse = {
+  analytics: LeadMagnetAnalytics;
+  leadMagnet: AnalyticsLeadMagnet;
+  pageUrl: string;
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', {
@@ -234,6 +258,104 @@ function PageThumbnail({ imageUrl, title }: Pick<LeadMagnetSummary, 'imageUrl' |
   );
 }
 
+function AnalyticsModal({
+  onClose,
+  target,
+}: {
+  onClose: () => void;
+  target: Pick<LeadMagnetSummary, 'id' | 'title'>;
+}) {
+  useModalAccessibility(onClose);
+  const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setData(null);
+    setError('');
+
+    void fetch(`/api/lead-magnets/${target.id}/analytics`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => null) as (AnalyticsResponse & { error?: string }) | null;
+        if (!response.ok || !body) throw new Error(body?.error || 'Analytics could not be loaded.');
+        setData(body);
+      })
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
+        setError(fetchError instanceof Error ? fetchError.message : 'Analytics could not be loaded.');
+      });
+
+    return () => controller.abort();
+  }, [target.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/30 p-3 backdrop-blur-sm sm:p-6">
+      <button aria-label="Close analytics" className="absolute inset-0" onClick={onClose} type="button" />
+      <div
+        aria-label={`Analytics for ${target.title}`}
+        aria-modal="true"
+        className="relative z-10 flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl"
+        role="dialog"
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-ink-200 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold text-ink-950">Analytics</h2>
+            <p className="truncate text-xs text-ink-500">{target.title}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {data?.leadMagnet.published && (
+              <a
+                aria-label="Open published page"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition hover:bg-ink-50"
+                href={data.pageUrl}
+                rel="noreferrer"
+                target="_blank"
+                title="View page"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            )}
+            <button
+              aria-label="Close analytics"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition hover:bg-ink-50"
+              onClick={onClose}
+              title="Close"
+              type="button"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-ink-50 p-4 sm:p-5">
+          {!data && !error && (
+            <div className="flex min-h-72 items-center justify-center text-sm text-ink-500">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading analytics
+            </div>
+          )}
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              {error}
+            </div>
+          )}
+          {data && (
+            <LeadMagnetAnalyticsView
+              analytics={data.analytics}
+              embedded
+              leadMagnet={data.leadMagnet}
+              pageUrl={data.pageUrl}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PagesClient({
   initialData,
   initialLeadMagnets,
@@ -253,6 +375,7 @@ export function PagesClient({
   const [openingPageId, setOpeningPageId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
+  const [analyticsTarget, setAnalyticsTarget] = useState<Pick<LeadMagnetSummary, 'id' | 'title'> | null>(null);
   const isCreating = createState === 'saving';
   const isCreateBusy = isCreating;
   const isOpening = Boolean(openingPageId) || isPending;
@@ -374,6 +497,9 @@ export function PagesClient({
           title={createTitle}
         />
       )}
+      {analyticsTarget && (
+        <AnalyticsModal onClose={() => setAnalyticsTarget(null)} target={analyticsTarget} />
+      )}
 
       <div className="mx-auto max-w-6xl space-y-4">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
@@ -405,8 +531,15 @@ export function PagesClient({
             </div>
           </div>
 
-          <div className="xl:overflow-x-auto">
-            <table className="block w-full text-left text-sm xl:table xl:min-w-[920px]">
+          <div>
+            <table className="block w-full text-left text-sm xl:table xl:table-fixed">
+              <colgroup className="hidden xl:table-column-group">
+                <col className="w-[32%]" />
+                <col className="w-[31%]" />
+                <col className="w-[11%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+              </colgroup>
               <thead className="hidden border-b border-ink-200 bg-ink-50 text-xs font-semibold uppercase text-ink-500 xl:table-header-group">
                 <tr>
                   <th className="px-5 py-3">Page</th>
@@ -490,22 +623,30 @@ export function PagesClient({
                           Actions
                         </span>
                         <div className="flex flex-nowrap items-center gap-2 xl:justify-end">
+                          <button
+                            aria-label={`View analytics for ${leadMagnet.title}`}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-900 transition hover:bg-ink-50"
+                            onClick={() => setAnalyticsTarget({ id: leadMagnet.id, title: leadMagnet.title })}
+                            title="Analytics"
+                            type="button"
+                          >
+                            <BarChart3 className="h-3.5 w-3.5" />
+                          </button>
                           {leadMagnet.published && (
                             <a
                               aria-label={`View ${leadMagnet.title}`}
-                              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-0 text-xs font-medium text-ink-900 transition hover:bg-ink-50 sm:h-8 sm:w-auto sm:px-3"
+                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-900 transition hover:bg-ink-50"
                               href={url}
                               rel="noreferrer"
                               target="_blank"
                               title={url}
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
-                              <span className="hidden sm:inline">View</span>
                             </a>
                           )}
                           <AceternityButton
                             aria-label={`Open ${leadMagnet.title}`}
-                            className="h-10 min-h-10 w-10 shrink-0 px-0 sm:h-8 sm:min-h-8 sm:w-auto sm:px-3"
+                            className="h-9 min-h-9 w-9 shrink-0 px-0"
                             disabled={isCreating || isOpening}
                             onClick={() => openLeadMagnet(leadMagnet.id)}
                             size="sm"
@@ -516,7 +657,6 @@ export function PagesClient({
                             ) : (
                               <Pencil className="h-4 w-4" />
                             )}
-                            <span className="hidden sm:inline">Open</span>
                           </AceternityButton>
                         </div>
                       </td>

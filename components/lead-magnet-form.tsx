@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { useLeadMagnetExperience } from '@/components/lead-magnet-experience';
 import { resolvePostSignupExperience } from '@/lib/post-signup';
+import { getLeadMagnetAnalyticsSessionId } from '@/lib/lead-magnet-analytics-client';
 import type { LeadMagnet } from '@/lib/types';
 
 function DefaultSuccess() {
@@ -54,7 +55,14 @@ export function LeadMagnetForm({
       const response = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, leadMagnetId: magnet.id, slug: magnet.slug, name, email }),
+        body: JSON.stringify({
+          accountId,
+          leadMagnetId: magnet.id,
+          slug: magnet.slug,
+          name,
+          email,
+          analyticsSessionId: getLeadMagnetAnalyticsSessionId(magnet.id) || undefined,
+        }),
       });
       const data = await response.json().catch(() => null) as { error?: string; submissionId?: string } | null;
       if (!response.ok) throw new Error(data?.error || 'Failed to submit');

@@ -15,8 +15,15 @@ The current build uses Neon Postgres for accounts, credentials, lead-magnet page
   - Sender email + Resend API key (required for sending).
   - Beehiiv API key + publication ID (optional).
   - Substack publication subdomain (optional).
+  - Kit OAuth connection (optional).
+  - Zapier Catch Hook URL (optional).
 - Setup is enforced — Pages and Signups unlock only when domain, subdomain, sender, and Resend key are all set.
 - Lead-magnet pages are edited inline (WYSIWYG) at `/dashboard/pages/[id]`.
+- Hosted resources can be uploaded to private Vercel Blob storage, managed in
+  an account-only card library, and shared through revocable unguessable links.
+- Each magnet has lightweight conversion analytics for anonymous visits,
+  successful form conversions, conversion rate, average engaged time, and
+  configuration-aware post-signup video plays and quiz completions.
 - Each page is published at:
   - `https://<subdomain>.<root-domain>/<slug>` — branded URL, served via Vercel + the customer's DNS.
   - `https://magnets.so/p/<uuid>` — platform fallback URL that works regardless of DNS status (always live, works locally too).
@@ -25,7 +32,7 @@ The current build uses Neon Postgres for accounts, credentials, lead-magnet page
   - CSV export.
   - Manual add (single row).
   - CSV import with explicit column mapping (no AI guessing).
-- Email delivery via the account's own Resend key. Optional Beehiiv and Substack forwarding.
+- Email delivery via the account's own Resend key. Optional Beehiiv, Substack, Kit, Slack, Pipedrive, and Zapier forwarding.
 - Vercel domain attach/detach is automated via the Vercel Projects-Domains API when env vars are set.
 
 ## Local development
@@ -53,6 +60,14 @@ MAGNETS_ENCRYPTION_KEY="long-random-string"      # `openssl rand -hex 32`
 NEXT_PUBLIC_SITE_URL="http://localhost:3000"     # optional; defaults to https://magnets.so
 ```
 
+Hosted Resource uploads require a separate Vercel Blob store created with
+private access and connected to the project. Set its id explicitly so hosted
+files can never fall back to the app's public image store:
+
+```txt
+HOSTED_RESOURCES_BLOB_STORE_ID="store_..."
+```
+
 For Vercel custom-domain auto-attach (optional but recommended in production):
 
 ```txt
@@ -61,7 +76,21 @@ VERCEL_PROJECT_ID="prj_..."
 VERCEL_TEAM_ID="team_..."   # only if the project lives on a team account
 ```
 
-Per-account Resend, Beehiiv, and Substack credentials are set by users in the dashboard, not as env vars. `MAGNETS_ENCRYPTION_KEY` is used to encrypt every stored integration secret with AES-256-GCM. **In production, the key must be set before any account is saved.**
+For Kit, create a secure Kit app, enable API access, and configure:
+
+- Authorization URL: `https://magnets.so/api/account/kit/connect`
+- Redirect URI: `https://magnets.so/api/account/kit/callback`
+- Secure application: enabled
+
+Then set the server-only credentials:
+
+```txt
+KIT_CLIENT_ID="..."         # Kit app with API access enabled
+KIT_CLIENT_SECRET="..."     # server-only Kit app secret
+KIT_REDIRECT_URI="http://localhost:3000/api/account/kit/callback"
+```
+
+Per-account Resend and Beehiiv credentials are set by users in the dashboard. Kit uses the supported OAuth authorization-code flow. Its per-account access and refresh tokens, together with secret webhook URLs such as Zapier Catch Hooks, are encrypted with `MAGNETS_ENCRYPTION_KEY`. **In production, the key must be set before any account is saved.**
 
 ## Database
 
@@ -70,6 +99,8 @@ Tables (all prefixed `magnets_`, all in `public`):
 - `magnets_accounts`
 - `magnets_auth_credentials`
 - `magnets_lead_magnets`
+- `magnets_hosted_resources`
+- `magnets_lead_magnet_visits`
 - `magnets_rate_limits`
 - `magnets_submissions`
 
