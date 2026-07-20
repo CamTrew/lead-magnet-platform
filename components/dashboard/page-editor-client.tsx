@@ -220,6 +220,12 @@ function followUpDelayMinutes(email: LeadMagnet['followUpEmails'][number]) {
   return 24 * 60;
 }
 
+function followUpEmailNumber(index: number) {
+  // The delivery/resource email is Email 1. Follow-ups continue the same
+  // recipient-facing sequence, so their visible numbering begins at Email 2.
+  return index + 2;
+}
+
 function delayPatchFromMinutes(minutes: number) {
   const delayMinutes = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
   return {
@@ -236,7 +242,7 @@ function validateFollowUpDelays(leadMagnet: LeadMagnet) {
   for (let index = 0; index < leadMagnet.followUpEmails.length; index += 1) {
     const delayMinutes = followUpDelayMinutes(leadMagnet.followUpEmails[index]);
     if (delayMinutes > MAX_FOLLOW_UP_DELAY_MINUTES) {
-      return `Email ${index + 1} delay must be 30 days or less.`;
+      return `Email ${followUpEmailNumber(index)} delay must be 30 days or less.`;
     }
   }
 
@@ -3947,7 +3953,7 @@ function EmailCanvas({
           subject={leadMagnet.emailSubject}
         />
       )}
-      <div className="mx-auto max-w-2xl space-y-4">
+      <div className="mx-auto max-w-4xl space-y-4">
         <div className="rounded-lg border border-ink-200 bg-white">
           <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs text-ink-500">
             <Mail className="h-4 w-4 text-ink-700" />
@@ -4097,7 +4103,7 @@ function SequenceCanvas({
 
   return (
     <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-6xl space-y-4">
         {!resendConfigured && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <p className="font-semibold">Magnets-managed sending is not available yet.</p>
@@ -4225,7 +4231,7 @@ function SequenceCanvas({
                       type="button"
                     >
                       <span className="flex items-center justify-between gap-2 text-xs font-semibold">
-                        Email {index + 1}
+                        Email {followUpEmailNumber(index)}
                         <span className={email.id === activeEmail.id ? 'text-white/60' : 'text-ink-400'}>
                           {delay >= 1440 ? `${Math.round(delay / 1440)}d` : delay >= 60 ? `${Math.round(delay / 60)}h` : `${delay}m`}
                         </span>
@@ -4255,7 +4261,7 @@ function SequenceCanvas({
               <div className="flex flex-wrap items-center gap-2 border-b border-ink-200 bg-white px-4 py-3 sm:px-5">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <Mail className="h-4 w-4 shrink-0 text-ink-700" />
-                  <p className="truncate text-sm font-semibold text-ink-950">Email {activeIndex + 1}</p>
+                  <p className="truncate text-sm font-semibold text-ink-950">Email {followUpEmailNumber(activeIndex)}</p>
                 </div>
                 <button
                   className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 px-2.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 disabled:cursor-wait disabled:opacity-50"
@@ -4306,7 +4312,7 @@ function SequenceCanvas({
                           value={delayInputValue}
                         />
                         <select
-                          aria-label={`Delay unit for email ${activeIndex + 1}`}
+                          aria-label={`Delay unit for email ${followUpEmailNumber(activeIndex)}`}
                           className="h-11 rounded-lg border border-ink-200 bg-white px-3 text-sm font-medium text-ink-800 outline-none transition focus:border-ink-500 focus:ring-2 focus:ring-ink-100"
                           onChange={(event) => {
                             const nextUnit = event.target.value === 'minutes' ? 'minutes' : 'hours';
@@ -4333,7 +4339,7 @@ function SequenceCanvas({
                     <div>
                       <p className="mb-1.5 text-xs font-medium text-ink-700">Body</p>
                       <EmailBodyEditor
-                        ariaLabel={`Body for email ${activeIndex + 1}`}
+                        ariaLabel={`Body for email ${followUpEmailNumber(activeIndex)}`}
                         isUploadingImage={Boolean(emailImageUploadTarget)}
                         onAddImage={(insertion, files) => onAddImage(activeEmail.id, insertion, files)}
                         onChange={(value) => onUpdateEmail(activeEmail.id, { body: value })}
@@ -4347,7 +4353,9 @@ function SequenceCanvas({
                       <button className="inline-flex h-8 items-center gap-1 text-xs font-medium text-ink-600 disabled:opacity-30" disabled={activeIndex === 0} onClick={() => selectRelativeEmail(-1)} type="button">
                         <ChevronLeft className="h-4 w-4" /> Previous
                       </button>
-                      <span className="text-[11px] font-medium text-ink-400">Swipe on mobile · {activeIndex + 1} of {leadMagnet.followUpEmails.length}</span>
+                      <span className="text-[11px] font-medium text-ink-400">
+                        Swipe on mobile · Email {followUpEmailNumber(activeIndex)} of {leadMagnet.followUpEmails.length + 1}
+                      </span>
                       <button className="inline-flex h-8 items-center gap-1 text-xs font-medium text-ink-600 disabled:opacity-30" disabled={activeIndex === leadMagnet.followUpEmails.length - 1} onClick={() => selectRelativeEmail(1)} type="button">
                         Next <ChevronRight className="h-4 w-4" />
                       </button>
