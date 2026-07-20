@@ -64,6 +64,23 @@ assert.deepEqual(
 );
 assert.equal(serializeEmailBodyBlocks(parseEmailBodyBlocks(legacyPlainBody)), legacyPlainBody);
 
+// Empty editor blocks are stored explicitly so pressing Enter twice creates a
+// real blank line in the preview, provider HTML, and plain-text fallback.
+const bodyWithSpacer = serializeEmailBodyBlocks([
+  { kind: 'text', raw: '# A title' },
+  { kind: 'text', raw: '' },
+  { kind: 'text', raw: 'Body copy.' },
+]);
+assert.equal(bodyWithSpacer, '# A title\n\n:::spacer\n\nBody copy.');
+assert.deepEqual(
+  parseEmailBodyBlocks(bodyWithSpacer).map((block) => block.raw),
+  ['# A title', '', 'Body copy.']
+);
+const spacerHtml = renderPlainEmailHtml(bodyWithSpacer, 'Spacing check');
+assert.equal(occurrences(spacerHtml, /class="magnets-email-spacer"/g), 1);
+assert.match(spacerHtml, /<h1[^>]*margin:24px 0 22px/);
+assert.equal(renderEmailTextFallback(bodyWithSpacer), 'A title\n\n\n\nBody copy.');
+
 // Existing heading, emphasis, list, divider, and link syntax is still rendered
 // by the original formatting renderer inside the new responsive shell.
 const legacyRichBody = [
@@ -467,7 +484,7 @@ assert.equal(
 assert.match(renderFollowUpEmailHtml(structuredBody, parityPreview, '#'), /Stop this sequence/);
 assert.equal(parseEmailImageLine('![Unsafe](javascript:alert(1))'), null);
 
-assert.equal(cleanEmailText('\r\nHello.   \r\n\r\n\r\nWorld.  '), 'Hello.\n\nWorld.');
-assert.equal(FOLLOW_UP_RENDER_VERSION, 9);
+assert.equal(cleanEmailText('\r\nHello.   \r\n\r\n\r\nWorld.  '), 'Hello.\n\n\nWorld.');
+assert.equal(FOLLOW_UP_RENDER_VERSION, 10);
 
 console.log('Email compatibility smoke test passed: legacy plain text, rich formatting, single images, proxy URLs, and new responsive image rows.');

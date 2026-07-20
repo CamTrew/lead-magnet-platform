@@ -33,7 +33,6 @@ export function cleanEmailText(value: string) {
     .replace(/\r\n?/g, '\n')
     .replace(/^\s+/, '')
     .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
     .trimEnd();
 }
 
@@ -50,6 +49,7 @@ export function renderEmailTextFallback(text: string) {
     text
       .split('\n')
       .map((line) => {
+        if (/^:::spacer\s*$/.test(line)) return '';
         const row = parseEmailImageRowLine(line);
         if (row) return row.map((image) => (
           `${image.alt}: ${image.url}${image.caption ? `\n${image.caption}` : ''}`

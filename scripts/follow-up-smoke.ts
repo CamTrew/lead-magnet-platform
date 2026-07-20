@@ -261,6 +261,8 @@ const formattingMatrixBody = [
   '',
   '# Heading 1',
   '',
+  ':::spacer',
+  '',
   '## Heading 2',
   '',
   '### Heading 3',
@@ -486,6 +488,9 @@ async function run() {
   );
   assert.match(String(ownedEmailRequest?.body?.html), /<hr[^>]*\/>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h1[^>]*>Heading 1<\/h1>/);
+  assert.match(String(ownedEmailRequest?.body?.html), /<h1[^>]*margin:24px 0 22px/);
+  assert.match(String(ownedEmailRequest?.body?.html), /class="magnets-email-spacer"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /height="24" style="height:24px/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h2[^>]*>Heading 2<\/h2>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h3[^>]*>Heading 3<\/h3>/);
   assert.match(String(ownedEmailRequest?.body?.html), /<h4[^>]*>Heading 4<\/h4>/);

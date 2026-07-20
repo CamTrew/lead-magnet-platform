@@ -173,12 +173,12 @@ function renderEmailInlineHtmlWithStyle(value: string, anchorStyle: string) {
 function blockStyles(variant: EmailMarkupVariant) {
   if (variant === 'editor') {
     return {
-      h1: 'margin:0.35em 0 0.5em;font-size:1.75rem;line-height:1.2;font-weight:700',
-      h2: 'margin:0.4em 0 0.5em;font-size:1.4rem;line-height:1.25;font-weight:700',
-      h3: 'margin:0.45em 0 0.5em;font-size:1.15rem;line-height:1.3;font-weight:700',
-      h4: 'margin:0.5em 0 0.45em;font-size:1rem;line-height:1.35;font-weight:700',
-      h5: 'margin:0.55em 0 0.4em;font-size:0.9rem;line-height:1.4;font-weight:700',
-      h6: 'margin:0.6em 0 0.4em;font-size:0.8rem;line-height:1.4;font-weight:700',
+      h1: 'margin:0.35em 0 0.8em;font-size:1.75rem;line-height:1.2;font-weight:700',
+      h2: 'margin:0.4em 0 0.8em;font-size:1.4rem;line-height:1.25;font-weight:700',
+      h3: 'margin:0.45em 0 0.7em;font-size:1.15rem;line-height:1.3;font-weight:700',
+      h4: 'margin:0.5em 0 0.65em;font-size:1rem;line-height:1.35;font-weight:700',
+      h5: 'margin:0.55em 0 0.6em;font-size:0.9rem;line-height:1.4;font-weight:700',
+      h6: 'margin:0.6em 0 0.6em;font-size:0.8rem;line-height:1.4;font-weight:700',
       hr: 'margin:1.25rem 0;border:0;border-top:1px solid #d4d4d4',
       list: 'margin:0.75rem 0;padding-left:1.5rem',
       paragraph: 'margin:0 0 0.9rem',
@@ -189,12 +189,12 @@ function blockStyles(variant: EmailMarkupVariant) {
   }
 
   return {
-    h1: 'margin:24px 0 12px;font:700 30px/1.2 Arial,sans-serif;color:#111827',
-    h2: 'margin:22px 0 10px;font:700 24px/1.25 Arial,sans-serif;color:#111827',
-    h3: 'margin:20px 0 8px;font:700 19px/1.3 Arial,sans-serif;color:#111827',
-    h4: 'margin:18px 0 8px;font:700 17px/1.35 Arial,sans-serif;color:#111827',
-    h5: 'margin:17px 0 7px;font:700 15px/1.4 Arial,sans-serif;color:#111827',
-    h6: 'margin:16px 0 7px;font:700 13px/1.4 Arial,sans-serif;color:#111827',
+    h1: 'margin:24px 0 22px;font:700 30px/1.2 Arial,sans-serif;color:#111827',
+    h2: 'margin:22px 0 20px;font:700 24px/1.25 Arial,sans-serif;color:#111827',
+    h3: 'margin:20px 0 16px;font:700 19px/1.3 Arial,sans-serif;color:#111827',
+    h4: 'margin:18px 0 14px;font:700 17px/1.35 Arial,sans-serif;color:#111827',
+    h5: 'margin:17px 0 12px;font:700 15px/1.4 Arial,sans-serif;color:#111827',
+    h6: 'margin:16px 0 12px;font:700 13px/1.4 Arial,sans-serif;color:#111827',
     hr: 'margin:24px 0;border:0;border-top:1px solid #d1d5db',
     list: 'margin:14px 0;padding-left:24px;font:16px/1.5 Arial,sans-serif;color:#111827',
     paragraph: 'margin:0 0 16px;font:16px/1.5 Arial,sans-serif;color:#111827',
@@ -205,7 +205,7 @@ function blockStyles(variant: EmailMarkupVariant) {
 }
 
 function isBlockStart(line: string) {
-  return /^(?:#{1,6}\s+|>{1,3}\s+|:::section(?:\s+|$)|:::columns\s+|:::footnote(?:\s+|$)|:::youtube(?:\s+|$)|\[\[toc\]\]\s*$|---\s*$|[-*–—]\s+|\d+\.\s+)/.test(line);
+  return /^(?:#{1,6}\s+|>{1,3}\s+|:::spacer\s*$|:::section(?:\s+|$)|:::columns\s+|:::footnote(?:\s+|$)|:::youtube(?:\s+|$)|\[\[toc\]\]\s*$|---\s*$|[-*–—]\s+|\d+\.\s+)/.test(line);
 }
 
 function headingIdBase(value: string) {
@@ -278,6 +278,14 @@ export function renderEmailFormattedHtml(
       output.push(
         `<h${level}${idAttribute} style="${styles[`h${level}`]}">${renderEmailInlineHtmlWithStyle(heading[2], anchorStyle)}</h${level}>`
       );
+      index += 1;
+      continue;
+    }
+
+    if (/^:::spacer\s*$/.test(line)) {
+      output.push(variant === 'editor'
+        ? '<div data-email-spacer="true" contenteditable="false" style="height:1.5rem;min-height:1.5rem" aria-hidden="true">&nbsp;</div>'
+        : '<table class="magnets-email-spacer" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td height="24" style="height:24px;font-size:0;line-height:0">&nbsp;</td></tr></table>');
       index += 1;
       continue;
     }

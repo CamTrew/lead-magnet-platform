@@ -230,7 +230,13 @@ export function parseEmailBodyBlocks(body: string): EmailBodyBlock[] {
       .split(/\n{2,}/)
       .map((raw) => raw.trim())
       .filter(Boolean)
-      .map((raw) => ({ kind: 'text' as const, raw }));
+      .map((raw) => ({
+        kind: 'text' as const,
+        // Empty editor blocks need a durable representation because ordinary
+        // blank lines also separate every legacy block. Keep the storage
+        // protocol backwards-compatible by decoding only our explicit token.
+        raw: raw === ':::spacer' ? '' : raw,
+      }));
   });
 
   return blocks.length > 0 ? blocks : [{ kind: 'text', raw: '' }];
@@ -238,7 +244,13 @@ export function parseEmailBodyBlocks(body: string): EmailBodyBlock[] {
 
 export function serializeEmailBodyBlocks(blocks: EmailBodyBlock[]) {
   return blocks
-    .map((block) => block.raw.trim())
+    .map((block) => {
+      const raw = block.raw.trim();
+      if (raw) return raw;
+      // A lone empty block is an empty email. Within a populated block list,
+      // however, it represents a deliberate blank line created with Enter.
+      return block.kind === 'text' && blocks.length > 1 ? ':::spacer' : '';
+    })
     .filter(Boolean)
     .join('\n\n');
 }

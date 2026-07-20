@@ -25,7 +25,7 @@ const RESEND_RATE_LIMIT_RETRIES = 4;
 // rebuilt with new HTML. This is deliberately separate from a magnet's content
 // fingerprint: renderer upgrades and copy edits are different reasons to
 // repair an automation. Never reset active run rows merely to refresh markup.
-export const FOLLOW_UP_RENDER_VERSION = 9;
+export const FOLLOW_UP_RENDER_VERSION = 10;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
