@@ -173,12 +173,14 @@ function renderEmailInlineHtmlWithStyle(value: string, anchorStyle: string) {
 function blockStyles(variant: EmailMarkupVariant) {
   if (variant === 'editor') {
     return {
-      h1: 'margin:0.35em 0 0.8em;font-size:1.75rem;line-height:1.2;font-weight:700',
-      h2: 'margin:0.4em 0 0.8em;font-size:1.4rem;line-height:1.25;font-weight:700',
-      h3: 'margin:0.45em 0 0.7em;font-size:1.15rem;line-height:1.3;font-weight:700',
-      h4: 'margin:0.5em 0 0.65em;font-size:1rem;line-height:1.35;font-weight:700',
-      h5: 'margin:0.55em 0 0.6em;font-size:0.9rem;line-height:1.4;font-weight:700',
-      h6: 'margin:0.6em 0 0.6em;font-size:0.8rem;line-height:1.4;font-weight:700',
+      title: 'margin:0.35em 0 0.45em;font-size:1.75rem;line-height:1.2;font-weight:700',
+      subtitle: 'margin:0 0 3rem;font-size:1.05rem;line-height:1.5;color:#404040',
+      h1: 'margin:0.35em 0 1.2em;font-size:1.75rem;line-height:1.2;font-weight:700',
+      h2: 'margin:0.4em 0 1.15em;font-size:1.4rem;line-height:1.25;font-weight:700',
+      h3: 'margin:0.45em 0 1.1em;font-size:1.15rem;line-height:1.3;font-weight:700',
+      h4: 'margin:0.5em 0 1.05em;font-size:1rem;line-height:1.35;font-weight:700',
+      h5: 'margin:0.55em 0 1em;font-size:0.9rem;line-height:1.4;font-weight:700',
+      h6: 'margin:0.6em 0 1em;font-size:0.8rem;line-height:1.4;font-weight:700',
       hr: 'margin:1.25rem 0;border:0;border-top:1px solid #d4d4d4',
       list: 'margin:0.75rem 0;padding-left:1.5rem',
       paragraph: 'margin:0 0 0.9rem',
@@ -189,12 +191,14 @@ function blockStyles(variant: EmailMarkupVariant) {
   }
 
   return {
-    h1: 'margin:24px 0 22px;font:700 30px/1.2 Arial,sans-serif;color:#111827',
-    h2: 'margin:22px 0 20px;font:700 24px/1.25 Arial,sans-serif;color:#111827',
-    h3: 'margin:20px 0 16px;font:700 19px/1.3 Arial,sans-serif;color:#111827',
-    h4: 'margin:18px 0 14px;font:700 17px/1.35 Arial,sans-serif;color:#111827',
-    h5: 'margin:17px 0 12px;font:700 15px/1.4 Arial,sans-serif;color:#111827',
-    h6: 'margin:16px 0 12px;font:700 13px/1.4 Arial,sans-serif;color:#111827',
+    title: 'margin:24px 0 12px;font:700 30px/1.2 Arial,sans-serif;color:#111827',
+    subtitle: 'margin:0 0 56px;font:18px/1.45 Arial,sans-serif;color:#374151',
+    h1: 'margin:24px 0 34px;font:700 30px/1.2 Arial,sans-serif;color:#111827',
+    h2: 'margin:22px 0 30px;font:700 24px/1.25 Arial,sans-serif;color:#111827',
+    h3: 'margin:20px 0 26px;font:700 19px/1.3 Arial,sans-serif;color:#111827',
+    h4: 'margin:18px 0 24px;font:700 17px/1.35 Arial,sans-serif;color:#111827',
+    h5: 'margin:17px 0 22px;font:700 15px/1.4 Arial,sans-serif;color:#111827',
+    h6: 'margin:16px 0 20px;font:700 13px/1.4 Arial,sans-serif;color:#111827',
     hr: 'margin:24px 0;border:0;border-top:1px solid #d1d5db',
     list: 'margin:14px 0;padding-left:24px;font:16px/1.5 Arial,sans-serif;color:#111827',
     paragraph: 'margin:0 0 16px;font:16px/1.5 Arial,sans-serif;color:#111827',
@@ -260,6 +264,7 @@ export function renderEmailFormattedHtml(
   const lines = value.replace(/\r\n?/g, '\n').split('\n');
   const output: string[] = [];
   let index = 0;
+  let titleSubtitlePending = false;
 
   while (index < lines.length) {
     const line = lines[index];
@@ -271,16 +276,22 @@ export function renderEmailFormattedHtml(
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length as 1 | 2 | 3 | 4 | 5 | 6;
+      const isNewsletterTitle = level === 1 && output.length === 0;
       const headingRecord = variant === 'email' && context
         ? context.headings[context.headingCursor.value++]
         : null;
       const idAttribute = headingRecord ? ` id="${escapeHtml(headingRecord.id)}"` : '';
       output.push(
-        `<h${level}${idAttribute} style="${styles[`h${level}`]}">${renderEmailInlineHtmlWithStyle(heading[2], anchorStyle)}</h${level}>`
+        `<h${level}${idAttribute} style="${isNewsletterTitle ? styles.title : styles[`h${level}`]}">${renderEmailInlineHtmlWithStyle(heading[2], anchorStyle)}</h${level}>`
       );
+      titleSubtitlePending = isNewsletterTitle;
       index += 1;
       continue;
     }
+
+    // The newsletter subtitle is only the first ordinary paragraph directly
+    // after the opening title. Any explicit structural block starts the body.
+    if (titleSubtitlePending && isBlockStart(line)) titleSubtitlePending = false;
 
     if (/^:::spacer\s*$/.test(line)) {
       output.push(variant === 'editor'
@@ -429,7 +440,8 @@ export function renderEmailFormattedHtml(
       paragraph.push(renderEmailInlineHtmlWithStyle(lines[index], anchorStyle));
       index += 1;
     }
-    output.push(`<p style="${styles.paragraph}">${paragraph.join('<br />')}</p>`);
+    output.push(`<p style="${titleSubtitlePending ? styles.subtitle : styles.paragraph}">${paragraph.join('<br />')}</p>`);
+    titleSubtitlePending = false;
   }
 
   return output.join('');

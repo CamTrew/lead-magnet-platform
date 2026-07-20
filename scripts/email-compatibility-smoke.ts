@@ -78,8 +78,36 @@ assert.deepEqual(
 );
 const spacerHtml = renderPlainEmailHtml(bodyWithSpacer, 'Spacing check');
 assert.equal(occurrences(spacerHtml, /class="magnets-email-spacer"/g), 1);
-assert.match(spacerHtml, /<h1[^>]*margin:24px 0 22px/);
+assert.match(spacerHtml, /<h1[^>]*margin:24px 0 12px/);
 assert.equal(renderEmailTextFallback(bodyWithSpacer), 'A title\n\n\n\nBody copy.');
+
+const newsletterHeaderHtml = renderPlainEmailHtml(
+  '# Newsletter title\n\nThe subtitle stays attached to the title.\n\nHey,',
+  ''
+);
+assert.match(newsletterHeaderHtml, /<h1[^>]*margin:24px 0 12px/);
+assert.match(
+  newsletterHeaderHtml,
+  /<p style="margin:0 0 56px;font:18px\/1\.45 Arial,sans-serif;color:#374151">The subtitle stays attached to the title\.<\/p>/
+);
+assert.match(
+  newsletterHeaderHtml,
+  /<p style="margin:0 0 16px;font:16px\/1\.5 Arial,sans-serif;color:#111827">Hey,<\/p>/
+);
+
+const bodyWithTrailingSpacer = serializeEmailBodyBlocks([
+  { kind: 'text', raw: 'Body copy.' },
+  { kind: 'text', raw: '' },
+]);
+assert.equal(bodyWithTrailingSpacer, 'Body copy.\n\n:::spacer');
+assert.deepEqual(
+  parseEmailBodyBlocks(bodyWithTrailingSpacer).map((block) => block.raw),
+  ['Body copy.', '']
+);
+assert.equal(
+  occurrences(renderPlainEmailHtml(bodyWithTrailingSpacer, ''), /class="magnets-email-spacer"/g),
+  1
+);
 
 // Existing heading, emphasis, list, divider, and link syntax is still rendered
 // by the original formatting renderer inside the new responsive shell.

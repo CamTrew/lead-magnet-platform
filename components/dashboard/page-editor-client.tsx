@@ -1939,10 +1939,10 @@ function EmailBodyEditor({
     ];
     pendingBlockFocusRef.current = { index: nextIndex, openCommands: true, position: 'start' };
     activeTextSegmentRef.current = nextIndex;
-    // An empty draft block has no stored representation yet. Keep it local
-    // until the user types or chooses a command; committing here would
-    // immediately normalise the blank block away again.
-    setBlocks(nextBlocks);
+    // Empty blocks now have an explicit :::spacer representation. Commit the
+    // block immediately so autosave, preview, and the provider payload all see
+    // the same deliberate extra line, including when this is the final block.
+    commitBlocks(nextBlocks);
   }
 
   function activeEditor() {
