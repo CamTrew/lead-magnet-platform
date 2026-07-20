@@ -35,6 +35,7 @@ const RESERVED_PUBLIC_PATHS = new Set([
   'sequence',
   'sitemap.xml',
   'terms',
+  'youtube-thumbnails',
 ]);
 
 function isPublicApi(pathname: string) {

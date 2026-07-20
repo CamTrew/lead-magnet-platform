@@ -1,7 +1,6 @@
 'use client';
 
 import { uploadPresigned } from '@vercel/blob/client';
-import Image from 'next/image';
 import {
   Check,
   Copy,
@@ -390,13 +389,12 @@ export function HostedResourcesClient({
                   <AceternityCard className="group flex min-h-52 flex-col" key={resource.id}>
                     {resource.contentType.startsWith('image/') ? (
                       <div className="relative h-44 overflow-hidden border-b border-ink-100 bg-ink-50">
-                        <Image
+                        {/* This authenticated, no-store route is intentionally not sent through Next's image optimizer. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
                           alt={resource.name}
-                          className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                          fill
-                          sizes="(min-width: 1280px) 360px, (min-width: 640px) 50vw, 100vw"
+                          className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                           src={`${resource.publicUrl}?preview=1`}
-                          unoptimized
                         />
                         <span className="absolute right-3 top-3 rounded border border-white/70 bg-white/90 px-2 py-1 text-[10px] font-semibold tracking-wide text-ink-700 shadow-sm backdrop-blur">
                           {hostedResourceTypeLabel(resource.contentType, resource.originalFilename)}

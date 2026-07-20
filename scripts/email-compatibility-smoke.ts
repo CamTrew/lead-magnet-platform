@@ -39,6 +39,10 @@ assert.equal(
   parseYouTubeVideoUrl('https://www.youtube.com/shorts/dQw4w9WgXcQ')?.id,
   'dQw4w9WgXcQ'
 );
+assert.equal(
+  parseYouTubeVideoUrl('https://www.youtube.com/shorts/dQw4w9WgXcQ')?.thumbnailUrl,
+  'https://magnets.so/youtube-thumbnails/dQw4w9WgXcQ'
+);
 assert.equal(parseYouTubeVideoUrl('https://example.com/video'), null);
 
 function occurrences(value: string, pattern: RegExp) {
@@ -433,7 +437,7 @@ assert.equal(occurrences(structuredHtml, /class="magnets-image-column/g), 2);
 assert.match(structuredHtml, /Desktop caption\./);
 assert.match(structuredHtml, /Mobile caption\./);
 assert.match(structuredHtml, /border:2px dotted #334455;border-radius:4px/);
-assert.match(structuredHtml, /src="https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg"/);
+assert.match(structuredHtml, /src="https:\/\/magnets\.so\/youtube-thumbnails\/dQw4w9WgXcQ"/);
 assert.match(structuredHtml, /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
 assert.match(structuredHtml, /Watch on YouTube/);
 assert.match(structuredHtml, /\.magnets-image-column,\.magnets-text-column/);
@@ -464,6 +468,6 @@ assert.match(renderFollowUpEmailHtml(structuredBody, parityPreview, '#'), /Stop 
 assert.equal(parseEmailImageLine('![Unsafe](javascript:alert(1))'), null);
 
 assert.equal(cleanEmailText('\r\nHello.   \r\n\r\n\r\nWorld.  '), 'Hello.\n\nWorld.');
-assert.equal(FOLLOW_UP_RENDER_VERSION, 8);
+assert.equal(FOLLOW_UP_RENDER_VERSION, 9);
 
 console.log('Email compatibility smoke test passed: legacy plain text, rich formatting, single images, proxy URLs, and new responsive image rows.');

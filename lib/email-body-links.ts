@@ -52,7 +52,7 @@ export function parseYouTubeVideoUrl(value: string): YouTubeVideo | null {
     if (!/^[a-zA-Z0-9_-]{6,20}$/.test(id)) return null;
     return {
       id,
-      thumbnailUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      thumbnailUrl: `https://magnets.so/youtube-thumbnails/${id}`,
       url: `https://www.youtube.com/watch?v=${id}`,
     };
   } catch {

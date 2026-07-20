@@ -515,7 +515,7 @@ async function run() {
   assert.match(String(ownedEmailRequest?.body?.html), /Desktop caption\./);
   assert.match(String(ownedEmailRequest?.body?.html), /Mobile caption\./);
   assert.match(String(ownedEmailRequest?.body?.html), /border:2px dotted #334455;border-radius:4px/);
-  assert.match(String(ownedEmailRequest?.body?.html), /src="https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg"/);
+  assert.match(String(ownedEmailRequest?.body?.html), /src="https:\/\/magnets\.so\/youtube-thumbnails\/dQw4w9WgXcQ"/);
   assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
   assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/magnets\.so"/);
   assert.doesNotMatch(String(ownedEmailRequest?.body?.html), /(?:^|>)#{1,6}\s|\*\*Bold\*\*|:::|\[\[toc\]\]|---/);
@@ -696,7 +696,7 @@ async function run() {
   assert.equal((String(templateBody.html).match(/class="magnets-image-column/g) || []).length, 2);
   assert.match(String(templateBody.html), /Desktop caption\./);
   assert.match(String(templateBody.html), /Mobile caption\./);
-  assert.match(String(templateBody.html), /src="https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg"/);
+  assert.match(String(templateBody.html), /src="https:\/\/magnets\.so\/youtube-thumbnails\/dQw4w9WgXcQ"/);
   assert.match(String(templateBody.html), /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
   assert.doesNotMatch(String(templateBody.html), /(?:^|>)#{1,6}\s|\*\*Bold\*\*|:::|\[\[toc\]\]|---/);
   assert.match(String(templateBody.html), /Stop this sequence/);
