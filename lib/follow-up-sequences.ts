@@ -20,6 +20,7 @@ import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
 const RESEND_API_BASE = 'https://api.resend.com';
+const RESEND_RATE_LIMIT_RETRIES = 4;
 // AI/MAINTAINER CONTEXT: increment whenever stored Resend templates need to be
 // rebuilt with new HTML. This is deliberately separate from a magnet's content
 // fingerprint: renderer upgrades and copy edits are different reasons to
@@ -267,34 +268,49 @@ async function resendRequest<T extends ResendObject>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  const response = await fetch(`${RESEND_API_BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      ...(init.headers || {}),
-    },
-  });
-  const raw = await response.text();
-  let data: unknown = {};
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(`${RESEND_API_BASE}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...(init.headers || {}),
+      },
+    });
+    const raw = await response.text();
+    let data: unknown = {};
 
-  if (raw) {
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      data = { message: raw };
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { message: raw };
+      }
     }
-  }
 
-  if (!response.ok) {
-    const message = extractResendErrorMessage(data, response.status);
-    if (needsFullAccessHelp(path, response.status, message)) {
-      throw new FollowUpSequenceError(resendFullAccessMessage());
+    // A renderer upgrade can create several templates in quick succession.
+    // Resend returns a definitive 429 when the account-wide request window is
+    // full, so retry that response only; do not replay ambiguous network or
+    // 5xx failures that could have completed a write upstream.
+    if (response.status === 429 && attempt < RESEND_RATE_LIMIT_RETRIES) {
+      const retryAfterSeconds = Number(response.headers.get('retry-after'));
+      const backoffMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.ceil(retryAfterSeconds * 1_000)
+        : 1_000 * 2 ** attempt;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(backoffMs, 8_000)));
+      continue;
     }
-    throw new FollowUpSequenceError(scrubResendErrorMessage(message));
-  }
 
-  return data as T;
+    if (!response.ok) {
+      const message = extractResendErrorMessage(data, response.status);
+      if (needsFullAccessHelp(path, response.status, message)) {
+        throw new FollowUpSequenceError(resendFullAccessMessage());
+      }
+      throw new FollowUpSequenceError(scrubResendErrorMessage(message));
+    }
+
+    return data as T;
+  }
 }
 
 async function createEvent(apiKey: string, name: string) {
