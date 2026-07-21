@@ -21,7 +21,6 @@ import {
   Frame,
   Image as ImageIcon,
   GripVertical,
-  History,
   Italic,
   Link2,
   List,
@@ -61,6 +60,7 @@ import {
 } from '@/lib/email-body-images';
 import { blobUploadErrorMessage } from '@/lib/blob-upload-error';
 import {
+  emailTextForPreviousBlockMerge,
   normaliseEmailLinkUrl,
   parseYouTubeVideoUrl,
   renderEmailEditorHtml,
@@ -74,7 +74,6 @@ import type {
   DashboardBasePayload,
   LeadMagnet,
   LeadMagnetVersionSnapshot,
-  LeadMagnetVersionSummary,
 } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import {
@@ -102,7 +101,7 @@ import type {
 // Preview imports the production renderer on purpose. Autosave and undo/redo
 // must include uploads, deletes, grouping, captions, and copilot-applied edits.
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type SaveSource = 'autosave' | 'manual' | 'restore';
+type SaveSource = 'autosave' | 'manual';
 type Mode = 'page' | 'email' | 'sequence' | 'after';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 type EmailImageTarget =
@@ -157,6 +156,38 @@ const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
 const MAX_FOLLOW_UP_DELAY_MINUTES = 30 * 24 * 60;
 const MAGNET_IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
 const MAGNET_IMAGE_TYPES = new Set(MAGNET_IMAGE_ACCEPT.split(','));
+const PAGE_EDITOR_HISTORY_LIMIT = 100;
+const PAGE_EDITOR_HISTORY_COALESCE_MS = 1200;
+
+function leadMagnetHistorySnapshot(leadMagnet: LeadMagnet): LeadMagnetVersionSnapshot {
+  return Object.fromEntries(
+    Object.entries(leadMagnet).filter(([key]) => ![
+      'id',
+      'accountId',
+      'createdAt',
+      'updatedAt',
+      'resendFollowUpAutomationId',
+      'resendFollowUpRenderVersion',
+    ].includes(key))
+  ) as LeadMagnetVersionSnapshot;
+}
+
+function cloneLeadMagnetHistorySnapshot(snapshot: LeadMagnetVersionSnapshot) {
+  return JSON.parse(JSON.stringify(snapshot)) as LeadMagnetVersionSnapshot;
+}
+
+function leadMagnetHistoryFingerprint(snapshot: LeadMagnetVersionSnapshot) {
+  return JSON.stringify(snapshot);
+}
+
+function leadMagnetHistoryMutationKey(
+  previous: LeadMagnetVersionSnapshot,
+  next: LeadMagnetVersionSnapshot
+) {
+  return (Object.keys(next) as Array<keyof LeadMagnetVersionSnapshot>)
+    .filter((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]))
+    .join('|');
+}
 
 function extensionForImage(file: File) {
   if (file.type === 'image/png') return 'png';
@@ -356,7 +387,7 @@ function EditorWorkflowNav({
 }) {
   return (
     <nav aria-label="Lead magnet setup steps" className="border-t border-ink-200 pt-3">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-0">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto sm:items-center sm:gap-0 sm:overflow-visible">
         {EDITOR_STEPS.map((step, index) => {
           const active = mode === step.mode;
 
@@ -365,7 +396,7 @@ function EditorWorkflowNav({
               <button
                 aria-current={active ? 'step' : undefined}
                 className={cn(
-                  'group flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition sm:flex-1 sm:gap-2.5 sm:px-3',
+                  'group flex min-w-[7.5rem] items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition sm:min-w-0 sm:flex-1 sm:gap-2.5 sm:px-3',
                   active
                     ? 'border-brand-orange/50 bg-brand-orange/10'
                     : 'border-transparent hover:border-ink-200'
@@ -390,7 +421,7 @@ function EditorWorkflowNav({
                   )}>
                     {step.label}
                   </span>
-                  <span className="block truncate text-[10px] leading-4 text-ink-500">
+                  <span className="hidden truncate text-[10px] leading-4 text-ink-500 sm:block">
                     {step.description}
                   </span>
                 </span>
@@ -403,117 +434,6 @@ function EditorWorkflowNav({
         })}
       </div>
     </nav>
-  );
-}
-
-function LeadMagnetVersionHistoryDialog({
-  error,
-  loading,
-  onClose,
-  onRefresh,
-  onRestore,
-  versions,
-}: {
-  error: string;
-  loading: boolean;
-  onClose: () => void;
-  onRefresh: () => void;
-  onRestore: (version: LeadMagnetVersionSummary) => void;
-  versions: LeadMagnetVersionSummary[];
-}) {
-  useModalAccessibility(onClose);
-
-  const sourceLabel = (source: LeadMagnetVersionSummary['source']) => {
-    if (source === 'baseline') return 'Before version history';
-    if (source === 'restore') return 'Restored version';
-    if (source === 'autosave') return 'Autosave';
-    return 'Saved change';
-  };
-
-  return (
-    <div
-      aria-label="Version history"
-      aria-modal="true"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
-      role="dialog"
-    >
-      <div className="flex max-h-[80vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl">
-        <div className="flex items-start gap-3 border-b border-ink-200 px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold text-ink-950">Version history</p>
-            <p className="mt-1 text-xs leading-5 text-ink-500">
-              Autosave keeps up to 100 recoverable versions of the whole magnet.
-            </p>
-          </div>
-          <button
-            aria-label="Close version history"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-ink-200 text-ink-600 transition hover:bg-ink-50"
-            onClick={onClose}
-            type="button"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-ink-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading saved versions…
-            </div>
-          ) : error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <p>{error}</p>
-              <button className="mt-3 font-semibold underline" onClick={onRefresh} type="button">
-                Try again
-              </button>
-            </div>
-          ) : versions.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-ink-200 p-8 text-center">
-              <p className="text-sm font-semibold text-ink-900">No versions yet</p>
-              <p className="mt-1 text-xs leading-5 text-ink-500">
-                The next material autosave will preserve the current content and the new version.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {versions.map((version, index) => (
-                <div
-                  className="flex items-center gap-3 rounded-lg border border-ink-200 bg-white p-3"
-                  key={version.id}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-ink-900">
-                        {index === 0 ? 'Current saved version' : sourceLabel(version.source)}
-                      </p>
-                      {index === 0 && (
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                          Latest
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-ink-500">
-                      {new Date(version.createdAt).toLocaleString()}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-ink-600">
-                      {version.emailSubject || version.title || 'Untitled magnet'}
-                    </p>
-                  </div>
-                  <button
-                    className="inline-flex h-9 shrink-0 items-center rounded-md border border-ink-200 px-3 text-xs font-semibold text-ink-700 transition hover:bg-ink-50"
-                    onClick={() => onRestore(version)}
-                    type="button"
-                  >
-                    Restore
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -547,18 +467,30 @@ export function PageEditorClient({
   const editRevisionRef = useRef(0);
   const saveInFlightRef = useRef(false);
   const [lastSaveSource, setLastSaveSource] = useState<SaveSource>('manual');
-  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
-  const [versions, setVersions] = useState<LeadMagnetVersionSummary[]>([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
-  const [versionsError, setVersionsError] = useState('');
-  const [restoreCandidate, setRestoreCandidate] = useState<LeadMagnetVersionSummary | null>(null);
-  const [restoringVersion, setRestoringVersion] = useState(false);
+  const pageEditorHistoryRef = useRef({
+    entries: [cloneLeadMagnetHistorySnapshot(leadMagnetHistorySnapshot(initialLeadMagnet))],
+    index: 0,
+  });
+  const pageEditorHistoryApplicationRef = useRef<string | null>(null);
+  const pageEditorHistoryMutationRef = useRef<{ at: number; key: string } | null>(null);
+  const [pageEditorHistoryAvailability, setPageEditorHistoryAvailability] = useState({
+    canRedo: false,
+    canUndo: false,
+  });
 
   const markDirty = useCallback(() => {
     editRevisionRef.current += 1;
     dirtyRef.current = true;
     setError('');
     if (!saveInFlightRef.current) setSaveState('idle');
+  }, []);
+
+  const updatePageEditorHistoryAvailability = useCallback(() => {
+    const history = pageEditorHistoryRef.current;
+    setPageEditorHistoryAvailability({
+      canRedo: history.index < history.entries.length - 1,
+      canUndo: history.index > 0,
+    });
   }, []);
 
   const patchLeadMagnet = (updates: Partial<LeadMagnet>) => {
@@ -613,6 +545,65 @@ export function PageEditorClient({
       };
     });
   };
+
+  useEffect(() => {
+    const nextSnapshot = cloneLeadMagnetHistorySnapshot(leadMagnetHistorySnapshot(leadMagnet));
+    const nextFingerprint = leadMagnetHistoryFingerprint(nextSnapshot);
+
+    if (pageEditorHistoryApplicationRef.current === nextFingerprint) {
+      pageEditorHistoryApplicationRef.current = null;
+      updatePageEditorHistoryAvailability();
+      return;
+    }
+
+    const history = pageEditorHistoryRef.current;
+    const currentSnapshot = history.entries[history.index];
+    if (leadMagnetHistoryFingerprint(currentSnapshot) === nextFingerprint) return;
+
+    const mutationKey = leadMagnetHistoryMutationKey(currentSnapshot, nextSnapshot);
+    const now = Date.now();
+    const previousMutation = pageEditorHistoryMutationRef.current;
+    const canCoalesce = Boolean(
+      mutationKey
+      && previousMutation?.key === mutationKey
+      && now - previousMutation.at <= PAGE_EDITOR_HISTORY_COALESCE_MS
+      && history.index === history.entries.length - 1
+      && history.index > 0
+    );
+
+    if (canCoalesce) {
+      history.entries[history.index] = nextSnapshot;
+      if (
+        history.index > 0
+        && leadMagnetHistoryFingerprint(history.entries[history.index - 1]) === nextFingerprint
+      ) {
+        history.entries.pop();
+        history.index -= 1;
+      }
+    } else {
+      const entries = [...history.entries.slice(0, history.index + 1), nextSnapshot]
+        .slice(-PAGE_EDITOR_HISTORY_LIMIT);
+      pageEditorHistoryRef.current = { entries, index: entries.length - 1 };
+    }
+
+    pageEditorHistoryMutationRef.current = { at: now, key: mutationKey };
+    updatePageEditorHistoryAvailability();
+  }, [leadMagnet, updatePageEditorHistoryAvailability]);
+
+  const movePageEditorHistory = useCallback((direction: 'undo' | 'redo') => {
+    const history = pageEditorHistoryRef.current;
+    const nextIndex = direction === 'undo' ? history.index - 1 : history.index + 1;
+    if (nextIndex < 0 || nextIndex >= history.entries.length) return;
+
+    history.index = nextIndex;
+    const snapshot = cloneLeadMagnetHistorySnapshot(history.entries[nextIndex]);
+    pageEditorHistoryApplicationRef.current = leadMagnetHistoryFingerprint(snapshot);
+    pageEditorHistoryMutationRef.current = null;
+    followUpRevisionRef.current += 1;
+    markDirty();
+    setLeadMagnet((current) => ({ ...current, ...snapshot }));
+    updatePageEditorHistoryAvailability();
+  }, [markDirty, updatePageEditorHistoryAvailability]);
 
   // Browser-level warning if the user tries to close / refresh with unsaved
   // changes. Doesn't catch in-app navigation but stops accidental tab close.
@@ -738,66 +729,6 @@ export function PageEditorClient({
       saveInFlightRef.current = false;
     }
   }, [isUploadingEmailImage, isUploadingImage, leadMagnet]);
-
-  const loadVersionHistory = useCallback(async () => {
-    setVersionsLoading(true);
-    setVersionsError('');
-    try {
-      const response = await fetch(`/api/lead-magnets/${leadMagnet.id}/versions`, {
-        cache: 'no-store',
-      });
-      const data = (await response.json().catch(() => null)) as {
-        error?: string;
-        versions?: LeadMagnetVersionSummary[];
-      } | null;
-      if (!response.ok) throw new Error(data?.error || 'Version history could not be loaded.');
-      setVersions(data?.versions || []);
-    } catch (versionError) {
-      setVersionsError(versionError instanceof Error
-        ? versionError.message
-        : 'Version history could not be loaded.');
-    } finally {
-      setVersionsLoading(false);
-    }
-  }, [leadMagnet.id]);
-
-  async function openVersionHistory() {
-    setVersionHistoryOpen(true);
-    await loadVersionHistory();
-  }
-
-  async function performRestoreVersion() {
-    if (!restoreCandidate || restoringVersion) return;
-    setRestoringVersion(true);
-    setError('');
-    try {
-      const response = await fetch(
-        `/api/lead-magnets/${leadMagnet.id}/versions/${restoreCandidate.id}`,
-        { cache: 'no-store' }
-      );
-      const data = (await response.json().catch(() => null)) as {
-        error?: string;
-        snapshot?: LeadMagnetVersionSnapshot;
-      } | null;
-      if (!response.ok || !data?.snapshot) {
-        throw new Error(data?.error || 'That version could not be restored.');
-      }
-
-      editRevisionRef.current += 1;
-      followUpRevisionRef.current += 1;
-      dirtyRef.current = true;
-      const restored = await saveLeadMagnet(data.snapshot, 'restore');
-      if (!restored) throw new Error('That version could not be restored.');
-      setRestoreCandidate(null);
-      await loadVersionHistory();
-    } catch (restoreError) {
-      setError(restoreError instanceof Error
-        ? restoreError.message
-        : 'That version could not be restored.');
-    } finally {
-      setRestoringVersion(false);
-    }
-  }
 
   useEffect(() => {
     if (
@@ -1004,41 +935,7 @@ export function PageEditorClient({
         />
       )}
 
-      {versionHistoryOpen && (
-        <LeadMagnetVersionHistoryDialog
-          error={versionsError}
-          loading={versionsLoading}
-          onClose={() => setVersionHistoryOpen(false)}
-          onRefresh={() => void loadVersionHistory()}
-          onRestore={(version) => {
-            setVersionHistoryOpen(false);
-            setRestoreCandidate(version);
-          }}
-          versions={versions}
-        />
-      )}
-
-      {restoreCandidate && (
-        <ConfirmDialog
-          confirmLabel={restoringVersion ? 'Restoring…' : 'Restore version'}
-          description={
-            <>
-              <p>
-                This replaces the current page, delivery email, sequence, and after-signup content with the selected saved version.
-              </p>
-              <p className="mt-2 text-ink-600">
-                Your current content remains in version history, so you can recover it again.
-              </p>
-            </>
-          }
-          onCancel={() => setRestoreCandidate(null)}
-          onConfirm={performRestoreVersion}
-          pending={restoringVersion}
-          title="Restore this saved version?"
-        />
-      )}
-
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="-mx-4 max-w-6xl space-y-4 sm:mx-auto">
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
             {error}
@@ -1056,12 +953,12 @@ export function PageEditorClient({
             '--page-editor-brand': brand.primary,
           } as CSSProperties}
         >
-          <div className="page-editor-toolbar flex flex-col gap-3 border-b border-[#dfd8cf] bg-white p-3 sm:p-4">
+          <div className="page-editor-toolbar flex flex-col gap-3 border-b border-[#dfd8cf] bg-white p-2.5 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                <AceternityButton onClick={() => router.push('/dashboard/pages')} variant="secondary">
+                <AceternityButton aria-label="All pages" className="shrink-0 px-2.5 sm:px-4" onClick={() => router.push('/dashboard/pages')} variant="secondary">
                   <ArrowLeft className="h-4 w-4" />
-                  All pages
+                  <span className="hidden sm:inline">All pages</span>
                 </AceternityButton>
 
                 <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm sm:max-w-[12rem] sm:flex-none">
@@ -1077,11 +974,11 @@ export function PageEditorClient({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <div className="no-scrollbar -mx-0.5 flex w-full flex-nowrap items-center gap-2 overflow-x-auto px-0.5 sm:mx-0 sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible sm:px-0">
               {saveState !== 'error' && (
                 <span
                   className={cn(
-                    'inline-flex h-9 items-center gap-1.5 px-1 text-xs font-medium',
+                    'inline-flex h-9 shrink-0 items-center gap-1.5 px-1 text-xs font-medium',
                     saveState === 'saving' || isUploadingImage || isUploadingEmailImage
                       ? 'text-ink-500'
                       : 'text-ink-400'
@@ -1102,9 +999,7 @@ export function PageEditorClient({
                         : saveState === 'saved'
                           ? lastSaveSource === 'autosave'
                             ? 'Autosaved'
-                            : lastSaveSource === 'restore'
-                              ? 'Version restored'
-                              : 'All changes saved'
+                            : 'All changes saved'
                           : dirtyRef.current ? 'Waiting to autosave…' : 'All changes saved'}
                 </span>
               )}
@@ -1114,46 +1009,65 @@ export function PageEditorClient({
                 </span>
               )}
               <AceternityButton
-                onClick={() => void openVersionHistory()}
-                title="View and restore saved versions"
+                aria-label="Undo last change"
+                className="shrink-0 px-2.5 sm:px-3"
+                disabled={!pageEditorHistoryAvailability.canUndo}
+                onClick={() => movePageEditorHistory('undo')}
+                title="Undo last change"
                 variant="secondary"
               >
-                <History className="h-4 w-4" />
-                Versions
+                <Undo2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Undo</span>
+              </AceternityButton>
+              <AceternityButton
+                aria-label="Redo last change"
+                className="shrink-0 px-2.5 sm:px-3"
+                disabled={!pageEditorHistoryAvailability.canRedo}
+                onClick={() => movePageEditorHistory('redo')}
+                title="Redo last change"
+                variant="secondary"
+              >
+                <Redo2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Redo</span>
               </AceternityButton>
               {leadMagnet.published ? (
                 <a
-                  className={aceternityButtonClassName({ variant: 'secondary' })}
+                  aria-label="View published page"
+                  className={cn(aceternityButtonClassName({ variant: 'secondary' }), 'shrink-0 px-2.5 sm:px-4')}
                   href={landingPageUrl}
                   rel="noreferrer"
                   target="_blank"
                   title="Open the published landing page in a new tab"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  View page
+                  <span className="hidden sm:inline">View page</span>
                 </a>
               ) : (
                 <AceternityButton
+                  aria-label="View published page"
+                  className="shrink-0 px-2.5 sm:px-4"
                   disabled
                   title="Publish this page before opening it"
                   variant="secondary"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  View page
+                  <span className="hidden sm:inline">View page</span>
                 </AceternityButton>
               )}
               <AceternityButton
+                aria-label="Analytics"
+                className="shrink-0 px-2.5 sm:px-4"
                 onClick={() => router.push(`/dashboard/pages/${leadMagnet.id}/analytics`)}
                 title="View visits and conversions"
                 variant="secondary"
               >
                 <BarChart3 className="h-4 w-4" />
-                Analytics
+                <span className="hidden sm:inline">Analytics</span>
               </AceternityButton>
               <button
                 aria-label="Toggle published"
                 className={cn(
-                  'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium transition',
+                  'inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-2.5 text-xs font-medium transition sm:px-3',
                   leadMagnet.published
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                     : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
@@ -1171,9 +1085,9 @@ export function PageEditorClient({
                 />
                 {leadMagnet.published ? 'Published' : 'Draft'}
               </button>
-              <AceternityButton onClick={() => setConfirmDelete(true)} variant="danger" disabled={isDeleting}>
+              <AceternityButton aria-label="Delete magnet" className="shrink-0 px-2.5 sm:px-4" onClick={() => setConfirmDelete(true)} variant="danger" disabled={isDeleting}>
                 {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {isDeleting ? 'Deleting' : 'Delete'}
+                <span className="hidden sm:inline">{isDeleting ? 'Deleting' : 'Delete'}</span>
               </AceternityButton>
               </div>
             </div>
@@ -1928,13 +1842,14 @@ function EmailBodyEditor({
     const current = blocks[index];
     const previous = blocks[index - 1];
     if (!current || current.kind !== 'text' || !previous || previous.kind !== 'text') return false;
+    const currentText = emailTextForPreviousBlockMerge(currentRaw);
     const joiner = previous.raw
-      && currentRaw
+      && currentText
       && !/\s$/.test(previous.raw)
-      && !/^\s/.test(currentRaw)
+      && !/^\s/.test(currentText)
       ? ' '
       : '';
-    const mergedRaw = `${previous.raw}${joiner}${currentRaw}`;
+    const mergedRaw = `${previous.raw}${joiner}${currentText}`;
     // The previous contenteditable is focused during the same layout pass that
     // removes the current block. Update its DOM before that focus happens;
     // otherwise its focused-editor guard can keep showing the old value even
@@ -2250,7 +2165,7 @@ function EmailBodyEditor({
           'no-scrollbar flex items-center gap-1 bg-white/95 p-1.5 backdrop-blur-md',
           floating
             ? 'flex-col rounded-xl border border-ink-200 shadow-xl shadow-black/10'
-            : 'flex-wrap rounded-t-xl border-b border-ink-200 bg-ink-50/95 sm:flex-nowrap sm:overflow-x-auto'
+            : 'flex-nowrap overflow-x-auto rounded-t-xl border-b border-ink-200 bg-ink-50/95'
         )}
         role="toolbar"
       >
@@ -2389,7 +2304,7 @@ function EmailBodyEditor({
       }}
     >
       <div className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white transition focus-within:border-ink-400 focus-within:ring-1 focus-within:ring-ink-200">
-        <div className="sticky top-16 z-40 xl:hidden">
+        <div className="sticky top-11 z-40 lg:top-0 xl:hidden">
           {formattingToolbar(false)}
         </div>
         {dropError && (
@@ -2397,7 +2312,7 @@ function EmailBodyEditor({
             {dropError}
           </div>
         )}
-        <div className="min-h-64 px-10 py-4 sm:px-12 sm:py-5">
+        <div className="min-h-64 px-1 py-3 sm:px-12 sm:py-5">
           {blocks.map((block, index) => {
             if (block.kind === 'image' || block.kind === 'image-row') {
               const images = block.kind === 'image'
@@ -2417,7 +2332,7 @@ function EmailBodyEditor({
                 <Fragment key={block.editorId}>
                   <div
                     className={cn(
-                      'group/email-block group/email-image relative -mx-1 rounded-lg bg-white py-3 pl-14 pr-3 transition hover:bg-ink-50/40 focus-within:bg-ink-50/40 sm:-mx-3 sm:px-16 sm:py-3',
+                      'group/email-block group/email-image relative rounded-lg bg-white py-2 pl-9 pr-9 transition hover:bg-ink-50/40 focus-within:bg-ink-50/40 sm:-mx-3 sm:px-16 sm:py-3',
                       draggedContentBlockIndex === index && 'scale-[0.99] opacity-40',
                       isDraggedImageBlock && 'scale-[0.99] opacity-40',
                       canAcceptDraggedImages && 'border-dashed border-ink-400 bg-ink-50/70',
@@ -2466,7 +2381,7 @@ function EmailBodyEditor({
                     />
                     <EmailBlockDropIndicator target={contentBlockDropTarget?.index === index ? contentBlockDropTarget : null} />
                     <div className={cn(
-                      'grid gap-2 overflow-visible rounded-lg',
+                      'grid gap-1.5 overflow-visible rounded-lg sm:gap-2',
                       images.length === 3 ? 'grid-cols-3' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-1 place-items-center'
                     )}>
                       {images.map((image, imageIndex) => {
@@ -2501,7 +2416,7 @@ function EmailBodyEditor({
                                   'w-full bg-transparent px-2 text-center text-xs italic leading-5 text-ink-500 outline-none transition placeholder:italic placeholder:text-ink-400',
                                   image.caption
                                     ? 'opacity-100'
-                                    : 'opacity-0 group-hover/email-image:opacity-100 group-focus-within/email-image:opacity-100'
+                                    : 'opacity-100 sm:opacity-0 sm:group-hover/email-image:opacity-100 sm:group-focus-within/email-image:opacity-100'
                                 )}
                                 maxLength={240}
                                 onChange={(event) => setImageCaption(index, imageIndex, event.target.value)}
@@ -2613,7 +2528,7 @@ function EmailBodyEditor({
               <Fragment key={block.editorId}>
                 <div
                   className={cn(
-                    'group/email-block relative -mx-1 rounded-md bg-transparent py-1 pl-14 pr-3 transition hover:bg-ink-50/60 focus-within:bg-ink-50/60 sm:-mx-3 sm:px-16',
+                    'group/email-block relative rounded-md bg-transparent py-1 pl-9 pr-9 transition hover:bg-ink-50/60 focus-within:bg-ink-50/60 sm:-mx-3 sm:px-16',
                     draggedContentBlockIndex === index && 'scale-[0.99] opacity-40'
                   )}
                   onDragEnter={(event) => dragContentBlockOver(event, index)}
@@ -2674,7 +2589,7 @@ function EmailBodyEditor({
           })}
 
           {endsWithYouTubeVideo && (
-            <div className="-mx-1 mt-1 pl-14 pr-3 sm:-mx-3 sm:px-3">
+            <div className="mt-1 pl-9 pr-2 sm:-mx-3 sm:px-3">
               <button
                 aria-label="Add a content block after the YouTube video"
                 className="group flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-ink-200 bg-white text-xs font-medium text-ink-500 transition hover:border-ink-400 hover:bg-ink-50 hover:text-ink-950 focus-visible:border-ink-400 focus-visible:bg-ink-50 focus-visible:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-200"
@@ -2717,7 +2632,7 @@ function EmailBlockRail({
   onMove: (direction: 'down' | 'up') => void;
 }) {
   return (
-    <div className="absolute left-0 top-2 z-20 flex items-center text-ink-400 opacity-100 transition sm:left-0 sm:opacity-0 sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:opacity-100">
+    <div className="absolute left-0 top-1 z-20 flex flex-col items-center text-ink-400 opacity-100 transition sm:top-2 sm:flex-row sm:opacity-0 sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:opacity-100">
       <button
         aria-label={`Add a content block after block ${blockNumber}`}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-ink-100 hover:text-ink-950 focus-visible:bg-ink-100 focus-visible:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300"
@@ -4256,8 +4171,8 @@ function MagnetsEmailFooterBlock({ edgeToEdge = false }: { edgeToEdge?: boolean 
   return (
     <div
       className={cn(
-        'mt-7 rounded-xl bg-[#080d18] px-5 py-8 text-center sm:px-8',
-        edgeToEdge && '-mx-6 -mb-7 rounded-b-lg'
+        'mt-5 rounded-xl bg-[#080d18] px-4 py-7 text-center sm:mt-7 sm:px-8 sm:py-8',
+        edgeToEdge && '-mx-3 -mb-4 rounded-b-lg sm:-mx-6 sm:-mb-7'
       )}
       aria-label="Email footer"
     >
@@ -4292,7 +4207,7 @@ function EmailCanvas({
   const [previewOpen, setPreviewOpen] = useState(false);
 
   return (
-    <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
+    <div className="bg-ink-50 px-0 py-3 sm:px-8 sm:py-10">
       {previewOpen && (
         <EmailPreviewDialog
           initialMessageId="delivery"
@@ -4302,7 +4217,7 @@ function EmailCanvas({
       )}
       <div className="mx-auto max-w-4xl space-y-4">
         <div className="rounded-lg border border-ink-200 bg-white">
-          <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs text-ink-500">
+          <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-3 py-3 text-xs text-ink-500 sm:px-5">
             <Mail className="h-4 w-4 text-ink-700" />
             <span className="font-medium">Delivery email</span>
             <span className="ml-auto hidden font-mono text-[10px] sm:block">{account.resendFromEmail || 'Magnets <hello@mail.magnets.so>'}</span>
@@ -4319,14 +4234,14 @@ function EmailCanvas({
             </button>
           </div>
 
-          <div className="px-6 py-7">
-            <div className="mb-7 space-y-5 border-b border-ink-100 pb-6">
+          <div className="px-3 py-4 sm:px-6 sm:py-7">
+            <div className="mb-5 space-y-4 border-b border-ink-100 pb-5 sm:mb-7 sm:space-y-5 sm:pb-6">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink-500">Subject</span>
                 <InlineText
                   ariaLabel="Email subject"
                   as="div"
-                  className="block text-2xl font-semibold leading-tight text-ink-950"
+                  className="block text-xl font-semibold leading-tight text-ink-950 sm:text-2xl"
                   emptyPlaceholder="What people see in the inbox"
                   maxLength={140}
                   onChange={(value) => onPatch({ emailSubject: value })}
@@ -4449,7 +4364,7 @@ function SequenceCanvas({
   }
 
   return (
-    <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
+    <div className="bg-ink-50 px-0 py-3 sm:px-8 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-4">
         {!resendConfigured && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -4460,7 +4375,7 @@ function SequenceCanvas({
           </div>
         )}
 
-        <div className="rounded-lg border border-ink-200 bg-white p-5">
+        <div className="rounded-lg border border-ink-200 bg-white p-3 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-ink-950">Follow-up sequence</p>
@@ -4635,7 +4550,7 @@ function SequenceCanvas({
                 const delayValue = delayUnit === 'hours' ? delayMinutes / 60 : delayMinutes;
                 const delayInputValue = delayDrafts[activeEmail.id] ?? String(delayValue);
                 return (
-                  <div className="space-y-4 p-4 sm:p-5">
+                  <div className="space-y-4 p-3 sm:p-5">
                     <label className="block">
                       <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-700">
                         <Clock className="h-3.5 w-3.5" />

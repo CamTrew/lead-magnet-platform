@@ -15,7 +15,10 @@ import {
   serializeEmailBodyBlocks,
 } from '../lib/email-body-images';
 import { proxyEmailImagesInBody } from '../lib/email-image-proxy';
-import { parseYouTubeVideoUrl } from '../lib/email-body-links';
+import {
+  emailTextForPreviousBlockMerge,
+  parseYouTubeVideoUrl,
+} from '../lib/email-body-links';
 import {
   MAGNETS_EMAIL_FOOTER_HTML,
   cleanEmailText,
@@ -44,6 +47,16 @@ assert.equal(
   'https://magnets.so/youtube-thumbnails/dQw4w9WgXcQ'
 );
 assert.equal(parseYouTubeVideoUrl('https://example.com/video'), null);
+
+// Backspacing at the beginning of a block merges its visible content into the
+// previous block. Block syntax must not leak into that sentence.
+assert.equal(emailTextForPreviousBlockMerge('### Subheading'), 'Subheading');
+assert.equal(emailTextForPreviousBlockMerge('> A quote'), 'A quote');
+assert.equal(emailTextForPreviousBlockMerge('>> A side quote'), 'A side quote');
+assert.equal(emailTextForPreviousBlockMerge('- A bullet'), 'A bullet');
+assert.equal(emailTextForPreviousBlockMerge('– A dashed item'), 'A dashed item');
+assert.equal(emailTextForPreviousBlockMerge('1. A numbered item'), 'A numbered item');
+assert.equal(emailTextForPreviousBlockMerge('Normal # text'), 'Normal # text');
 
 function occurrences(value: string, pattern: RegExp) {
   return Array.from(value.matchAll(pattern)).length;

@@ -28,6 +28,16 @@ export type YouTubeVideo = {
   url: string;
 };
 
+/**
+ * Remove the block-level marker from text that is being pulled into the
+ * previous editor block with Backspace. The previous block owns the resulting
+ * style, so carrying a heading/list/quote marker into its sentence would show
+ * that marker as literal text (for example, `Heading ### Subheading`).
+ */
+export function emailTextForPreviousBlockMerge(value: string) {
+  return value.replace(/^(?:#{1,6}|>{1,3}|[-*–—]|\d+\.)[ \t]+/, '');
+}
+
 export function parseYouTubeVideoUrl(value: string): YouTubeVideo | null {
   const candidate = normaliseEmailLinkUrl(value);
   if (!candidate) return null;
