@@ -19,6 +19,7 @@
     "test:quiz-routing": "node scripts/run-tsx.mjs scripts/quiz-routing-smoke.ts",
     "test:hosted-resources": "node scripts/run-tsx.mjs scripts/hosted-resources-smoke.ts",
     "test:lead-magnet-copilot": "node scripts/run-tsx.mjs scripts/lead-magnet-copilot-smoke.ts",
+    "test:version-history": "node --env-file=.env.local scripts/run-tsx.mjs scripts/version-history-smoke.ts",
     "test:kit-integration": "node scripts/run-tsx.mjs scripts/kit-integration-smoke.ts",
     "test:zapier-webhook": "node scripts/run-tsx.mjs scripts/zapier-webhook-smoke.ts",
     "db:generate": "drizzle-kit generate",

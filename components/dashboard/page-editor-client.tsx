@@ -21,6 +21,7 @@ import {
   Frame,
   Image as ImageIcon,
   GripVertical,
+  History,
   Italic,
   Link2,
   List,
@@ -69,7 +70,12 @@ import {
   renderFollowUpEmailHtml,
 } from '@/lib/email-render';
 import { pruneQuizRouteConditions } from '@/lib/quiz-routing';
-import type { DashboardBasePayload, LeadMagnet } from '@/lib/types';
+import type {
+  DashboardBasePayload,
+  LeadMagnet,
+  LeadMagnetVersionSnapshot,
+  LeadMagnetVersionSummary,
+} from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import {
   AceternityButton,
@@ -96,7 +102,7 @@ import type {
 // Preview imports the production renderer on purpose. Autosave and undo/redo
 // must include uploads, deletes, grouping, captions, and copilot-applied edits.
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type SaveSource = 'autosave' | 'manual';
+type SaveSource = 'autosave' | 'manual' | 'restore';
 type Mode = 'page' | 'email' | 'sequence' | 'after';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
 type EmailImageTarget =
@@ -400,6 +406,117 @@ function EditorWorkflowNav({
   );
 }
 
+function LeadMagnetVersionHistoryDialog({
+  error,
+  loading,
+  onClose,
+  onRefresh,
+  onRestore,
+  versions,
+}: {
+  error: string;
+  loading: boolean;
+  onClose: () => void;
+  onRefresh: () => void;
+  onRestore: (version: LeadMagnetVersionSummary) => void;
+  versions: LeadMagnetVersionSummary[];
+}) {
+  useModalAccessibility(onClose);
+
+  const sourceLabel = (source: LeadMagnetVersionSummary['source']) => {
+    if (source === 'baseline') return 'Before version history';
+    if (source === 'restore') return 'Restored version';
+    if (source === 'autosave') return 'Autosave';
+    return 'Saved change';
+  };
+
+  return (
+    <div
+      aria-label="Version history"
+      aria-modal="true"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+      role="dialog"
+    >
+      <div className="flex max-h-[80vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl">
+        <div className="flex items-start gap-3 border-b border-ink-200 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold text-ink-950">Version history</p>
+            <p className="mt-1 text-xs leading-5 text-ink-500">
+              Autosave keeps up to 100 recoverable versions of the whole magnet.
+            </p>
+          </div>
+          <button
+            aria-label="Close version history"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-ink-200 text-ink-600 transition hover:bg-ink-50"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-ink-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading saved versions…
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <p>{error}</p>
+              <button className="mt-3 font-semibold underline" onClick={onRefresh} type="button">
+                Try again
+              </button>
+            </div>
+          ) : versions.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-ink-200 p-8 text-center">
+              <p className="text-sm font-semibold text-ink-900">No versions yet</p>
+              <p className="mt-1 text-xs leading-5 text-ink-500">
+                The next material autosave will preserve the current content and the new version.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {versions.map((version, index) => (
+                <div
+                  className="flex items-center gap-3 rounded-lg border border-ink-200 bg-white p-3"
+                  key={version.id}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-ink-900">
+                        {index === 0 ? 'Current saved version' : sourceLabel(version.source)}
+                      </p>
+                      {index === 0 && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          Latest
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-ink-500">
+                      {new Date(version.createdAt).toLocaleString()}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-ink-600">
+                      {version.emailSubject || version.title || 'Untitled magnet'}
+                    </p>
+                  </div>
+                  <button
+                    className="inline-flex h-9 shrink-0 items-center rounded-md border border-ink-200 px-3 text-xs font-semibold text-ink-700 transition hover:bg-ink-50"
+                    onClick={() => onRestore(version)}
+                    type="button"
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PageEditorClient({
   initialData,
   initialLeadMagnet,
@@ -430,6 +547,12 @@ export function PageEditorClient({
   const editRevisionRef = useRef(0);
   const saveInFlightRef = useRef(false);
   const [lastSaveSource, setLastSaveSource] = useState<SaveSource>('manual');
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [versions, setVersions] = useState<LeadMagnetVersionSummary[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState('');
+  const [restoreCandidate, setRestoreCandidate] = useState<LeadMagnetVersionSummary | null>(null);
+  const [restoringVersion, setRestoringVersion] = useState(false);
 
   const markDirty = useCallback(() => {
     editRevisionRef.current += 1;
@@ -507,8 +630,8 @@ export function PageEditorClient({
     overrides: Partial<LeadMagnet> = {},
     source: SaveSource = 'manual'
   ) => {
-    if (saveInFlightRef.current || isUploadingImage || isUploadingEmailImage) return;
-    if (source === 'manual') setError('');
+    if (saveInFlightRef.current || isUploadingImage || isUploadingEmailImage) return false;
+    if (source !== 'autosave') setError('');
 
     // Merge any caller overrides into the payload AND into local state. The
     // publish toggle uses this to flip `published` and persist it in the
@@ -517,11 +640,11 @@ export function PageEditorClient({
     const payload = { ...leadMagnet, ...overrides };
     const delayError = validateFollowUpDelays(payload);
     if (delayError) {
-      if (source === 'manual') {
+      if (source !== 'autosave') {
         setError(delayError);
         setSaveState('error');
       }
-      return;
+      return false;
     }
 
     const revisionAtStart = editRevisionRef.current;
@@ -556,6 +679,7 @@ export function PageEditorClient({
           followUpStopOnBooking: payload.followUpStopOnBooking,
           followUpEmails: payload.followUpEmails,
           syncFollowUp,
+          saveSource: source,
           postSignupMode: payload.postSignupMode,
           postSignupRedirectUrl: payload.postSignupRedirectUrl,
           postSignupHeading: payload.postSignupHeading,
@@ -581,7 +705,7 @@ export function PageEditorClient({
         // If the publish-time validation tripped, revert the toggle locally
         // so the user can see what's wrong without the page bouncing back
         // and forth.
-        if (source === 'manual' && response.status === 400 && payload.published) {
+        if (source !== 'autosave' && response.status === 400 && payload.published) {
           setLeadMagnet((current) => ({ ...current, published: false }));
         }
         throw new Error(data?.error || 'Page could not be saved');
@@ -604,14 +728,76 @@ export function PageEditorClient({
         dirtyRef.current = true;
         setSaveState('idle');
       }
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
       setError(source === 'autosave' ? `Autosave failed: ${message}` : message);
       setSaveState('error');
+      return false;
     } finally {
       saveInFlightRef.current = false;
     }
   }, [isUploadingEmailImage, isUploadingImage, leadMagnet]);
+
+  const loadVersionHistory = useCallback(async () => {
+    setVersionsLoading(true);
+    setVersionsError('');
+    try {
+      const response = await fetch(`/api/lead-magnets/${leadMagnet.id}/versions`, {
+        cache: 'no-store',
+      });
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+        versions?: LeadMagnetVersionSummary[];
+      } | null;
+      if (!response.ok) throw new Error(data?.error || 'Version history could not be loaded.');
+      setVersions(data?.versions || []);
+    } catch (versionError) {
+      setVersionsError(versionError instanceof Error
+        ? versionError.message
+        : 'Version history could not be loaded.');
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [leadMagnet.id]);
+
+  async function openVersionHistory() {
+    setVersionHistoryOpen(true);
+    await loadVersionHistory();
+  }
+
+  async function performRestoreVersion() {
+    if (!restoreCandidate || restoringVersion) return;
+    setRestoringVersion(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `/api/lead-magnets/${leadMagnet.id}/versions/${restoreCandidate.id}`,
+        { cache: 'no-store' }
+      );
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+        snapshot?: LeadMagnetVersionSnapshot;
+      } | null;
+      if (!response.ok || !data?.snapshot) {
+        throw new Error(data?.error || 'That version could not be restored.');
+      }
+
+      editRevisionRef.current += 1;
+      followUpRevisionRef.current += 1;
+      dirtyRef.current = true;
+      const restored = await saveLeadMagnet(data.snapshot, 'restore');
+      if (!restored) throw new Error('That version could not be restored.');
+      setRestoreCandidate(null);
+      await loadVersionHistory();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error
+        ? restoreError.message
+        : 'That version could not be restored.');
+    } finally {
+      setRestoringVersion(false);
+    }
+  }
 
   useEffect(() => {
     if (
@@ -818,6 +1004,40 @@ export function PageEditorClient({
         />
       )}
 
+      {versionHistoryOpen && (
+        <LeadMagnetVersionHistoryDialog
+          error={versionsError}
+          loading={versionsLoading}
+          onClose={() => setVersionHistoryOpen(false)}
+          onRefresh={() => void loadVersionHistory()}
+          onRestore={(version) => {
+            setVersionHistoryOpen(false);
+            setRestoreCandidate(version);
+          }}
+          versions={versions}
+        />
+      )}
+
+      {restoreCandidate && (
+        <ConfirmDialog
+          confirmLabel={restoringVersion ? 'Restoring…' : 'Restore version'}
+          description={
+            <>
+              <p>
+                This replaces the current page, delivery email, sequence, and after-signup content with the selected saved version.
+              </p>
+              <p className="mt-2 text-ink-600">
+                Your current content remains in version history, so you can recover it again.
+              </p>
+            </>
+          }
+          onCancel={() => setRestoreCandidate(null)}
+          onConfirm={performRestoreVersion}
+          pending={restoringVersion}
+          title="Restore this saved version?"
+        />
+      )}
+
       <div className="mx-auto max-w-6xl space-y-4">
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
@@ -880,7 +1100,11 @@ export function PageEditorClient({
                       : saveState === 'saving'
                         ? 'Saving changes…'
                         : saveState === 'saved'
-                          ? lastSaveSource === 'autosave' ? 'Autosaved' : 'All changes saved'
+                          ? lastSaveSource === 'autosave'
+                            ? 'Autosaved'
+                            : lastSaveSource === 'restore'
+                              ? 'Version restored'
+                              : 'All changes saved'
                           : dirtyRef.current ? 'Waiting to autosave…' : 'All changes saved'}
                 </span>
               )}
@@ -889,6 +1113,14 @@ export function PageEditorClient({
                   Could not save
                 </span>
               )}
+              <AceternityButton
+                onClick={() => void openVersionHistory()}
+                title="View and restore saved versions"
+                variant="secondary"
+              >
+                <History className="h-4 w-4" />
+                Versions
+              </AceternityButton>
               {leadMagnet.published ? (
                 <a
                   className={aceternityButtonClassName({ variant: 'secondary' })}
@@ -1482,6 +1714,7 @@ type EmailTextSegmentEditorHandle = {
   openLinkEditor: () => void;
   rememberInsertionPoint: () => void;
   rememberSelection: () => void;
+  replaceValue: (value: string) => void;
   splitAtCaret: () => { after: string; before: string };
 };
 
@@ -1562,6 +1795,7 @@ function EmailBodyEditor({
   const [draggedContentBlockIndex, setDraggedContentBlockIndex] = useState<number | null>(null);
   const [contentBlockDropTarget, setContentBlockDropTarget] = useState<ContentBlockDropTarget | null>(null);
   const [historyAvailability, setHistoryAvailability] = useState({ canRedo: false, canUndo: false });
+  const [dropError, setDropError] = useState('');
   const draggedImageBlockIndexRef = useRef<number | null>(null);
   const draggedContentBlockIndexRef = useRef<number | null>(null);
   const lastEmittedBodyRef = useRef(value);
@@ -1690,13 +1924,25 @@ function EmailBodyEditor({
     commitBlocks(nextBlocks);
   }
 
-  function mergeTextBlockWithPrevious(index: number) {
+  function mergeTextBlockWithPrevious(index: number, currentRaw: string) {
     const current = blocks[index];
     const previous = blocks[index - 1];
     if (!current || current.kind !== 'text' || !previous || previous.kind !== 'text') return false;
+    const joiner = previous.raw
+      && currentRaw
+      && !/\s$/.test(previous.raw)
+      && !/^\s/.test(currentRaw)
+      ? ' '
+      : '';
+    const mergedRaw = `${previous.raw}${joiner}${currentRaw}`;
+    // The previous contenteditable is focused during the same layout pass that
+    // removes the current block. Update its DOM before that focus happens;
+    // otherwise its focused-editor guard can keep showing the old value even
+    // though the serialized body was merged correctly.
+    textSegmentRefs.current.get(index - 1)?.replaceValue(mergedRaw);
     const nextBlocks = blocks
       .map((block, blockIndex) => blockIndex === index - 1
-        ? { ...previous, raw: `${previous.raw}${current.raw}` }
+        ? { ...previous, raw: mergedRaw }
         : block)
       .filter((_, blockIndex) => blockIndex !== index);
     pendingBlockFocusRef.current = { index: index - 1, position: 'end' };
@@ -2146,6 +2392,11 @@ function EmailBodyEditor({
         <div className="sticky top-16 z-40 xl:hidden">
           {formattingToolbar(false)}
         </div>
+        {dropError && (
+          <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 sm:mx-6">
+            {dropError}
+          </div>
+        )}
         <div className="min-h-64 px-10 py-4 sm:px-12 sm:py-5">
           {blocks.map((block, index) => {
             if (block.kind === 'image' || block.kind === 'image-row') {
@@ -2391,7 +2642,8 @@ function EmailBodyEditor({
                       split,
                       files
                     )}
-                    onMergeWithPrevious={() => mergeTextBlockWithPrevious(index)}
+                    onDropError={setDropError}
+                    onMergeWithPrevious={(currentRaw) => mergeTextBlockWithPrevious(index, currentRaw)}
                     onSplit={(split) => splitTextBlock(index, split)}
                     placeholder={index === 0
                       ? 'Start writing, or press / for blocks. Use {name} for the recipient.'
@@ -2867,14 +3119,14 @@ function EmailImageBorderPanel({
   );
 }
 
-function pastedImageFiles(clipboardData: DataTransfer) {
-  const itemFiles = Array.from(clipboardData.items)
+function transferredImageFiles(dataTransfer: DataTransfer) {
+  const itemFiles = Array.from(dataTransfer.items)
     .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
     .filter((file): file is File => Boolean(file));
   const files = itemFiles.length > 0
     ? itemFiles
-    : Array.from(clipboardData.files).filter((file) => file.type.startsWith('image/'));
+    : Array.from(dataTransfer.files).filter((file) => file.type.startsWith('image/'));
   return files.slice(0, 3);
 }
 
@@ -2885,7 +3137,8 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
   onInsertImage: (split: { after: string; before: string }) => void;
   onInsertImageRow: (split: { after: string; before: string }) => void;
   onPasteImages: (split: { after: string; before: string }, files: File[]) => void;
-  onMergeWithPrevious: () => boolean;
+  onDropError: (message: string) => void;
+  onMergeWithPrevious: (currentRaw: string) => boolean;
   onSplit: (split: { after: string; before: string }) => void;
   placeholder: string;
   rows: number;
@@ -2897,6 +3150,7 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
   onInsertImage,
   onInsertImageRow,
   onPasteImages,
+  onDropError,
   onMergeWithPrevious,
   onSplit,
   placeholder,
@@ -3432,6 +3686,13 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     setSlashMenuOpen(true);
   }
 
+  function replaceValue(nextValue: string) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.innerHTML = renderEmailEditorHtml(nextValue);
+    lastEmittedRef.current = nextValue;
+  }
+
   useImperativeHandle(ref, () => ({
     applyFormat,
     discardRememberedSelection,
@@ -3441,6 +3702,7 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     openLinkEditor,
     rememberInsertionPoint,
     rememberSelection,
+    replaceValue,
     splitAtCaret,
   }));
 
@@ -3583,9 +3845,14 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
             onSplit(splitAtCaret());
             return;
           }
-          if (event.key === 'Backspace' && caretIsAtEditorStart() && onMergeWithPrevious()) {
-            event.preventDefault();
-            setSlashMenuOpen(false);
+          if (event.key === 'Backspace' && caretIsAtEditorStart()) {
+            const currentRaw = editorRef.current
+              ? extractEmailEditorValue(editorRef.current)
+              : value;
+            if (onMergeWithPrevious(currentRaw)) {
+              event.preventDefault();
+              setSlashMenuOpen(false);
+            }
           }
         }}
         onKeyUp={() => {
@@ -3603,7 +3870,7 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
         onPaste={(event) => {
           event.preventDefault();
           unlinkForMutation('insertFromPaste');
-          const images = pastedImageFiles(event.clipboardData);
+          const images = transferredImageFiles(event.clipboardData);
           if (images.length > 0) {
             onPasteImages(splitAtCaret(), images);
             return;
@@ -3634,6 +3901,38 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
           }
 
           insertAtRange(range, document.createTextNode(pastedText));
+        }}
+        onDragOver={(event) => {
+          const hasFiles = event.dataTransfer.types.includes('Files');
+          const uri = event.dataTransfer.getData('text/uri-list')
+            || event.dataTransfer.getData('text/plain');
+          if (hasFiles || uri.startsWith('file:')) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+          }
+        }}
+        onDrop={(event) => {
+          const images = transferredImageFiles(event.dataTransfer);
+          const hasFiles = event.dataTransfer.files.length > 0
+            || event.dataTransfer.types.includes('Files');
+          const uri = event.dataTransfer.getData('text/uri-list')
+            || event.dataTransfer.getData('text/plain');
+
+          if (images.length > 0) {
+            event.preventDefault();
+            onDropError('');
+            onPasteImages(splitAtCaret(), images);
+            return;
+          }
+
+          if (hasFiles || uri.startsWith('file:')) {
+            event.preventDefault();
+            onDropError(
+              hasFiles
+                ? 'That dropped file is not a supported image. Use PNG, JPG, WebP, or GIF.'
+                : 'The browser only supplied a private file path. Drag the image from Finder, or click Image to choose it.'
+            );
+          }
         }}
         ref={attachEditorRef}
         role="textbox"
@@ -3832,35 +4131,54 @@ function EmailCommandMenuItem({
 }
 
 function EmailPreviewDialog({
-  body,
-  kind,
+  initialMessageId,
+  leadMagnet,
   onClose,
-  previewText,
-  subject,
 }: {
-  body: string;
-  kind: 'delivery' | 'follow-up';
+  initialMessageId: string;
+  leadMagnet: LeadMagnet;
   onClose: () => void;
-  previewText: string;
-  subject: string;
 }) {
   useModalAccessibility(onClose);
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const messages = useMemo(() => [
+    {
+      body: leadMagnet.emailBody,
+      id: 'delivery',
+      kind: 'delivery' as const,
+      label: 'Email 1',
+      previewText: leadMagnet.emailPreview,
+      subject: leadMagnet.emailSubject,
+    },
+    ...leadMagnet.followUpEmails.map((email, index) => ({
+      body: email.body,
+      id: email.id,
+      kind: 'follow-up' as const,
+      label: `Email ${followUpEmailNumber(index)}`,
+      previewText: email.preview,
+      subject: email.subject,
+    })),
+  ], [leadMagnet]);
+  const [activeMessageId, setActiveMessageId] = useState(initialMessageId);
+  const activeMessage = messages.find((message) => message.id === activeMessageId)
+    || messages[0];
   const documentHtml = useMemo(() => {
-    const sampleBody = body.replace(/{name}/g, 'Alex').replace(/{download_link}/g, '#');
-    const rendered = kind === 'follow-up'
-      ? renderFollowUpEmailHtml(sampleBody, previewText, '#')
-      : renderDeliveryEmailHtml(sampleBody, previewText);
+    const sampleBody = activeMessage.body
+      .replace(/{name}/g, 'Alex')
+      .replace(/{download_link}/g, '#');
+    const rendered = activeMessage.kind === 'follow-up'
+      ? renderFollowUpEmailHtml(sampleBody, activeMessage.previewText, '#')
+      : renderDeliveryEmailHtml(sampleBody, activeMessage.previewText);
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head><body style="margin:0;background:#ffffff">${rendered}</body></html>`;
-  }, [body, kind, previewText]);
+  }, [activeMessage]);
 
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-black/55 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label="Email preview">
       <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-2xl">
         <div className="flex flex-wrap items-center gap-3 border-b border-ink-200 px-4 py-3 sm:px-5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-ink-950">{subject || 'Untitled email'}</p>
-            <p className="truncate text-xs text-ink-500">{previewText || 'No preview text yet'}</p>
+            <p className="truncate text-sm font-semibold text-ink-950">{activeMessage.subject || 'Untitled email'}</p>
+            <p className="truncate text-xs text-ink-500">{activeMessage.previewText || 'No preview text yet'}</p>
           </div>
           <div className="flex rounded-lg border border-ink-200 bg-ink-50 p-1">
             {([
@@ -3889,14 +4207,45 @@ function EmailPreviewDialog({
             Close
           </button>
         </div>
-        <div className="flex min-h-0 flex-1 justify-center overflow-auto bg-[#e8e6e1] p-3 sm:p-6">
-          <iframe
-            className="h-full min-h-[640px] bg-white shadow-xl transition-[width] duration-200"
-            sandbox="allow-popups allow-popups-to-escape-sandbox"
-            srcDoc={documentHtml}
-            style={{ width: device === 'mobile' ? 390 : '100%', maxWidth: device === 'mobile' ? 390 : 920 }}
-            title={`${subject || 'Email'} preview`}
-          />
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <aside className="shrink-0 border-b border-ink-200 bg-ink-50 p-2 md:w-56 md:border-b-0 md:border-r md:p-3">
+            <p className="hidden px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400 md:block">
+              Sequence preview
+            </p>
+            <div className="flex gap-2 overflow-x-auto md:flex-col md:overflow-visible">
+              {messages.map((message) => (
+                <button
+                  aria-pressed={message.id === activeMessage.id}
+                  className={cn(
+                    'min-w-40 rounded-lg border px-3 py-2.5 text-left transition md:min-w-0',
+                    message.id === activeMessage.id
+                      ? 'border-ink-950 bg-ink-950 text-white'
+                      : 'border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:bg-ink-100'
+                  )}
+                  key={message.id}
+                  onClick={() => setActiveMessageId(message.id)}
+                  type="button"
+                >
+                  <span className="block text-xs font-semibold">{message.label}</span>
+                  <span className={cn(
+                    'mt-1 block truncate text-[11px]',
+                    message.id === activeMessage.id ? 'text-white/65' : 'text-ink-500'
+                  )}>
+                    {message.subject || 'Untitled email'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </aside>
+          <div className="flex min-h-0 flex-1 justify-center overflow-auto bg-[#e8e6e1] p-3 sm:p-6">
+            <iframe
+              className="h-full min-h-[640px] bg-white shadow-xl transition-[width] duration-200"
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={documentHtml}
+              style={{ width: device === 'mobile' ? 390 : '100%', maxWidth: device === 'mobile' ? 390 : 920 }}
+              title={`${activeMessage.subject || activeMessage.label} preview`}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -3946,11 +4295,9 @@ function EmailCanvas({
     <div className="bg-ink-50 px-4 py-8 sm:px-8 sm:py-10">
       {previewOpen && (
         <EmailPreviewDialog
-          body={leadMagnet.emailBody}
-          kind="delivery"
+          initialMessageId="delivery"
+          leadMagnet={leadMagnet}
           onClose={() => setPreviewOpen(false)}
-          previewText={leadMagnet.emailPreview}
-          subject={leadMagnet.emailSubject}
         />
       )}
       <div className="mx-auto max-w-4xl space-y-4">
@@ -4183,11 +4530,9 @@ function SequenceCanvas({
 
         {activeEmail && previewOpen && (
           <EmailPreviewDialog
-            body={activeEmail.body}
-            kind="follow-up"
+            initialMessageId={activeEmail.id}
+            leadMagnet={leadMagnet}
             onClose={() => setPreviewOpen(false)}
-            previewText={activeEmail.preview}
-            subject={activeEmail.subject}
           />
         )}
 

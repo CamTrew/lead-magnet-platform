@@ -15,6 +15,7 @@ import {
 import type {
   BrandSettings,
   FollowUpEmail,
+  LeadMagnetVersionSnapshot,
   PostSignupQuizConfig,
   PostSignupQuizQuestion,
 } from '../lib/types';
@@ -180,6 +181,36 @@ export const leadMagnets = pgTable(
     index('magnets_lead_magnets_account_updated_idx').on(table.accountId, table.updatedAt),
     index('magnets_lead_magnets_slug_idx').on(table.slug),
     index('magnets_lead_magnets_published_idx').on(table.published),
+  ]
+);
+
+// Autosave is intentionally recoverable. Each material editor save stores a
+// compact snapshot, while provider-owned Resend identifiers stay on the live
+// lead magnet only. Rows cascade with the magnet and are never public.
+export const leadMagnetVersions = pgTable(
+  'magnets_lead_magnet_versions',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    leadMagnetId: uuid('lead_magnet_id')
+      .notNull()
+      .references(() => leadMagnets.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    snapshot: jsonb('snapshot').$type<LeadMagnetVersionSnapshot>().notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    source: text('source').notNull().default('autosave'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('magnets_lead_magnet_versions_magnet_created_idx').on(
+      table.leadMagnetId,
+      table.createdAt
+    ),
+    index('magnets_lead_magnet_versions_account_created_idx').on(
+      table.accountId,
+      table.createdAt
+    ),
   ]
 );
 

@@ -30,6 +30,9 @@ import type {
   LeadMagnetAnalytics,
   LeadMagnetOption,
   LeadMagnetSummary,
+  LeadMagnetVersionSnapshot,
+  LeadMagnetVersionSource,
+  LeadMagnetVersionSummary,
   PlatformUser,
   PostSignupQuizQuestion,
   PostSignupQuizRoute,
@@ -209,6 +212,13 @@ type LeadMagnetImageSourceRow = {
   image_url: string;
   published: boolean;
   updated_at: Date;
+};
+
+type LeadMagnetVersionRow = {
+  id: string;
+  snapshot: LeadMagnetVersionSnapshot | string;
+  source: LeadMagnetVersionSource;
+  created_at: Date;
 };
 
 type LeadMagnetCopilotMessageRow = {
@@ -2053,12 +2063,96 @@ export async function createLeadMagnet(
   });
 }
 
-export async function updateLeadMagnet(
+function leadMagnetVersionSnapshot(leadMagnet: LeadMagnet): LeadMagnetVersionSnapshot {
+  const editable = { ...leadMagnet } as Record<string, unknown>;
+  delete editable.id;
+  delete editable.accountId;
+  delete editable.createdAt;
+  delete editable.updatedAt;
+  delete editable.resendFollowUpAutomationId;
+  delete editable.resendFollowUpRenderVersion;
+  const snapshot = editable as LeadMagnetVersionSnapshot;
+
+  return {
+    ...snapshot,
+    // Proxy cache-busters change on every write even when the underlying image
+    // does not. Removing it keeps version fingerprints content-based.
+    imageUrl: snapshot.imageUrl.replace(/^(\/magnet-images\/[0-9a-f-]{36})\?.*$/i, '$1'),
+    followUpEmails: snapshot.followUpEmails.map((email) => ({
+      ...email,
+      // Provider template IDs are never valid restore targets.
+      resendTemplateId: '',
+    })),
+  };
+}
+
+function versionFingerprint(snapshot: LeadMagnetVersionSnapshot) {
+  return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+}
+
+async function storeLeadMagnetVersion(
+  runner: QueryRunner,
+  accountId: string,
+  leadMagnetId: string,
+  leadMagnet: LeadMagnet,
+  source: LeadMagnetVersionSource
+) {
+  const snapshot = leadMagnetVersionSnapshot(leadMagnet);
+  const fingerprint = versionFingerprint(snapshot);
+
+  // Skip only a consecutive identical snapshot. If a user restores an older
+  // state after later edits it becomes a new, visible recovery point.
+  await runner.query(
+    `
+      insert into public.magnets_lead_magnet_versions (
+        lead_magnet_id,
+        account_id,
+        snapshot,
+        fingerprint,
+        source
+      )
+      select $1, $2, $3::jsonb, $4, $5
+      where not exists (
+        select 1
+        from public.magnets_lead_magnet_versions
+        where lead_magnet_id = $1
+        order by created_at desc, id desc
+        limit 1
+      )
+      or $4 <> (
+        select fingerprint
+        from public.magnets_lead_magnet_versions
+        where lead_magnet_id = $1
+        order by created_at desc, id desc
+        limit 1
+      )
+    `,
+    [leadMagnetId, accountId, JSON.stringify(snapshot), fingerprint, source]
+  );
+
+  await runner.query(
+    `
+      delete from public.magnets_lead_magnet_versions
+      where lead_magnet_id = $1
+        and id not in (
+          select id
+          from public.magnets_lead_magnet_versions
+          where lead_magnet_id = $1
+          order by created_at desc, id desc
+          limit 100
+        )
+    `,
+    [leadMagnetId]
+  );
+}
+
+async function updateLeadMagnetWithRunner(
+  runner: QueryRunner,
   accountId: string,
   leadMagnetId: string,
   updates: Partial<Omit<LeadMagnet, 'id' | 'accountId' | 'createdAt' | 'updatedAt'>>
 ) {
-  const result = await query<LeadMagnetRow>(
+  const result = await runner.query<LeadMagnetRow>(
     `
       update public.magnets_lead_magnets
       set
@@ -2142,6 +2236,121 @@ export async function updateLeadMagnet(
   );
 
   return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+}
+
+export async function updateLeadMagnet(
+  accountId: string,
+  leadMagnetId: string,
+  updates: Partial<Omit<LeadMagnet, 'id' | 'accountId' | 'createdAt' | 'updatedAt'>>,
+  options: { versionSource?: LeadMagnetVersionSource } = {}
+) {
+  if (!options.versionSource) {
+    return updateLeadMagnetWithRunner({ query }, accountId, leadMagnetId, updates);
+  }
+  const versionSource = options.versionSource;
+
+  return withTransaction(async (client) => {
+    const previousResult = await client.query<LeadMagnetRow>(
+      `
+        select *
+        from public.magnets_lead_magnets
+        where account_id = $1
+          and id = $2
+        for update
+      `,
+      [accountId, leadMagnetId]
+    );
+    const previousRow = previousResult.rows[0];
+    if (!previousRow) return null;
+
+    const existingVersion = await client.query<{ exists: boolean }>(
+      `select exists(
+        select 1
+        from public.magnets_lead_magnet_versions
+        where lead_magnet_id = $1
+      ) as exists`,
+      [leadMagnetId]
+    );
+    if (!existingVersion.rows[0]?.exists) {
+      await storeLeadMagnetVersion(
+        client,
+        accountId,
+        leadMagnetId,
+        mapLeadMagnet(previousRow),
+        'baseline'
+      );
+    }
+
+    const updated = await updateLeadMagnetWithRunner(client, accountId, leadMagnetId, updates);
+    if (updated) {
+      await storeLeadMagnetVersion(
+        client,
+        accountId,
+        leadMagnetId,
+        updated,
+        versionSource
+      );
+    }
+    return updated;
+  });
+}
+
+export async function listLeadMagnetVersions(
+  accountId: string,
+  leadMagnetId: string,
+  limit = 50
+): Promise<LeadMagnetVersionSummary[]> {
+  const result = await query<LeadMagnetVersionRow>(
+    `
+      select v.id::text, v.snapshot, v.source, v.created_at
+      from public.magnets_lead_magnet_versions v
+      inner join public.magnets_lead_magnets m on m.id = v.lead_magnet_id
+      where v.account_id = $1
+        and v.lead_magnet_id = $2
+        and m.account_id = $1
+      order by v.created_at desc, v.id desc
+      limit $3
+    `,
+    [accountId, leadMagnetId, Math.max(1, Math.min(limit, 100))]
+  );
+
+  return result.rows.map((row) => {
+    const snapshot = typeof row.snapshot === 'string'
+      ? JSON.parse(row.snapshot) as LeadMagnetVersionSnapshot
+      : row.snapshot;
+    return {
+      id: row.id,
+      source: row.source,
+      createdAt: iso(row.created_at),
+      title: snapshot.title,
+      emailSubject: snapshot.emailSubject,
+    };
+  });
+}
+
+export async function getLeadMagnetVersion(
+  accountId: string,
+  leadMagnetId: string,
+  versionId: string
+): Promise<LeadMagnetVersionSnapshot | null> {
+  const result = await query<Pick<LeadMagnetVersionRow, 'snapshot'>>(
+    `
+      select v.snapshot
+      from public.magnets_lead_magnet_versions v
+      inner join public.magnets_lead_magnets m on m.id = v.lead_magnet_id
+      where v.account_id = $1
+        and v.lead_magnet_id = $2
+        and v.id = $3::bigint
+        and m.account_id = $1
+      limit 1
+    `,
+    [accountId, leadMagnetId, versionId]
+  );
+  const snapshot = result.rows[0]?.snapshot;
+  if (!snapshot) return null;
+  return typeof snapshot === 'string'
+    ? JSON.parse(snapshot) as LeadMagnetVersionSnapshot
+    : snapshot;
 }
 
 export async function updateLeadMagnetImageUrl(

@@ -167,6 +167,29 @@ export interface LeadMagnet {
   updatedAt: string;
 }
 
+export type LeadMagnetVersionSource = 'baseline' | 'autosave' | 'manual' | 'restore';
+
+// Version snapshots contain only user-editable content. Provider automation
+// IDs are deliberately excluded: restoring copy must never resurrect an old
+// Resend automation or template reference.
+export type LeadMagnetVersionSnapshot = Omit<
+  LeadMagnet,
+  | 'id'
+  | 'accountId'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'resendFollowUpAutomationId'
+  | 'resendFollowUpRenderVersion'
+>;
+
+export interface LeadMagnetVersionSummary {
+  id: string;
+  source: LeadMagnetVersionSource;
+  createdAt: string;
+  title: string;
+  emailSubject: string;
+}
+
 export interface HostedResource {
   id: string;
   accountId: string;
