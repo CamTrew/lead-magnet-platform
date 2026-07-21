@@ -177,7 +177,17 @@ function cloneLeadMagnetHistorySnapshot(snapshot: LeadMagnetVersionSnapshot) {
 }
 
 function leadMagnetHistoryFingerprint(snapshot: LeadMagnetVersionSnapshot) {
-  return JSON.stringify(snapshot);
+  return JSON.stringify({
+    ...snapshot,
+    // Upload proxy cache-busters and provider template IDs can change after a
+    // successful save without the user editing anything. They must not create
+    // invisible Undo steps between real sequence-email edits.
+    imageUrl: snapshot.imageUrl.replace(/^(\/magnet-images\/[0-9a-f-]{36})\?.*$/i, '$1'),
+    followUpEmails: snapshot.followUpEmails.map((email) => ({
+      ...email,
+      resendTemplateId: '',
+    })),
+  });
 }
 
 function leadMagnetHistoryMutationKey(
@@ -471,7 +481,7 @@ export function PageEditorClient({
     entries: [cloneLeadMagnetHistorySnapshot(leadMagnetHistorySnapshot(initialLeadMagnet))],
     index: 0,
   });
-  const pageEditorHistoryApplicationRef = useRef<string | null>(null);
+  const pageEditorHistoryApplicationRef = useRef(false);
   const pageEditorHistoryMutationRef = useRef<{ at: number; key: string } | null>(null);
   const [pageEditorHistoryAvailability, setPageEditorHistoryAvailability] = useState({
     canRedo: false,
@@ -550,8 +560,8 @@ export function PageEditorClient({
     const nextSnapshot = cloneLeadMagnetHistorySnapshot(leadMagnetHistorySnapshot(leadMagnet));
     const nextFingerprint = leadMagnetHistoryFingerprint(nextSnapshot);
 
-    if (pageEditorHistoryApplicationRef.current === nextFingerprint) {
-      pageEditorHistoryApplicationRef.current = null;
+    if (pageEditorHistoryApplicationRef.current) {
+      pageEditorHistoryApplicationRef.current = false;
       updatePageEditorHistoryAvailability();
       return;
     }
@@ -597,11 +607,21 @@ export function PageEditorClient({
 
     history.index = nextIndex;
     const snapshot = cloneLeadMagnetHistorySnapshot(history.entries[nextIndex]);
-    pageEditorHistoryApplicationRef.current = leadMagnetHistoryFingerprint(snapshot);
+    pageEditorHistoryApplicationRef.current = true;
     pageEditorHistoryMutationRef.current = null;
     followUpRevisionRef.current += 1;
     markDirty();
-    setLeadMagnet((current) => ({ ...current, ...snapshot }));
+    setLeadMagnet((current) => ({
+      ...current,
+      ...snapshot,
+      // Provider IDs belong to the currently synced automation, not to an
+      // editor history entry. Keep them while restoring user-authored fields.
+      followUpEmails: snapshot.followUpEmails.map((email) => ({
+        ...email,
+        resendTemplateId: current.followUpEmails.find((candidate) => candidate.id === email.id)
+          ?.resendTemplateId || email.resendTemplateId,
+      })),
+    }));
     updatePageEditorHistoryAvailability();
   }, [markDirty, updatePageEditorHistoryAvailability]);
 
@@ -1013,6 +1033,7 @@ export function PageEditorClient({
                 className="shrink-0 px-2.5 sm:px-3"
                 disabled={!pageEditorHistoryAvailability.canUndo}
                 onClick={() => movePageEditorHistory('undo')}
+                onMouseDown={(event) => event.preventDefault()}
                 title="Undo last change"
                 variant="secondary"
               >
@@ -1024,6 +1045,7 @@ export function PageEditorClient({
                 className="shrink-0 px-2.5 sm:px-3"
                 disabled={!pageEditorHistoryAvailability.canRedo}
                 onClick={() => movePageEditorHistory('redo')}
+                onMouseDown={(event) => event.preventDefault()}
                 title="Redo last change"
                 variant="secondary"
               >
