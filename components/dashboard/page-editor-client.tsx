@@ -2706,6 +2706,7 @@ function EmailBlockDropIndicator({
 type EmailLinkDraft = {
   error: string;
   label: string;
+  mode: 'add' | 'edit';
   url: string;
 };
 
@@ -3431,15 +3432,28 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
     return true;
   }
 
-  function openLinkEditor() {
+  function openLinkEditor(linkOverride?: HTMLAnchorElement) {
     const range = currentEditorRange();
-    if (!range) return;
-    savedRangeRef.current = range.cloneRange();
+    if (!range && !linkOverride) return;
+
+    // If the selection/caret is already inside a link, replace that complete
+    // anchor instead of inserting a second anchor inside it. Nested anchors are
+    // invalid HTML, and browsers repair them in inconsistent ways—most notably
+    // by retaining the old href when someone tries to update a linked word.
+    const startLink = range ? linkContaining(range.startContainer) : null;
+    const endLink = range ? linkContaining(range.endContainer) : null;
+    const existingLink = linkOverride || (
+      startLink && (!endLink || startLink === endLink) ? startLink : null
+    );
+    const replacementRange = range?.cloneRange() || document.createRange();
+    if (existingLink) replacementRange.selectNode(existingLink);
+    savedRangeRef.current = replacementRange;
 
     setLinkDraft({
       error: '',
-      label: range.toString(),
-      url: '',
+      label: existingLink?.textContent || range?.toString() || '',
+      mode: existingLink ? 'edit' : 'add',
+      url: existingLink?.getAttribute('href') || '',
     });
     requestAnimationFrame(() => urlInputRef.current?.focus());
   }
@@ -3749,7 +3763,11 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
           setSelectionToolbar(null);
         }}
         onClick={(event) => {
-          if ((event.target as HTMLElement).closest('a')) event.preventDefault();
+          const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>('a');
+          if (anchor && editorRef.current?.contains(anchor)) {
+            event.preventDefault();
+            openLinkEditor(anchor);
+          }
         }}
         onFocus={() => {
           onFocus();
@@ -4029,7 +4047,7 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
               type="button"
             >
               <Link2 className="h-3.5 w-3.5" />
-              Add link
+              {linkDraft.mode === 'edit' ? 'Update link' : 'Add link'}
             </button>
           </div>
         </div>
