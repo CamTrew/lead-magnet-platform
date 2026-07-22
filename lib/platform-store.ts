@@ -5,7 +5,11 @@ import { senderMatchesAccountDomain } from './dns-records';
 import { platformUsernameStem } from './platform-username';
 import { hasPlatformResendApiKey } from './platform-resend';
 import { resolveQuizProgress } from './quiz-routing';
+import { selectLeadMagnetAbWinner } from './ab-testing';
 import {
+  AB_TEST_MINIMUM_DAYS,
+  AB_TEST_MINIMUM_VISITS_PER_VERSION,
+  MAX_HOSTED_RESOURCE_STORAGE_BYTES,
   MAX_HOSTED_RESOURCES_PER_ACCOUNT,
   MAX_LEAD_MAGNETS_PER_ACCOUNT,
 } from './limits';
@@ -27,6 +31,7 @@ import type {
   FollowUpStatus,
   HostedResource,
   LeadMagnet,
+  LeadMagnetAbVariant,
   LeadMagnetAnalytics,
   LeadMagnetOption,
   LeadMagnetSummary,
@@ -38,6 +43,7 @@ import type {
   PostSignupQuizRoute,
   PostSignupMode,
   QuizResponse,
+  QuizInsightsData,
   SignupQuizAnswer,
   Submission,
 } from './types';
@@ -64,6 +70,13 @@ export class HostedResourceLimitError extends Error {
   constructor() {
     super(`Accounts are limited to ${MAX_HOSTED_RESOURCES_PER_ACCOUNT} hosted resources.`);
     this.name = 'HostedResourceLimitError';
+  }
+}
+
+export class HostedResourceStorageLimitError extends Error {
+  constructor() {
+    super('This account has reached its 1 GB hosted-resource storage limit. Delete an unused resource before uploading another.');
+    this.name = 'HostedResourceStorageLimitError';
   }
 }
 
@@ -201,6 +214,11 @@ type LeadMagnetRow = {
   post_signup_quiz_title: string;
   post_signup_quiz_description: string;
   post_signup_quiz_questions: unknown | string | null;
+  ab_test_enabled: boolean;
+  ab_test_variants: unknown | string | null;
+  ab_test_started_at: Date | null;
+  ab_test_completed_at: Date | null;
+  ab_test_winner_id: string;
   published: boolean;
   created_at: Date;
   updated_at: Date;
@@ -265,6 +283,20 @@ type LeadMagnetAnalyticsDayRow = {
   conversions: number;
 };
 
+type LeadMagnetAnalyticsVariantRow = {
+  variant_id: string;
+  visits: number;
+  conversions: number;
+};
+
+type ActiveAbTestRow = {
+  id: string;
+  title: string;
+  subtitle: string;
+  image_url: string;
+  ab_test_variants: unknown | string | null;
+};
+
 type SubmissionRow = {
   id: string;
   account_id: string;
@@ -304,12 +336,12 @@ type FollowUpRunRow = {
 };
 
 type UserWithCredentialRow = UserRow & {
+  email_verified: boolean;
   password_hash: string | null;
 };
 
 type UserWithSessionRow = UserRow & {
   existing_password_hash: string | null;
-  session_token: string | null;
 };
 
 type DashboardBaseRow = {
@@ -589,6 +621,39 @@ function parsePostSignupQuizConfig(
   return { questions, routes };
 }
 
+function parseLeadMagnetAbVariants(value: LeadMagnetRow['ab_test_variants']): LeadMagnetAbVariant[] {
+  if (!value) return [];
+  let raw: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      raw = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  return raw.slice(0, 3).flatMap((item, index) => {
+    if (!item || typeof item !== 'object') return [];
+    const source = item as Record<string, unknown>;
+    const requestedId = typeof source.id === 'string' ? source.id.trim() : '';
+    const id = (/^[a-z0-9-]{1,40}$/i.test(requestedId) ? requestedId : `variant-${index + 1}`)
+      .toLowerCase();
+    if (id === 'control' || seen.has(id)) return [];
+    seen.add(id);
+    return [{
+      id,
+      name: typeof source.name === 'string' && source.name.trim()
+        ? source.name.trim().slice(0, 60)
+        : `Variant ${index + 1}`,
+      title: typeof source.title === 'string' ? source.title.trim().slice(0, 160) : '',
+      subtitle: typeof source.subtitle === 'string' ? source.subtitle.slice(0, 240) : '',
+      imageUrl: typeof source.imageUrl === 'string' ? source.imageUrl.trim().slice(0, 4_000_000) : '',
+    }];
+  });
+}
+
 function isBlobStorageUrl(value: string) {
   if (!value) return false;
 
@@ -783,6 +848,11 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     postSignupQuizDescription: row.post_signup_quiz_description || '',
     postSignupQuizQuestions: postSignupQuiz.questions,
     postSignupQuizRoutes: postSignupQuiz.routes,
+    abTestEnabled: Boolean(row.ab_test_enabled) && parseLeadMagnetAbVariants(row.ab_test_variants).length > 0,
+    abTestVariants: parseLeadMagnetAbVariants(row.ab_test_variants),
+    abTestStartedAt: row.ab_test_started_at ? iso(row.ab_test_started_at) : '',
+    abTestCompletedAt: row.ab_test_completed_at ? iso(row.ab_test_completed_at) : '',
+    abTestWinnerId: row.ab_test_winner_id || '',
     published: row.published,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -1131,6 +1201,7 @@ export async function findUserWithPasswordByEmail(email: string) {
         u.id,
         u.email,
         u.name,
+        u."emailVerified" as email_verified,
         u."createdAt" as created_at,
         u."updatedAt" as updated_at,
         c.password_hash
@@ -1146,21 +1217,19 @@ export async function findUserWithPasswordByEmail(email: string) {
   return row
     ? {
         user: mapUser(row),
+        emailVerified: row.email_verified,
         passwordHash: row.password_hash,
       }
     : null;
 }
 
-export async function createUserWithPasswordSession(
+export async function createUserWithPassword(
   email: string,
   passwordHash: string,
   name?: string
 ) {
   const normalizedEmail = email.trim().toLowerCase();
   const displayName = name?.trim() || normalizedEmail.split('@')[0] || 'User';
-  const token = randomBytes(32).toString('hex');
-  const storedToken = sessionTokenHash(token);
-
   const result = await query<UserWithSessionRow>(
     `
       with inserted_user as (
@@ -1210,12 +1279,6 @@ export async function createUserWithPasswordSession(
         where not exists (select 1 from existing_credential)
         on conflict (user_id) do nothing
         returning user_id
-      ),
-      inserted_session as (
-        insert into neon_auth.session (token, "userId", "expiresAt", "updatedAt")
-        select $4, user_id, now() + interval '30 days', now()
-        from inserted_credential
-        returning token
       )
       select
         u.id,
@@ -1224,11 +1287,10 @@ export async function createUserWithPasswordSession(
         u.created_at,
         u.updated_at,
         (select password_hash from existing_credential) as existing_password_hash,
-        (select token from inserted_session) as session_token,
         (select count(*) from inserted_account) as account_inserted
       from user_row u
     `,
-    [normalizedEmail, displayName, passwordHash, storedToken]
+    [normalizedEmail, displayName, passwordHash]
   );
 
   const row = result.rows[0];
@@ -1236,9 +1298,62 @@ export async function createUserWithPasswordSession(
 
   return {
     existingPasswordHash: row.existing_password_hash,
-    sessionToken: row.session_token ? token : null,
     user: mapUser(row),
   };
+}
+
+export async function createEmailVerificationToken(
+  userId: string,
+  tokenHash: string,
+  expiresAt: Date
+) {
+  await query(
+    `
+      insert into public.magnets_email_verification_tokens (
+        user_id,
+        token_hash,
+        expires_at
+      )
+      values ($1::uuid, $2, $3)
+    `,
+    [userId, tokenHash, expiresAt]
+  );
+}
+
+export async function consumeEmailVerificationToken(tokenHash: string) {
+  const result = await query<{ user_id: string }>(
+    `
+      with consumed as (
+        update public.magnets_email_verification_tokens
+        set used_at = now()
+        where token_hash = $1
+          and used_at is null
+          and expires_at > now()
+        returning user_id
+      ),
+      invalidated as (
+        update public.magnets_email_verification_tokens t
+        set used_at = now()
+        from consumed c
+        where t.user_id = c.user_id
+          and t.used_at is null
+        returning t.id
+      ),
+      verified as (
+        update neon_auth."user" u
+        set
+          "emailVerified" = true,
+          "updatedAt" = now()
+        from consumed c
+        where u.id = c.user_id
+        returning u.id as user_id
+      )
+      select user_id from verified
+    `,
+    [tokenHash]
+  );
+
+  return result.rows[0]?.user_id || null;
 }
 
 export async function createPasswordCredential(userId: string, passwordHash: string) {
@@ -1677,8 +1792,8 @@ export async function updateAccount(
   const existingAccount = existing.rows[0];
   if (!existingAccount) return null;
 
-  // AI/MAINTAINER CONTEXT: dashboard account payloads contain masked secrets.
-  // A mask means “leave encrypted bytes untouched”; an explicit empty string
+  // Dashboard account payloads contain masked secrets. A mask means “leave
+  // encrypted bytes untouched”; an explicit empty string
   // means disconnect. Preserve optional fields when an older rolling-deploy
   // client omits them entirely.
   const beehiivApiKey = isMaskedSecret(updates.beehiivApiKey)
@@ -2190,7 +2305,23 @@ async function updateLeadMagnetWithRunner(
         post_signup_quiz_title = $29,
         post_signup_quiz_description = $30,
         post_signup_quiz_questions = $31::jsonb,
-        published = $32,
+        ab_test_enabled = $32,
+        ab_test_variants = $33::jsonb,
+        ab_test_started_at = case
+          when $32 and (
+            not ab_test_enabled
+            or ab_test_started_at is null
+            or ab_test_variants is distinct from $33::jsonb
+            or title is distinct from $4
+            or subtitle is distinct from $5
+            or image_url is distinct from $12
+          ) then now()
+          when $32 then ab_test_started_at
+          else ab_test_started_at
+        end,
+        ab_test_completed_at = case when $32 then null else ab_test_completed_at end,
+        ab_test_winner_id = case when $32 then '' else ab_test_winner_id end,
+        published = $34,
         updated_at = now()
       where account_id = $1
         and id = $2
@@ -2231,6 +2362,8 @@ async function updateLeadMagnetWithRunner(
         questions: updates.postSignupQuizQuestions || [],
         routes: updates.postSignupQuizRoutes || [],
       }),
+      updates.abTestEnabled,
+      JSON.stringify(updates.abTestVariants || []),
       updates.published,
     ]
   );
@@ -2362,6 +2495,10 @@ export async function updateLeadMagnetImageUrl(
     `
       update public.magnets_lead_magnets
       set image_url = $3,
+          ab_test_started_at = case
+            when ab_test_enabled and image_url is distinct from $3 then now()
+            else ab_test_started_at
+          end,
           updated_at = now()
       where account_id = $1
         and id = $2
@@ -2753,6 +2890,25 @@ export async function listHostedResources(accountId: string): Promise<HostedReso
   return result.rows.map(mapHostedResource);
 }
 
+export async function getHostedResourceStorageUsage(accountId: string) {
+  const result = await query<{ resource_count: number; storage_bytes: string }>(
+    `
+      select
+        count(*)::int as resource_count,
+        coalesce(sum(size_bytes), 0)::text as storage_bytes
+      from public.magnets_hosted_resources
+      where account_id = $1
+    `,
+    [accountId]
+  );
+  return {
+    resourceCount: result.rows[0]?.resource_count || 0,
+    usedBytes: Number(result.rows[0]?.storage_bytes || 0),
+    maxResources: MAX_HOSTED_RESOURCES_PER_ACCOUNT,
+    maxBytes: MAX_HOSTED_RESOURCE_STORAGE_BYTES,
+  };
+}
+
 export async function createHostedResource(input: {
   id: string;
   accountId: string;
@@ -2764,16 +2920,26 @@ export async function createHostedResource(input: {
 }): Promise<HostedResource> {
   // Serialize the count+insert per account so concurrent uploads cannot both
   // observe one remaining slot and exceed the plan limit.
-  const lock = await withAdvisoryLock(`magnets:hosted-resources:${input.accountId}`, async () => {
-    const countResult = await query<{ resource_count: number }>(
-      `select count(*)::int as resource_count from public.magnets_hosted_resources where account_id = $1`,
+  const lock = await withAdvisoryLock(`magnets:hosted-resources:${input.accountId}`, async (client) => {
+    const usageResult = await client.query<{ resource_count: number; storage_bytes: string }>(
+      `
+        select
+          count(*)::int as resource_count,
+          coalesce(sum(size_bytes), 0)::text as storage_bytes
+        from public.magnets_hosted_resources
+        where account_id = $1
+      `,
       [input.accountId]
     );
-    if ((countResult.rows[0]?.resource_count || 0) >= MAX_HOSTED_RESOURCES_PER_ACCOUNT) {
+    const usage = usageResult.rows[0];
+    if ((usage?.resource_count || 0) >= MAX_HOSTED_RESOURCES_PER_ACCOUNT) {
       throw new HostedResourceLimitError();
     }
+    if (Number(usage?.storage_bytes || 0) + input.sizeBytes > MAX_HOSTED_RESOURCE_STORAGE_BYTES) {
+      throw new HostedResourceStorageLimitError();
+    }
 
-    const result = await query<HostedResourceRow>(
+    const result = await client.query<HostedResourceRow>(
       `
         insert into public.magnets_hosted_resources (
           id,
@@ -2872,6 +3038,7 @@ export async function recordLeadMagnetVisit(input: {
   leadMagnetId: string;
   sessionId: string;
   engagedSeconds: number;
+  variantId?: string;
 }) {
   const result = await query<{ id: number }>(
     `
@@ -2879,6 +3046,7 @@ export async function recordLeadMagnetVisit(input: {
         account_id,
         lead_magnet_id,
         session_id,
+        variant_id,
         engaged_seconds,
         last_seen_at
       )
@@ -2886,6 +3054,15 @@ export async function recordLeadMagnetVisit(input: {
         lead_magnet.account_id,
         lead_magnet.id,
         $2::uuid,
+        case
+          when lead_magnet.ab_test_enabled
+            and exists (
+              select 1
+              from jsonb_array_elements(lead_magnet.ab_test_variants) variant
+              where variant->>'id' = $4
+            ) then $4
+          else 'control'
+        end,
         least(greatest($3::int, 0), 21600),
         now()
       from public.magnets_lead_magnets lead_magnet
@@ -2900,7 +3077,7 @@ export async function recordLeadMagnetVisit(input: {
         last_seen_at = now()
       returning id
     `,
-    [input.leadMagnetId, input.sessionId, input.engagedSeconds]
+    [input.leadMagnetId, input.sessionId, input.engagedSeconds, input.variantId || 'control']
   );
   return Boolean(result.rows[0]);
 }
@@ -2910,6 +3087,7 @@ export async function markLeadMagnetVisitConverted(input: {
   accountId: string;
   leadMagnetId: string;
   sessionId: string;
+  variantId?: string;
 }) {
   const result = await query<{ id: number }>(
     `
@@ -2917,6 +3095,7 @@ export async function markLeadMagnetVisitConverted(input: {
         account_id,
         lead_magnet_id,
         session_id,
+        variant_id,
         converted_at,
         last_seen_at
       )
@@ -2924,6 +3103,15 @@ export async function markLeadMagnetVisitConverted(input: {
         lead_magnet.account_id,
         lead_magnet.id,
         $3::uuid,
+        case
+          when lead_magnet.ab_test_enabled
+            and exists (
+              select 1
+              from jsonb_array_elements(lead_magnet.ab_test_variants) variant
+              where variant->>'id' = $4
+            ) then $4
+          else 'control'
+        end,
         now(),
         now()
       from public.magnets_lead_magnets lead_magnet
@@ -2938,9 +3126,101 @@ export async function markLeadMagnetVisitConverted(input: {
         last_seen_at = now()
       returning id
     `,
-    [input.accountId, input.leadMagnetId, input.sessionId]
+    [input.accountId, input.leadMagnetId, input.sessionId, input.variantId || 'control']
   );
   return Boolean(result.rows[0]);
+}
+
+/**
+ * Complete a mature experiment on the next real page visit. This lazy check
+ * avoids a deployment-specific cron dependency while still making completion
+ * automatic. A minimum sample per version prevents a one-conversion fluke from
+ * rewriting a customer's live page.
+ */
+export async function maybeFinalizeLeadMagnetAbTest(leadMagnetId: string) {
+  return withTransaction(async (client) => {
+    const activeResult = await client.query<ActiveAbTestRow>(
+      `
+        select
+          id,
+          title,
+          subtitle,
+          image_url,
+          ab_test_variants
+        from public.magnets_lead_magnets
+        where id = $1::uuid
+          and published = true
+          and ab_test_enabled = true
+          and ab_test_started_at is not null
+          and ab_test_started_at <= now() - ($2::int * interval '1 day')
+        for update
+      `,
+      [leadMagnetId, AB_TEST_MINIMUM_DAYS]
+    );
+    const active = activeResult.rows[0];
+    if (!active) return { completed: false as const };
+
+    const variants = parseLeadMagnetAbVariants(active.ab_test_variants);
+    if (variants.length === 0) return { completed: false as const };
+    const versionIds = ['control', ...variants.map((variant) => variant.id)];
+    const statsResult = await client.query<LeadMagnetAnalyticsVariantRow>(
+      `
+        select
+          variant_id,
+          count(*)::int as visits,
+          count(*) filter (where converted_at is not null)::int as conversions
+        from public.magnets_lead_magnet_visits visit
+        join public.magnets_lead_magnets lead_magnet
+          on lead_magnet.id = visit.lead_magnet_id
+        where visit.lead_magnet_id = $1::uuid
+          and visit.first_seen_at >= lead_magnet.ab_test_started_at
+          and visit.variant_id = any($2::text[])
+        group by variant_id
+      `,
+      [leadMagnetId, versionIds]
+    );
+    const byId = new Map(statsResult.rows.map((row) => [row.variant_id, {
+      conversions: Number(row.conversions || 0),
+      visits: Number(row.visits || 0),
+    }]));
+    const results = versionIds.map((variantId) => ({
+      variantId,
+      conversions: byId.get(variantId)?.conversions || 0,
+      visits: byId.get(variantId)?.visits || 0,
+    }));
+    const winner = selectLeadMagnetAbWinner(
+      results,
+      AB_TEST_MINIMUM_VISITS_PER_VERSION
+    );
+    if (!winner) return { completed: false as const };
+    const winnerVariant = variants.find((variant) => variant.id === winner.variantId);
+    const winnerTitle = winnerVariant?.title.trim() || active.title;
+    const winnerSubtitle = winnerVariant?.subtitle.trim() || active.subtitle;
+    const winnerImageUrl = winnerVariant?.imageUrl.trim() || active.image_url;
+
+    await client.query(
+      `
+        update public.magnets_lead_magnets
+        set
+          title = $2,
+          subtitle = $3,
+          image_url = $4,
+          ab_test_enabled = false,
+          ab_test_completed_at = now(),
+          ab_test_winner_id = $5,
+          updated_at = now()
+        where id = $1::uuid
+          and ab_test_enabled = true
+      `,
+      [leadMagnetId, winnerTitle, winnerSubtitle, winnerImageUrl, winner.variantId]
+    );
+
+    return {
+      completed: true as const,
+      winnerId: winner.variantId,
+      conversionRate: (winner.conversions / winner.visits) * 100,
+    };
+  });
 }
 
 /**
@@ -2977,7 +3257,7 @@ export async function getLeadMagnetAnalytics(
   accountId: string,
   leadMagnetId: string
 ): Promise<LeadMagnetAnalytics> {
-  const [summaryResult, dailyResult] = await Promise.all([
+  const [summaryResult, dailyResult, variantResult] = await Promise.all([
     query<LeadMagnetAnalyticsSummaryRow>(
       `
         select
@@ -3051,6 +3331,30 @@ export async function getLeadMagnetAnalytics(
       `,
       [accountId, leadMagnetId]
     ),
+    query<LeadMagnetAnalyticsVariantRow>(
+      `
+        select
+          variant_id,
+          count(*)::int as visits,
+          count(*) filter (where converted_at is not null)::int as conversions
+        from public.magnets_lead_magnet_visits visit
+        join public.magnets_lead_magnets lead_magnet
+          on lead_magnet.account_id = visit.account_id
+          and lead_magnet.id = visit.lead_magnet_id
+        where visit.account_id = $1::uuid
+          and visit.lead_magnet_id = $2::uuid
+          and (lead_magnet.ab_test_enabled or lead_magnet.ab_test_completed_at is not null)
+          and lead_magnet.ab_test_started_at is not null
+          and visit.first_seen_at >= lead_magnet.ab_test_started_at
+          and (
+            lead_magnet.ab_test_completed_at is null
+            or visit.first_seen_at <= lead_magnet.ab_test_completed_at
+          )
+        group by visit.variant_id
+        order by visit.variant_id
+      `,
+      [accountId, leadMagnetId]
+    ),
   ]);
 
   const summary = summaryResult.rows[0] || {
@@ -3083,6 +3387,17 @@ export async function getLeadMagnetAnalytics(
       visits: Number(row.visits || 0),
       conversions: Number(row.conversions || 0),
     })),
+    variants: variantResult.rows.map((row) => {
+      const visits = Number(row.visits || 0);
+      const conversions = Number(row.conversions || 0);
+      return {
+        variantId: row.variant_id || 'control',
+        name: row.variant_id === 'control' ? 'Control' : row.variant_id,
+        visits,
+        conversions,
+        conversionRate: visits > 0 ? (conversions / visits) * 100 : 0,
+      };
+    }),
   };
 }
 
@@ -3513,7 +3828,12 @@ export async function recordQuizResponse(input: {
   leadMagnetId: string;
   questionId: string;
   optionId: string;
-}): Promise<{ response: QuizResponse; completed: boolean; destinationUrl: string } | null> {
+}): Promise<{
+  response: QuizResponse;
+  completed: boolean;
+  destinationUrl: string;
+  results: Array<{ question: string; answer: string }>;
+} | null> {
   const context = await query<LeadMagnetJsonRow>(
     `
       select
@@ -3622,6 +3942,64 @@ export async function recordQuizResponse(input: {
   return {
     response: mapQuizResponse(saved),
     ...progress,
+    results: progress.completed
+      ? leadMagnet.postSignupQuizQuestions.flatMap((configuredQuestion) => {
+          const selected = selectedAnswers.find((answer) => answer.questionId === configuredQuestion.id);
+          const selectedOption = configuredQuestion.options.find((optionItem) => optionItem.id === selected?.optionId);
+          return selectedOption ? [{ question: configuredQuestion.prompt, answer: selectedOption.label }] : [];
+        })
+      : [],
+  };
+}
+
+/** Aggregated only: the AI never receives subscriber names or email addresses. */
+export async function getQuizInsightsData(
+  accountId: string,
+  leadMagnetId: string
+): Promise<QuizInsightsData> {
+  const [completionResult, responseResult] = await Promise.all([
+    query<{ completion_count: number }>(
+      `
+        select count(*)::int as completion_count
+        from public.magnets_submissions
+        where account_id = $1::uuid
+          and lead_magnet_id = $2::uuid
+          and post_signup_quiz_completed_at is not null
+      `,
+      [accountId, leadMagnetId]
+    ),
+    query<{ question: string; option_label: string; answer_count: number }>(
+      `
+        select question, option_label, count(*)::int as answer_count
+        from public.magnets_quiz_responses
+        where account_id = $1::uuid
+          and lead_magnet_id = $2::uuid
+        group by question, option_label
+        order by question, answer_count desc, option_label
+      `,
+      [accountId, leadMagnetId]
+    ),
+  ]);
+  const grouped = new Map<string, Array<{ label: string; count: number }>>();
+  responseResult.rows.forEach((row) => {
+    const answers = grouped.get(row.question) || [];
+    answers.push({ label: row.option_label, count: Number(row.answer_count || 0) });
+    grouped.set(row.question, answers);
+  });
+
+  return {
+    completionCount: Number(completionResult.rows[0]?.completion_count || 0),
+    responseCount: responseResult.rows.reduce((total, row) => total + Number(row.answer_count || 0), 0),
+    questions: Array.from(grouped.entries()).map(([question, answers]) => {
+      const total = answers.reduce((sum, answer) => sum + answer.count, 0);
+      return {
+        question,
+        answers: answers.map((answer) => ({
+          ...answer,
+          percentage: total > 0 ? Math.round((answer.count / total) * 1000) / 10 : 0,
+        })),
+      };
+    }),
   };
 }
 

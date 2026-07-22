@@ -4,6 +4,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
 import {
+  aiUsageLimitResponse,
+  enforceAiUsageLimit,
+  isAiUsageLimitError,
+} from '@/lib/ai-usage';
+import {
   humanVoiceRepairPrompt,
   humanVoiceViolations,
 } from '@/lib/ai-writing-guardrails';
@@ -145,6 +150,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
 
+    await enforceAiUsageLimit(accountId, 'copilot');
     const deepseek = createDeepSeek({ apiKey });
     const currentDraft = JSON.stringify(parsed.data.draft);
     const businessContext = JSON.stringify({
@@ -241,6 +247,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     return NextResponse.json(response);
   } catch (error) {
+    if (isAiUsageLimitError(error)) return aiUsageLimitResponse(error);
     if (error instanceof RateLimitError) return rateLimitResponse(error);
 
     const failure = copilotFailure(error);

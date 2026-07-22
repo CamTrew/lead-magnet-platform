@@ -1,0 +1,1 @@
+ALTER TABLE "magnets_lead_magnets" ADD COLUMN "ab_test_started_at" timestamp with time zone;

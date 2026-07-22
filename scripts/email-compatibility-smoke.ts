@@ -400,13 +400,13 @@ assert.doesNotMatch(proxiedRow, /private\.blob/);
 // protocols remain ordinary text, and the footer stays inside the card.
 const footerHtml = renderPlainEmailHtml('Hello.', '', MAGNETS_EMAIL_FOOTER_HTML);
 assert.doesNotMatch(footerHtml, /<Northstar>|<Your guide>/);
-assert.ok(footerHtml.indexOf('Powered by') < footerHtml.lastIndexOf('</table>'));
-assert.match(footerHtml, /href="https:\/\/magnets\.so" target="_blank" rel="noopener noreferrer"/);
+assert.ok(footerHtml.indexOf('Build yours free with Magnets') < footerHtml.lastIndexOf('</table>'));
+assert.match(footerHtml, /href="https:\/\/magnets\.so\/register\?utm_source=email_footer&amp;utm_medium=referral&amp;utm_campaign=powered_by_magnets" target="_blank" rel="noopener noreferrer"/);
 assert.match(footerHtml, /class="magnets-email-footer"/);
 assert.match(footerHtml, /<\/td><\/tr><tr><td class="magnets-email-footer-cell"/);
 assert.match(footerHtml, /background:#080d18/);
 assert.match(footerHtml, /src="https:\/\/magnets\.so\/brand\/magnets-mark\.png"/);
-assert.match(footerHtml, /Powered by Magnets/);
+assert.match(footerHtml, /Build yours free with Magnets/);
 assert.match(footerHtml, /width:100%;margin:0;background:#ffffff/);
 assert.doesNotMatch(footerHtml, /background:#f5f5f4/);
 const parityPreview = '  Your   preview text  ';

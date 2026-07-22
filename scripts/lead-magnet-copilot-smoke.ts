@@ -4,6 +4,10 @@ import {
   LEAD_MAGNET_COPILOT_INSTRUCTIONS,
   selectCopilotConversationMemory,
 } from '../lib/lead-magnet-copilot-prompt';
+import {
+  AI_REQUESTS_BY_ACTION_PER_DAY,
+  AI_REQUESTS_PER_ACCOUNT_PER_DAY,
+} from '../lib/limits';
 
 const longConversation = Array.from({ length: 80 }, (_, index) => ({
   role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
@@ -30,5 +34,11 @@ assert.match(LEAD_MAGNET_COPILOT_INSTRUCTIONS, /perceived value/i);
 assert.ok(humanVoiceViolations({ title: 'The ultimate guide for your business' }).length > 0);
 assert.ok(humanVoiceViolations({ reply: "Whether you're a founder or freelancer, this is for you." }).length > 0);
 assert.deepEqual(humanVoiceViolations({ title: 'Price brand projects without second-guessing the quote' }), []);
+assert.equal(AI_REQUESTS_PER_ACCOUNT_PER_DAY, 75);
+assert.deepEqual(AI_REQUESTS_BY_ACTION_PER_DAY, {
+  copilot: 50,
+  draft: 15,
+  quizInsights: 10,
+});
 
 console.log('Lead magnet copilot memory and voice checks passed.');

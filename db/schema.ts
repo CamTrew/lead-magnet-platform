@@ -15,6 +15,7 @@ import {
 import type {
   BrandSettings,
   FollowUpEmail,
+  LeadMagnetAbVariant,
   LeadMagnetVersionSnapshot,
   PostSignupQuizConfig,
   PostSignupQuizQuestion,
@@ -132,6 +133,23 @@ export const passwordResetTokens = pgTable(
   ]
 );
 
+export const emailVerificationTokens = pgTable(
+  'magnets_email_verification_tokens',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('magnets_email_verification_tokens_token_hash_unique').on(table.tokenHash),
+    index('magnets_email_verification_tokens_user_created_idx').on(table.userId, table.createdAt),
+    index('magnets_email_verification_tokens_expires_at_idx').on(table.expiresAt),
+  ]
+);
+
 export const leadMagnets = pgTable(
   'magnets_lead_magnets',
   {
@@ -172,6 +190,13 @@ export const leadMagnets = pgTable(
       .$type<PostSignupQuizConfig | PostSignupQuizQuestion[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    abTestEnabled: boolean('ab_test_enabled').notNull().default(false),
+    abTestVariants: jsonb('ab_test_variants').$type<LeadMagnetAbVariant[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    abTestStartedAt: timestamp('ab_test_started_at', { withTimezone: true }),
+    abTestCompletedAt: timestamp('ab_test_completed_at', { withTimezone: true }),
+    abTestWinnerId: text('ab_test_winner_id').notNull().default(''),
     published: boolean('published').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -214,8 +239,8 @@ export const leadMagnetVersions = pgTable(
   ]
 );
 
-// AI/MAINTAINER CONTEXT: conversation memory belongs to one magnet and cascades
-// with it. Ownership is derived through leadMagnets; no public lookup by id.
+// Conversation memory belongs to one magnet and cascades with it. Ownership is
+// derived through leadMagnets; there is intentionally no public lookup by id.
 export const leadMagnetCopilotMessages = pgTable(
   'magnets_lead_magnet_copilot_messages',
   {
@@ -271,6 +296,7 @@ export const leadMagnetVisits = pgTable(
       .notNull()
       .references(() => leadMagnets.id, { onDelete: 'cascade' }),
     sessionId: uuid('session_id').notNull(),
+    variantId: text('variant_id').notNull().default('control'),
     engagedSeconds: integer('engaged_seconds').notNull().default(0),
     convertedAt: timestamp('converted_at', { withTimezone: true }),
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),

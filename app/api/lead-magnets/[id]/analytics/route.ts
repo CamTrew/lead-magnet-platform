@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentDashboardBase } from '@/lib/auth';
 import { preferredLeadMagnetUrl } from '@/lib/lead-magnet-metadata';
-import { findLeadMagnetForAccount, getLeadMagnetAnalytics } from '@/lib/platform-store';
+import {
+  findLeadMagnetForAccount,
+  getLeadMagnetAnalytics,
+} from '@/lib/platform-store';
 
 const idSchema = z.string().uuid();
 
@@ -33,6 +36,10 @@ export async function GET(
       postSignupVideoUrl: leadMagnet.postSignupVideoUrl,
       postSignupQuizEnabled: leadMagnet.postSignupQuizEnabled,
       postSignupQuizQuestions: leadMagnet.postSignupQuizQuestions,
+      abTestEnabled: leadMagnet.abTestEnabled,
+      abTestStartedAt: leadMagnet.abTestStartedAt,
+      abTestCompletedAt: leadMagnet.abTestCompletedAt,
+      abTestWinnerId: leadMagnet.abTestWinnerId,
     },
     pageUrl: preferredLeadMagnetUrl(
       payload.account,

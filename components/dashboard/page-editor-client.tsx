@@ -31,8 +31,10 @@ import {
   Mail,
   Monitor,
   Minus,
+  MoreHorizontal,
   Plus,
   Quote,
+  QrCode,
   Redo2,
   Smartphone,
   Trash2,
@@ -76,6 +78,7 @@ import type {
   LeadMagnetVersionSnapshot,
 } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { AbTestingPanel } from '@/components/dashboard/ab-testing-panel';
 import {
   AceternityButton,
   AceternityCard,
@@ -94,12 +97,10 @@ import type {
   LeadMagnetCopilotPatch,
 } from '@/lib/lead-magnet-copilot';
 
-// AI/MAINTAINER CONTEXT:
-// This component edits four connected surfaces (landing page, delivery email,
-// sequence, and after-signup experience). Email blocks are a UI projection of
-// the legacy-compatible string body; never persist DOM/editor-only structures.
-// Preview imports the production renderer on purpose. Autosave and undo/redo
-// must include uploads, deletes, grouping, captions, and copilot-applied edits.
+// Email blocks are a UI projection of the legacy-compatible string body. Keep
+// DOM/editor-only structures out of persistence so old emails remain readable.
+// Preview deliberately uses the production renderer, and history must include
+// uploads, deletes, grouping, captions, and copilot-applied edits.
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSource = 'autosave' | 'manual';
 type Mode = 'page' | 'email' | 'sequence' | 'after';
@@ -143,13 +144,14 @@ function editorLandingPageUrl(
 
 const EDITOR_STEPS: Array<{
   description: string;
+  icon: typeof Monitor;
   label: string;
   mode: Mode;
 }> = [
-  { mode: 'page', label: 'Page', description: 'Design the page' },
-  { mode: 'email', label: 'Delivery', description: 'Send the resource' },
-  { mode: 'sequence', label: 'Follow-up', description: 'Nurture leads' },
-  { mode: 'after', label: 'After signup', description: 'Choose the next step' },
+  { mode: 'page', label: 'Landing page', description: 'Design the page', icon: Monitor },
+  { mode: 'email', label: 'Delivery email', description: 'Send the resource', icon: Mail },
+  { mode: 'sequence', label: 'Sequence', description: 'Nurture leads', icon: Clock },
+  { mode: 'after', label: 'After signup', description: 'Choose the next step', icon: CalendarCheck },
 ];
 
 const MAX_MAGNET_IMAGE_BYTES = 10_000_000;
@@ -168,6 +170,9 @@ function leadMagnetHistorySnapshot(leadMagnet: LeadMagnet): LeadMagnetVersionSna
       'updatedAt',
       'resendFollowUpAutomationId',
       'resendFollowUpRenderVersion',
+      'abTestStartedAt',
+      'abTestCompletedAt',
+      'abTestWinnerId',
     ].includes(key))
   ) as LeadMagnetVersionSnapshot;
 }
@@ -397,49 +402,35 @@ function EditorWorkflowNav({
 }) {
   return (
     <nav aria-label="Lead magnet setup steps" className="border-t border-ink-200 pt-3">
-      <div className="no-scrollbar flex gap-2 overflow-x-auto sm:items-center sm:gap-0 sm:overflow-visible">
-        {EDITOR_STEPS.map((step, index) => {
+      <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-xl bg-ink-50 p-1 sm:grid sm:grid-cols-4 sm:overflow-visible">
+        {EDITOR_STEPS.map((step) => {
           const active = mode === step.mode;
+          const Icon = step.icon;
 
           return (
-            <div className="contents" key={step.mode}>
-              <button
-                aria-current={active ? 'step' : undefined}
-                className={cn(
-                  'group flex min-w-[7.5rem] items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition sm:min-w-0 sm:flex-1 sm:gap-2.5 sm:px-3',
-                  active
-                    ? 'border-brand-orange/50 bg-brand-orange/10'
-                    : 'border-transparent hover:border-ink-200'
-                )}
-                onClick={() => onChange(step.mode)}
-                type="button"
-              >
-                <span
-                  className={cn(
-                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition',
-                    active
-                      ? 'border-brand-orange bg-brand-orange text-[#111111]'
-                      : 'border-ink-300 bg-white text-ink-500 group-hover:border-ink-400 group-hover:text-ink-800'
-                  )}
-                >
-                  {index + 1}
-                </span>
-                <span className="min-w-0">
-                  <span className={cn(
-                    'block truncate text-xs font-semibold',
-                    active ? 'text-ink-950' : 'text-ink-700'
-                  )}>
-                    {step.label}
-                  </span>
-                  <span className="hidden truncate text-[10px] leading-4 text-ink-500 sm:block">
-                    {step.description}
-                  </span>
-                </span>
-              </button>
-              {index < EDITOR_STEPS.length - 1 && (
-                <span aria-hidden="true" className="mx-1 hidden h-px w-4 shrink-0 border-t border-ink-200 sm:block" />
+            <button
+              aria-current={active ? 'step' : undefined}
+              className={cn(
+                'group flex min-w-[9.25rem] items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition sm:min-w-0',
+                active
+                  ? 'border-ink-200 bg-white text-ink-950 shadow-[0_1px_3px_rgba(17,17,17,0.08)]'
+                  : 'border-transparent text-ink-500 hover:bg-white/70 hover:text-ink-900 dark:hover:bg-white/5'
               )}
-            </div>
+              key={step.mode}
+              onClick={() => onChange(step.mode)}
+              type="button"
+            >
+              <span className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition',
+                active ? 'bg-brand-orange/12 text-brand-orange' : 'bg-white text-ink-400 group-hover:text-ink-700'
+              )}>
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold">{step.label}</span>
+                <span className="hidden truncate text-[10px] leading-4 text-ink-400 md:block">{step.description}</span>
+              </span>
+            </button>
           );
         })}
       </div>
@@ -469,6 +460,8 @@ export function PageEditorClient({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const emailImageInputRef = useRef<HTMLInputElement | null>(null);
+  const abImageInputRef = useRef<HTMLInputElement | null>(null);
+  const abImageVariantIndexRef = useRef<number | null>(null);
   const account = initialData.account;
   const dirtyRef = useRef(false);
   const followUpRevisionRef = useRef(0);
@@ -703,6 +696,10 @@ export function PageEditorClient({
           postSignupQuizDescription: payload.postSignupQuizDescription,
           postSignupQuizQuestions: payload.postSignupQuizQuestions,
           postSignupQuizRoutes: payload.postSignupQuizRoutes,
+          abTestEnabled: payload.abTestEnabled,
+          abTestVariants: payload.abTestVariants,
+          abTestCompletedAt: payload.abTestCompletedAt,
+          abTestWinnerId: payload.abTestWinnerId,
           published: payload.published,
         }),
       });
@@ -925,6 +922,45 @@ export function PageEditorClient({
     await uploadEmailImageFiles(selectedFiles, target);
   }
 
+  async function handleAbImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    const variantIndex = abImageVariantIndexRef.current;
+    event.target.value = '';
+    if (!file || variantIndex === null) return;
+    if (!MAGNET_IMAGE_TYPES.has(file.type)) {
+      setError('Variant image must be a PNG, JPG, WebP, or GIF.');
+      return;
+    }
+    if (file.size > MAX_MAGNET_IMAGE_BYTES) {
+      setError('Variant image must be 10 MB or smaller.');
+      return;
+    }
+    setError('');
+    setIsUploadingImage(true);
+    try {
+      const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/email-images/ab-test-${safeImageName(file)}`;
+      const blob = await uploadPresigned(pathname, file, {
+        access: 'public',
+        contentType: file.type,
+        handleUploadUrl: `/api/lead-magnets/${leadMagnet.id}/email-image`,
+        multipart: file.size > 8_000_000,
+      });
+      const imageUrl = await finaliseUploadedEmailImage(leadMagnet.id, blob.url);
+      markDirty();
+      setLeadMagnet((current) => ({
+        ...current,
+        abTestVariants: current.abTestVariants.map((variant, index) => (
+          index === variantIndex ? { ...variant, imageUrl } : variant
+        )),
+      }));
+    } catch (uploadError) {
+      setError(blobUploadErrorMessage(uploadError, 'Variant image could not be uploaded.'));
+    } finally {
+      setIsUploadingImage(false);
+      abImageVariantIndexRef.current = null;
+    }
+  }
+
   const brand = account.brand;
   const editorIsDark = brand.pageTheme === 'dark';
   const accountLogo = useMemo(() => {
@@ -935,7 +971,7 @@ export function PageEditorClient({
 
   return (
     <>
-      <PageHeader title="Edit magnet" subtitle="Edit on the canvas, preview the experience, then save when it is ready." />
+      <PageHeader title="Edit lead magnet" subtitle="Build the complete signup journey from one workspace" />
 
       {confirmDelete && (
         <ConfirmDialog
@@ -955,7 +991,7 @@ export function PageEditorClient({
         />
       )}
 
-      <div className="-mx-4 max-w-6xl space-y-4 sm:mx-auto">
+      <div className="-mx-4 max-w-7xl space-y-4 sm:mx-auto">
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
             {error}
@@ -976,25 +1012,28 @@ export function PageEditorClient({
           <div className="page-editor-toolbar flex flex-col gap-3 border-b border-[#dfd8cf] bg-white p-2.5 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                <AceternityButton aria-label="All pages" className="shrink-0 px-2.5 sm:px-4" onClick={() => router.push('/dashboard/pages')} variant="secondary">
+                <AceternityButton aria-label="All pages" className="h-9 min-h-9 shrink-0 rounded-lg px-2.5" onClick={() => router.push('/dashboard/pages')} variant="secondary">
                   <ArrowLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline">All pages</span>
+                  <span className="hidden md:inline">Lead magnets</span>
                 </AceternityButton>
 
-                <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-ink-200 bg-ink-50 px-2.5 text-sm sm:max-w-[12rem] sm:flex-none">
-                  <span className="mr-1 font-mono text-xs text-ink-500">/</span>
-                  <input
-                    aria-label="Page slug"
-                    className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink-900 outline-none"
-                    onBlur={(event) => patchLeadMagnet({ slug: slugify(event.target.value) || leadMagnet.slug })}
-                    onChange={(event) => patchLeadMagnet({ slug: event.target.value.toLowerCase() })}
-                    spellCheck={false}
-                    value={leadMagnet.slug}
-                  />
+                <div className="min-w-0 flex-1 sm:max-w-[18rem]">
+                  <p className="truncate text-sm font-semibold text-ink-950">{leadMagnet.title || 'Untitled lead magnet'}</p>
+                  <div className="mt-0.5 flex min-w-0 items-center text-[11px] text-ink-400">
+                    <span className="shrink-0 font-mono">/</span>
+                    <input
+                      aria-label="Page slug"
+                      className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-ink-500 outline-none focus:text-ink-900"
+                      onBlur={(event) => patchLeadMagnet({ slug: slugify(event.target.value) || leadMagnet.slug })}
+                      onChange={(event) => patchLeadMagnet({ slug: event.target.value.toLowerCase() })}
+                      spellCheck={false}
+                      value={leadMagnet.slug}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="no-scrollbar -mx-0.5 flex w-full flex-nowrap items-center gap-2 overflow-x-auto px-0.5 sm:mx-0 sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible sm:px-0">
+              <div className="flex w-full flex-nowrap items-center justify-end gap-1.5 sm:w-auto">
               {saveState !== 'error' && (
                 <span
                   className={cn(
@@ -1030,7 +1069,7 @@ export function PageEditorClient({
               )}
               <AceternityButton
                 aria-label="Undo last change"
-                className="shrink-0 px-2.5 sm:px-3"
+                className="h-9 min-h-9 w-9 shrink-0 rounded-lg px-0"
                 disabled={!pageEditorHistoryAvailability.canUndo}
                 onClick={() => movePageEditorHistory('undo')}
                 onMouseDown={(event) => event.preventDefault()}
@@ -1038,11 +1077,10 @@ export function PageEditorClient({
                 variant="secondary"
               >
                 <Undo2 className="h-4 w-4" />
-                <span className="hidden sm:inline">Undo</span>
               </AceternityButton>
               <AceternityButton
                 aria-label="Redo last change"
-                className="shrink-0 px-2.5 sm:px-3"
+                className="h-9 min-h-9 w-9 shrink-0 rounded-lg px-0"
                 disabled={!pageEditorHistoryAvailability.canRedo}
                 onClick={() => movePageEditorHistory('redo')}
                 onMouseDown={(event) => event.preventDefault()}
@@ -1050,46 +1088,70 @@ export function PageEditorClient({
                 variant="secondary"
               >
                 <Redo2 className="h-4 w-4" />
-                <span className="hidden sm:inline">Redo</span>
               </AceternityButton>
               {leadMagnet.published ? (
                 <a
                   aria-label="View published page"
-                  className={cn(aceternityButtonClassName({ variant: 'secondary' }), 'shrink-0 px-2.5 sm:px-4')}
+                  className={cn(aceternityButtonClassName({ variant: 'secondary' }), 'h-9 min-h-9 w-9 shrink-0 rounded-lg px-0')}
                   href={landingPageUrl}
                   rel="noreferrer"
                   target="_blank"
                   title="Open the published landing page in a new tab"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  <span className="hidden sm:inline">View page</span>
                 </a>
               ) : (
                 <AceternityButton
                   aria-label="View published page"
-                  className="shrink-0 px-2.5 sm:px-4"
+                  className="h-9 min-h-9 w-9 shrink-0 rounded-lg px-0"
                   disabled
                   title="Publish this page before opening it"
                   variant="secondary"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  <span className="hidden sm:inline">View page</span>
                 </AceternityButton>
               )}
-              <AceternityButton
-                aria-label="Analytics"
-                className="shrink-0 px-2.5 sm:px-4"
-                onClick={() => router.push(`/dashboard/pages/${leadMagnet.id}/analytics`)}
-                title="View visits and conversions"
-                variant="secondary"
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">Analytics</span>
-              </AceternityButton>
+              <details className="group/more relative shrink-0">
+                <summary
+                  aria-label="More lead magnet actions"
+                  className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-700 transition hover:border-ink-300 hover:bg-ink-50 hover:text-ink-950 [&::-webkit-details-marker]:hidden"
+                  title="More actions"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </summary>
+                <div className="absolute right-0 top-[calc(100%+0.45rem)] z-50 w-56 rounded-xl border border-ink-200 bg-white p-1.5 shadow-[0_18px_50px_-24px_rgba(17,17,17,0.45)]">
+                  <button
+                    className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
+                    onClick={() => router.push(`/dashboard/pages/${leadMagnet.id}/analytics`)}
+                    type="button"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics
+                  </button>
+                  <a
+                    className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
+                    download
+                    href={`/api/lead-magnets/${leadMagnet.id}/qr-code`}
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Download QR code
+                  </a>
+                  <div className="my-1 h-px bg-ink-100" />
+                  <button
+                    className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-red-600 transition hover:bg-red-50"
+                    disabled={isDeleting}
+                    onClick={() => setConfirmDelete(true)}
+                    type="button"
+                  >
+                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Delete lead magnet
+                  </button>
+                </div>
+              </details>
               <button
                 aria-label="Toggle published"
                 className={cn(
-                  'inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-2.5 text-xs font-medium transition sm:px-3',
+                  'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition',
                   leadMagnet.published
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                     : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
@@ -1107,10 +1169,6 @@ export function PageEditorClient({
                 />
                 {leadMagnet.published ? 'Published' : 'Draft'}
               </button>
-              <AceternityButton aria-label="Delete magnet" className="shrink-0 px-2.5 sm:px-4" onClick={() => setConfirmDelete(true)} variant="danger" disabled={isDeleting}>
-                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                <span className="hidden sm:inline">{isDeleting ? 'Deleting' : 'Delete'}</span>
-              </AceternityButton>
               </div>
             </div>
 
@@ -1118,16 +1176,26 @@ export function PageEditorClient({
           </div>
 
           {mode === 'page' ? (
-            <PageCanvas
-              account={account}
-              accountLogoFallback={accountLogo.fallback}
-              accountHasLogo={accountLogo.hasImage}
-              brandIntensity={brand.highlightIntensity}
-              brandPrimary={brandTextColor(brand.primary)}
-              leadMagnet={leadMagnet}
-              onPatch={patchLeadMagnet}
-              onPickImage={() => fileInputRef.current?.click()}
-            />
+            <div className="space-y-5">
+              <PageCanvas
+                account={account}
+                accountLogoFallback={accountLogo.fallback}
+                accountHasLogo={accountLogo.hasImage}
+                brandIntensity={brand.highlightIntensity}
+                brandPrimary={brandTextColor(brand.primary)}
+                leadMagnet={leadMagnet}
+                onPatch={patchLeadMagnet}
+                onPickImage={() => fileInputRef.current?.click()}
+              />
+              <AbTestingPanel
+                leadMagnet={leadMagnet}
+                onPatch={patchLeadMagnet}
+                onPickImage={(index) => {
+                  abImageVariantIndexRef.current = index;
+                  abImageInputRef.current?.click();
+                }}
+              />
+            </div>
           ) : mode === 'email' ? (
             <EmailCanvas
               account={account}
@@ -1168,6 +1236,14 @@ export function PageEditorClient({
           className="hidden"
           onChange={handleImageUpload}
           ref={fileInputRef}
+          type="file"
+        />
+
+        <input
+          accept={MAGNET_IMAGE_ACCEPT}
+          className="hidden"
+          onChange={handleAbImageUpload}
+          ref={abImageInputRef}
           type="file"
         />
 
@@ -2135,14 +2211,6 @@ function EmailBodyEditor({
 
   const applyFormat = (format: EmailFormatCommand) => activeEditor()?.applyFormat(format);
 
-  function insertAtCaret(mode: 'single' | 'row') {
-    const blockIndex = activeTextSegmentRef.current;
-    const editor = activeEditor();
-    if (!editor) return;
-    const split = editor.splitAtCaret();
-    requestImage(blockIndex, mode, split);
-  }
-
   function requestImage(
     blockIndex: number,
     mode: 'single' | 'row',
@@ -2171,24 +2239,16 @@ function EmailBodyEditor({
     }, files);
   }
 
-  function formattingToolbar(floating: boolean) {
+  function formattingToolbar() {
     const toolbarButton = cn(
-      'inline-flex shrink-0 items-center justify-center rounded-md text-ink-700 transition hover:bg-ink-100 hover:text-ink-950 disabled:pointer-events-none disabled:text-ink-300',
-      floating ? 'h-9 w-9' : 'h-8 w-8'
+      'inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-ink-700 transition hover:bg-ink-100 hover:text-ink-950 disabled:pointer-events-none disabled:text-ink-300 sm:w-8'
     );
-    const divider = floating
-      ? 'mx-auto my-0.5 h-px w-5 bg-ink-200'
-      : 'mx-0.5 h-5 w-px bg-ink-200';
+    const divider = 'mx-0 h-5 w-px shrink-0 bg-ink-200 sm:mx-0.5';
 
     return (
       <div
         aria-label={`${ariaLabel} formatting`}
-        className={cn(
-          'no-scrollbar flex items-center gap-1 bg-white/95 p-1.5 backdrop-blur-md',
-          floating
-            ? 'flex-col rounded-xl border border-ink-200 shadow-xl shadow-black/10'
-            : 'flex-nowrap overflow-x-auto rounded-t-xl border-b border-ink-200 bg-ink-50/95'
-        )}
+        className="email-formatting-toolbar flex min-h-11 items-center gap-0.5 rounded-t-xl border-b border-ink-200 bg-ink-50/95 px-1.5 py-1.5 backdrop-blur-md sm:gap-1 sm:px-3"
         role="toolbar"
       >
         <button
@@ -2216,9 +2276,9 @@ function EmailBodyEditor({
         <span aria-hidden="true" className={divider} />
         <ToolbarDropdown
           ariaLabel="Text style"
-          compact={floating}
+          compact
           label="Text style"
-          menuAlign={floating ? 'right' : 'left'}
+          menuAlign="left"
           onDismiss={() => activeEditor()?.discardRememberedSelection()}
           onOpen={() => activeEditor()?.rememberSelection()}
           onSelect={(format) => applyFormat(format)}
@@ -2242,61 +2302,58 @@ function EmailBodyEditor({
         <button aria-label="Quote" className={toolbarButton} onClick={() => applyFormat('quote')} onMouseDown={(event) => event.preventDefault()} title="Quote" type="button">
           <Quote className="h-4 w-4" />
         </button>
-        <button aria-label="Bulleted list" className={toolbarButton} onClick={() => applyFormat('unorderedList')} onMouseDown={(event) => event.preventDefault()} title="Bulleted list" type="button">
-          <List className="h-4 w-4" />
-        </button>
-        <button aria-label="Dashed list" className={toolbarButton} onClick={() => applyFormat('dashedList')} onMouseDown={(event) => event.preventDefault()} title="Dashed list" type="button">
-          <ListMinus className="h-4 w-4" />
-        </button>
-        <button aria-label="Numbered list" className={toolbarButton} onClick={() => applyFormat('orderedList')} onMouseDown={(event) => event.preventDefault()} title="Numbered list" type="button">
-          <ListOrdered className="h-4 w-4" />
-        </button>
-        <button aria-label="Divider" className={toolbarButton} onClick={() => applyFormat('divider')} onMouseDown={(event) => event.preventDefault()} title="Divider" type="button">
-          <Minus className="h-4 w-4" />
-        </button>
+        <details className="group/list relative shrink-0">
+          <summary
+            aria-label="List and divider options"
+            className={cn(toolbarButton, 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Lists and divider"
+          >
+            <List className="h-4 w-4" />
+          </summary>
+          <div className={cn(
+            'absolute z-50 w-44 rounded-xl border border-ink-200 bg-white p-1.5 shadow-[0_18px_45px_-24px_rgba(17,17,17,0.5)]',
+            'left-0 top-[calc(100%+0.45rem)]'
+          )}>
+            {([
+              { command: 'unorderedList', icon: List, label: 'Bulleted list' },
+              { command: 'dashedList', icon: ListMinus, label: 'Dashed list' },
+              { command: 'orderedList', icon: ListOrdered, label: 'Numbered list' },
+              { command: 'divider', icon: Minus, label: 'Divider' },
+            ] as const).map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  className="flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs font-medium text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
+                  key={item.command}
+                  onClick={(event) => {
+                    event.currentTarget.closest('details')?.removeAttribute('open');
+                    applyFormat(item.command);
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  type="button"
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </details>
         <span aria-hidden="true" className={divider} />
         <button
           aria-label="Insert content block"
-          className={cn(toolbarButton, !floating && 'w-auto px-2')}
+          className={cn(toolbarButton, 'px-0 sm:w-auto sm:px-2')}
           onClick={() => activeEditor()?.openCommandMenu()}
           onMouseDown={(event) => event.preventDefault()}
           title="Insert a block: headings, quotes, sections, columns, contents, media, and embeds"
           type="button"
         >
           <Plus className="h-4 w-4" />
-          {!floating && <span className="ml-1.5 text-xs font-medium">Blocks</span>}
-        </button>
-        <button aria-label="Insert name variable" className={cn(toolbarButton, 'w-auto px-2 text-[11px] font-semibold')} onClick={() => activeEditor()?.insertVariable('{name}')} onMouseDown={(event) => event.preventDefault()} title="Insert name variable" type="button">
-          Name
+          <span className="ml-1.5 hidden text-xs font-medium sm:inline">Insert</span>
         </button>
         <button aria-label="Add link" className={toolbarButton} onClick={() => activeEditor()?.openLinkEditor()} onMouseDown={(event) => event.preventDefault()} title="Add link" type="button">
           <Link2 className="h-4 w-4" />
-        </button>
-        <button
-          aria-label={isUploadingImage ? 'Uploading image' : 'Add image'}
-          className={cn(toolbarButton, 'disabled:pointer-events-none disabled:opacity-50', !floating && 'w-auto px-2')}
-          disabled={isUploadingImage}
-          onClick={() => insertAtCaret('single')}
-          onMouseDown={(event) => {
-            activeEditor()?.rememberInsertionPoint();
-            event.preventDefault();
-          }}
-          title={isUploadingImage ? 'Uploading image' : 'Add image'}
-          type="button"
-        >
-          {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
-          {!floating && <span className="ml-1.5 text-xs font-medium">{isUploadingImage ? 'Uploading' : 'Image'}</span>}
-        </button>
-        <button
-          aria-label="Embed YouTube video"
-          className={cn(toolbarButton, !floating && 'w-auto px-2')}
-          onClick={() => applyFormat('youtube')}
-          onMouseDown={(event) => event.preventDefault()}
-          title="Embed a YouTube video"
-          type="button"
-        >
-          <Video className="h-4 w-4" />
-          {!floating && <span className="ml-1.5 text-xs font-medium">YouTube</span>}
         </button>
       </div>
     );
@@ -2311,7 +2368,7 @@ function EmailBodyEditor({
 
   return (
     <div
-      className="relative xl:flex xl:items-start xl:gap-3"
+      className="relative"
       onKeyDownCapture={(event) => {
         if ((!event.metaKey && !event.ctrlKey) || event.altKey) return;
         const target = event.target as HTMLElement;
@@ -2326,8 +2383,8 @@ function EmailBodyEditor({
       }}
     >
       <div className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white transition focus-within:border-ink-400 focus-within:ring-1 focus-within:ring-ink-200">
-        <div className="sticky top-11 z-40 lg:top-0 xl:hidden">
-          {formattingToolbar(false)}
+        <div className="sticky top-11 z-40 lg:top-0">
+          {formattingToolbar()}
         </div>
         {dropError && (
           <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 sm:mx-6">
@@ -2354,7 +2411,7 @@ function EmailBodyEditor({
                 <Fragment key={block.editorId}>
                   <div
                     className={cn(
-                      'group/email-block group/email-image relative rounded-lg bg-white py-2 pl-9 pr-9 transition hover:bg-ink-50/40 focus-within:bg-ink-50/40 sm:-mx-3 sm:px-16 sm:py-3',
+                      'group/email-block group/email-image relative rounded-lg bg-white py-2 pl-[4.75rem] pr-9 transition hover:bg-ink-50/40 focus-within:bg-ink-50/40 sm:-mx-3 sm:px-16 sm:py-3',
                       draggedContentBlockIndex === index && 'scale-[0.99] opacity-40',
                       isDraggedImageBlock && 'scale-[0.99] opacity-40',
                       canAcceptDraggedImages && 'border-dashed border-ink-400 bg-ink-50/70',
@@ -2550,7 +2607,7 @@ function EmailBodyEditor({
               <Fragment key={block.editorId}>
                 <div
                   className={cn(
-                    'group/email-block relative rounded-md bg-transparent py-1 pl-9 pr-9 transition hover:bg-ink-50/60 focus-within:bg-ink-50/60 sm:-mx-3 sm:px-16',
+                    'group/email-block relative rounded-md bg-transparent py-1 pl-[4.75rem] pr-9 transition hover:bg-ink-50/60 focus-within:bg-ink-50/60 sm:-mx-3 sm:px-16',
                     draggedContentBlockIndex === index && 'scale-[0.99] opacity-40'
                   )}
                   onDragEnter={(event) => dragContentBlockOver(event, index)}
@@ -2611,7 +2668,7 @@ function EmailBodyEditor({
           })}
 
           {endsWithYouTubeVideo && (
-            <div className="mt-1 pl-9 pr-2 sm:-mx-3 sm:px-3">
+            <div className="mt-1 pl-[4.75rem] pr-2 sm:-mx-3 sm:px-3">
               <button
                 aria-label="Add a content block after the YouTube video"
                 className="group flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-ink-200 bg-white text-xs font-medium text-ink-500 transition hover:border-ink-400 hover:bg-ink-50 hover:text-ink-950 focus-visible:border-ink-400 focus-visible:bg-ink-50 focus-visible:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-200"
@@ -2629,11 +2686,6 @@ function EmailBodyEditor({
               Uploading image{pendingImage.progress > 0 ? ` ${pendingImage.progress}%` : ''}
             </span>
           )}
-        </div>
-      </div>
-      <div className="sticky top-20 z-40 hidden self-start xl:block">
-        <div className="pointer-events-auto">
-          {formattingToolbar(true)}
         </div>
       </div>
     </div>
@@ -2654,7 +2706,7 @@ function EmailBlockRail({
   onMove: (direction: 'down' | 'up') => void;
 }) {
   return (
-    <div className="absolute left-0 top-1 z-20 flex flex-col items-center text-ink-400 opacity-100 transition sm:top-2 sm:flex-row sm:opacity-0 sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:opacity-100">
+    <div className="absolute left-1 top-1 z-20 flex items-center gap-0.5 text-ink-400 opacity-100 transition sm:left-3 sm:top-2 sm:opacity-0 sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:opacity-100">
       <button
         aria-label={`Add a content block after block ${blockNumber}`}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-ink-100 hover:text-ink-950 focus-visible:bg-ink-100 focus-visible:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300"
@@ -3144,17 +3196,17 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
       if (!root) return;
       const bounds = root.getBoundingClientRect();
       const viewportPadding = 12;
-      const desiredHeight = 480;
-      const width = Math.min(480, window.innerWidth - (viewportPadding * 2));
+      const desiredHeight = 400;
+      const width = Math.min(340, window.innerWidth - (viewportPadding * 2));
       const spaceAbove = Math.max(0, bounds.top - viewportPadding);
       const spaceBelow = Math.max(0, window.innerHeight - bounds.bottom - viewportPadding);
       const openAbove = spaceBelow < 320 && spaceAbove > spaceBelow;
       const availableHeight = openAbove ? spaceAbove : spaceBelow;
       const maxHeight = Math.max(180, Math.min(desiredHeight, availableHeight - 8));
-      const idealLeft = bounds.left + (bounds.width / 2);
+      const idealLeft = bounds.left;
       const left = Math.max(
-        viewportPadding + (width / 2),
-        Math.min(window.innerWidth - viewportPadding - (width / 2), idealLeft)
+        viewportPadding,
+        Math.min(window.innerWidth - viewportPadding - width, idealLeft)
       );
 
       setSlashMenuPosition({
@@ -3905,12 +3957,19 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
             maxHeight: slashMenuPosition.maxHeight,
             top: slashMenuPosition.top,
             transform: slashMenuPosition.openAbove
-              ? 'translate(-50%, -100%)'
-              : 'translateX(-50%)',
+              ? 'translateY(-100%)'
+              : undefined,
             width: slashMenuPosition.width,
           }}
         >
-          <p className="px-2 pb-1.5 pt-1 text-xs font-medium text-ink-500">Page structure</p>
+          <div className="px-2 pb-2 pt-1">
+            <p className="text-sm font-semibold text-ink-950">Insert block</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-ink-500">Choose content or layout for the active block.</p>
+          </div>
+          <EmailCommandMenuItem icon={<span className="text-[11px] font-semibold">Name</span>} label="Name variable" onSelect={() => { setSlashMenuOpen(false); insertVariable('{name}'); }} />
+
+          <div className="my-2 border-t border-ink-200" />
+          <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">Layout</p>
           <div className="grid grid-cols-2 gap-1">
             <EmailCommandMenuItem icon={<span className="relative h-4 w-4"><span className="absolute left-0 top-0 h-3 w-3 rounded-sm border border-current" /><span className="absolute bottom-0 right-0 h-3 w-3 rounded-sm border border-current bg-white" /></span>} label="Section" onSelect={() => { setSlashMenuOpen(false); applyFormat('section'); }} />
             <EmailCommandMenuItem icon={<Columns2 className="h-4 w-4" />} label="Columns" onSelect={() => { setSlashMenuOpen(false); applyFormat('columns'); }} />
@@ -3920,14 +3979,14 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
           </div>
 
           <div className="my-2 border-t border-ink-200" />
-          <p className="px-2 pb-1.5 text-xs font-medium text-ink-500">Media</p>
+          <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">Media</p>
           <div className="grid grid-cols-2 gap-1">
             <EmailCommandMenuItem icon={<ImageIcon className="h-4 w-4" />} label="Image" onSelect={() => { setSlashMenuOpen(false); onInsertImage(splitAtCaret()); }} />
             <EmailCommandMenuItem icon={<Columns2 className="h-4 w-4" />} label="Image row" onSelect={() => { setSlashMenuOpen(false); onInsertImageRow(splitAtCaret()); }} />
           </div>
 
           <div className="my-2 border-t border-ink-200" />
-          <p className="px-2 pb-1.5 text-xs font-medium text-ink-500">Embeds</p>
+          <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">Embed</p>
           <div className="grid grid-cols-2 gap-1">
             <EmailCommandMenuItem icon={<Video className="h-4 w-4" />} label="YouTube" onSelect={() => { setSlashMenuOpen(false); applyFormat('youtube'); }} />
           </div>
@@ -4070,14 +4129,14 @@ function EmailCommandMenuItem({
   return (
     <button
       aria-disabled={disabled || undefined}
-      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-ink-800 transition hover:bg-ink-50 disabled:cursor-not-allowed disabled:text-ink-300"
+      className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-ink-800 transition hover:bg-ink-50 disabled:cursor-not-allowed disabled:text-ink-300"
       disabled={disabled}
       onClick={onSelect}
       onMouseDown={(event) => event.preventDefault()}
       role="menuitem"
       type="button"
     >
-      <span className="flex h-6 w-7 shrink-0 items-center justify-center text-current">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-current">
         {icon}
       </span>
       <span className="truncate font-medium">{label}</span>
@@ -4218,12 +4277,12 @@ function MagnetsEmailFooterBlock({ edgeToEdge = false }: { edgeToEdge?: boolean 
     >
       <a
         className="inline-flex items-center gap-2 rounded-md border border-ink-300 bg-white px-4 py-2.5 text-sm font-semibold text-ink-800 shadow-sm transition hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-white/60"
-        href="https://magnets.so"
+        href="https://magnets.so/register?utm_source=email_footer&utm_medium=referral&utm_campaign=powered_by_magnets"
         rel="noopener noreferrer"
         target="_blank"
       >
         <MagnetsLogoMark className="h-5 w-5" tile />
-        Powered by Magnets
+        Build yours free with Magnets
       </a>
     </div>
   );

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
-import { recordLeadMagnetVisit } from '@/lib/platform-store';
+import {
+  maybeFinalizeLeadMagnetAbTest,
+  recordLeadMagnetVisit,
+} from '@/lib/platform-store';
+import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -10,13 +14,14 @@ import {
 } from '@/lib/rate-limit';
 
 const ROUTE = '/api/analytics/visit';
-// AI/MAINTAINER CONTEXT: this endpoint is public because landing-page visitors
-// do not have dashboard sessions. The random session id is analytics identity,
-// not authentication; schema bounds + both rate limits are the abuse boundary.
+// Landing-page visitors do not have dashboard sessions. The random session id
+// is analytics identity, not authentication; schema bounds and both rate limits
+// are the abuse boundary for this public endpoint.
 const schema = z.object({
   leadMagnetId: z.string().uuid(),
   sessionId: z.string().uuid(),
   engagedSeconds: z.number().int().min(0).max(21600),
+  variantId: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).optional(),
 }).strict();
 
 export async function POST(request: NextRequest) {
@@ -42,6 +47,10 @@ export async function POST(request: NextRequest) {
     ]);
 
     const recorded = await recordLeadMagnetVisit(parsed.data);
+    if (recorded) {
+      const finalised = await maybeFinalizeLeadMagnetAbTest(parsed.data.leadMagnetId);
+      if (finalised.completed) invalidatePublishedLeadMagnetCache();
+    }
     return recorded
       ? new NextResponse(null, { status: 204 })
       : NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });

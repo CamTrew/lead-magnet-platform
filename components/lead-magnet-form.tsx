@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { useLeadMagnetExperience } from '@/components/lead-magnet-experience';
 import { resolvePostSignupExperience } from '@/lib/post-signup';
-import { getLeadMagnetAnalyticsSessionId } from '@/lib/lead-magnet-analytics-client';
+import { getLeadMagnetAbVariantId, getLeadMagnetAnalyticsSessionId } from '@/lib/lead-magnet-analytics-client';
 import type { LeadMagnet } from '@/lib/types';
 
 function DefaultSuccess() {
@@ -62,6 +62,10 @@ export function LeadMagnetForm({
           name,
           email,
           analyticsSessionId: getLeadMagnetAnalyticsSessionId(magnet.id) || undefined,
+          abVariantId: getLeadMagnetAbVariantId(
+            magnet.id,
+            magnet.abTestEnabled ? magnet.abTestVariants.map((variant) => variant.id) : []
+          ),
         }),
       });
       const data = await response.json().catch(() => null) as { error?: string; submissionId?: string } | null;

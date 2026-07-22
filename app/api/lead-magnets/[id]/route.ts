@@ -52,6 +52,11 @@ function isLeadMagnetImageProxyUrl(value: string) {
   return /^\/magnet-images\/[0-9a-f-]{36}(\?.*)?$/i.test(value);
 }
 
+function isEmailImageProxyUrl(value: string) {
+  return /^\/email-images\/[0-9a-f-]{36}(\?.*)?$/i.test(value)
+    || /^\/local-email-images\/[0-9a-f-]{36}(\?.*)?$/i.test(value);
+}
+
 function isRemoteImageUrl(value: string) {
   try {
     const url = new URL(value);
@@ -78,6 +83,7 @@ const imageSchema = z
       !value ||
       isVercelBlobImageUrl(value) ||
       isLeadMagnetImageProxyUrl(value) ||
+      isEmailImageProxyUrl(value) ||
       isRemoteImageUrl(value)
     ) {
       return;
@@ -148,6 +154,14 @@ const quizRouteSchema = z.object({
   id: z.string().trim().min(1).max(80),
   destinationUrl: httpUrlSchema,
   conditions: z.array(quizRouteConditionSchema).max(5),
+}).strict();
+
+const abVariantSchema = z.object({
+  id: z.string().trim().regex(/^[a-z0-9-]{1,40}$/),
+  name: z.string().trim().min(1).max(60),
+  title: z.string().trim().max(160),
+  subtitle: z.string().trim().max(240),
+  imageUrl: imageSchema,
 }).strict();
 
 const delayHoursSchema = z.preprocess(
@@ -239,8 +253,30 @@ const schema = z.object({
   postSignupQuizDescription: z.string().max(300),
   postSignupQuizQuestions: z.array(quizQuestionSchema).max(5),
   postSignupQuizRoutes: z.array(quizRouteSchema).max(20),
+  // Optional so an already-open pre-A/B editor tab cannot silently turn off
+  // a running experiment when it autosaves unrelated email changes.
+  abTestEnabled: z.boolean().optional(),
+  abTestVariants: z.array(abVariantSchema).max(3).optional(),
+  // Runtime markers let the server detect an editor tab that was opened
+  // before an automatic winner was applied.
+  abTestCompletedAt: z.string().max(80).optional(),
+  abTestWinnerId: z.string().max(40).optional(),
   published: z.boolean(),
 }).strict().superRefine((value, ctx) => {
+  const variantIds = new Set<string>();
+  const abVariants = value.abTestVariants || [];
+  abVariants.forEach((variant, index) => {
+    if (variant.id === 'control' || variantIds.has(variant.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each A/B variant needs a unique name.', path: ['abTestVariants', index, 'name'] });
+    }
+    variantIds.add(variant.id);
+    if (!variant.title && !variant.subtitle && !variant.imageUrl) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Change at least one headline, subheadline, or image.', path: ['abTestVariants', index] });
+    }
+  });
+  if (value.abTestEnabled && abVariants.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Add a variant before enabling the A/B test.', path: ['abTestVariants'] });
+  }
   const followUpIds = new Set<string>();
   value.followUpEmails.forEach((email, index) => {
     if (followUpIds.has(email.id)) {
@@ -434,9 +470,27 @@ export async function PUT(
         previousLeadMagnet?.followUpEmails.map((email) => [email.id, email.resendTemplateId]) || []
       );
       const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
-      const { saveSource, syncFollowUp, ...persistedData } = parsed.data;
+      const {
+        saveSource,
+        syncFollowUp,
+        abTestCompletedAt: clientAbTestCompletedAt,
+        abTestWinnerId: clientAbTestWinnerId,
+        ...persistedData
+      } = parsed.data;
+      const abTestStateIsCurrent = (
+        (clientAbTestCompletedAt || '') === (previousLeadMagnet?.abTestCompletedAt || '')
+        && (clientAbTestWinnerId || '') === (previousLeadMagnet?.abTestWinnerId || '')
+      );
+      const safePersistedData = !abTestStateIsCurrent && previousLeadMagnet
+        ? {
+            ...persistedData,
+            title: previousLeadMagnet.title,
+            subtitle: previousLeadMagnet.subtitle,
+            imageUrl: previousLeadMagnet.imageUrl,
+          }
+        : persistedData;
       const updateData = {
-        ...persistedData,
+        ...safePersistedData,
         // These IDs identify live provider resources. Keeping the database
         // values prevents a stale editor tab from orphaning an enabled
         // Automation or restoring an obsolete template ID.
@@ -449,6 +503,18 @@ export async function PUT(
           parsed.data.postSignupQuizQuestions,
           parsed.data.postSignupQuizRoutes
         ),
+        abTestEnabled: (
+          abTestStateIsCurrent
+            ? (parsed.data.abTestEnabled ?? previousLeadMagnet?.abTestEnabled ?? false)
+            : (previousLeadMagnet?.abTestEnabled ?? false)
+        ) && (
+          abTestStateIsCurrent
+            ? (parsed.data.abTestVariants ?? previousLeadMagnet?.abTestVariants ?? [])
+            : (previousLeadMagnet?.abTestVariants ?? [])
+        ).length > 0,
+        abTestVariants: abTestStateIsCurrent
+          ? (parsed.data.abTestVariants ?? previousLeadMagnet?.abTestVariants ?? [])
+          : (previousLeadMagnet?.abTestVariants ?? []),
         emailBody: proxyEmailImagesInBody({
           accountId: payload.account.id,
           baseUrl,

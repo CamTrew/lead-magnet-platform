@@ -28,7 +28,10 @@ import {
   hostedResourceTypeLabel,
   validateHostedResourceFile,
 } from '@/lib/hosted-resources';
-import { MAX_HOSTED_RESOURCES_PER_ACCOUNT } from '@/lib/limits';
+import {
+  MAX_HOSTED_RESOURCE_STORAGE_BYTES,
+  MAX_HOSTED_RESOURCES_PER_ACCOUNT,
+} from '@/lib/limits';
 import type { HostedResource } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
@@ -37,6 +40,7 @@ type PendingUpload = {
   id: string;
   filename: string;
   progress: number;
+  sizeBytes: number;
 };
 
 type NamedUpload = {
@@ -159,6 +163,9 @@ export function HostedResourcesClient({
   const [namedUploads, setNamedUploads] = useState<NamedUpload[] | null>(null);
 
   const isUploading = pendingUploads.length > 0;
+  const usedStorageBytes = resources.reduce((total, resource) => total + resource.sizeBytes, 0);
+  const pendingStorageBytes = pendingUploads.reduce((total, upload) => total + upload.sizeBytes, 0);
+  const storageLimitReached = usedStorageBytes >= MAX_HOSTED_RESOURCE_STORAGE_BYTES;
 
   function prepareFiles(files: File[]) {
     if (files.length === 0) return;
@@ -166,6 +173,11 @@ export function HostedResourcesClient({
 
     if (resources.length + pendingUploads.length + files.length > MAX_HOSTED_RESOURCES_PER_ACCOUNT) {
       setError(`You can host up to ${MAX_HOSTED_RESOURCES_PER_ACCOUNT} resources.`);
+      return;
+    }
+    const selectedBytes = files.reduce((total, file) => total + file.size, 0);
+    if (usedStorageBytes + pendingStorageBytes + selectedBytes > MAX_HOSTED_RESOURCE_STORAGE_BYTES) {
+      setError('These files would exceed your 1 GB hosted-resource storage limit. Delete an unused resource or upload fewer files.');
       return;
     }
 
@@ -201,7 +213,7 @@ export function HostedResourcesClient({
       }
 
       const resourceId = crypto.randomUUID();
-      const pending = { id: resourceId, filename: file.name, progress: 0 };
+      const pending = { id: resourceId, filename: file.name, progress: 0, sizeBytes: file.size };
       setPendingUploads((current) => [...current, pending]);
 
       try {
@@ -281,8 +293,8 @@ export function HostedResourcesClient({
         subtitle="Upload files once, then copy their links into any lead magnet."
         actions={(
           <AceternityButton
-            disabled={isUploading || resources.length >= MAX_HOSTED_RESOURCES_PER_ACCOUNT}
-          onClick={() => inputRef.current?.click()}
+            disabled={isUploading || storageLimitReached || resources.length >= MAX_HOSTED_RESOURCES_PER_ACCOUNT}
+            onClick={() => inputRef.current?.click()}
             type="button"
           >
             {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -326,7 +338,7 @@ export function HostedResourcesClient({
         >
           <button
             className="flex w-full flex-col items-center justify-center px-5 py-8 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange sm:py-10"
-            disabled={isUploading || resources.length >= MAX_HOSTED_RESOURCES_PER_ACCOUNT}
+            disabled={isUploading || storageLimitReached || resources.length >= MAX_HOSTED_RESOURCES_PER_ACCOUNT}
             onClick={() => inputRef.current?.click()}
             type="button"
           >
@@ -337,7 +349,7 @@ export function HostedResourcesClient({
               Drop resources here, or click to browse
             </span>
             <span className="mt-1 max-w-xl text-xs leading-5 text-ink-500">
-              PDF, ZIP, Office documents, text files and images · up to 50 MB each
+              PDF, ZIP, Office documents, text files and images · 50 MB per file · 1 GB total
             </span>
           </button>
         </AceternityCard>
@@ -380,7 +392,9 @@ export function HostedResourcesClient({
           <div>
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-ink-950">Your resources</h2>
-              <span className="text-xs text-ink-500">{resources.length} of {MAX_HOSTED_RESOURCES_PER_ACCOUNT}</span>
+              <span className="text-xs text-ink-500">
+                {resources.length} of {MAX_HOSTED_RESOURCES_PER_ACCOUNT} files · {formatHostedResourceBytes(usedStorageBytes)} of {formatHostedResourceBytes(MAX_HOSTED_RESOURCE_STORAGE_BYTES)}
+              </span>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {resources.map((resource) => {

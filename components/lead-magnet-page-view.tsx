@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { LeadMagnetExperience } from '@/components/lead-magnet-experience';
 import { LeadMagnetAnalyticsTracker } from '@/components/lead-magnet-analytics-tracker';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
+import { LeadMagnetAbImage, LeadMagnetAbText } from '@/components/lead-magnet-ab-content';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import {
   leadMagnetDisplayImageUrl,
@@ -126,7 +127,10 @@ export function LeadMagnetPageView({
       className={`magnet-page relative flex min-h-screen flex-col ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`}
       style={brandStyle}
     >
-      <LeadMagnetAnalyticsTracker leadMagnetId={magnet.id} />
+      <LeadMagnetAnalyticsTracker
+        leadMagnetId={magnet.id}
+        variantIds={magnet.abTestEnabled ? magnet.abTestVariants.map((variant) => variant.id) : []}
+      />
       {imageUrl && (
         <>
           {imageOrigin && <link rel="preconnect" href={imageOrigin} />}
@@ -168,15 +172,19 @@ export function LeadMagnetPageView({
           >
             <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-x-14">
               <section className="min-w-0 lg:col-start-1 lg:row-start-1 lg:pt-1">
-                <h1 className="magnet-page-heading mb-5 max-w-2xl break-words text-[2.15rem] font-semibold leading-[1.08] text-gray-950 sm:mb-6 sm:text-5xl lg:text-[58px] lg:leading-[1.05]">
-                  {magnet.title}
-                </h1>
-
-                {magnet.subtitle && (
-                  <p className="magnet-page-muted mb-10 max-w-2xl text-lg font-medium leading-relaxed text-gray-600">
-                    {magnet.subtitle}
-                  </p>
-                )}
+                <LeadMagnetAbText
+                  className="magnet-page-heading mb-5 max-w-2xl break-words text-[2.15rem] font-semibold leading-[1.08] text-gray-950 sm:mb-6 sm:text-5xl lg:text-[58px] lg:leading-[1.05]"
+                  control={magnet.title}
+                  field="title"
+                  magnet={magnet}
+                  tag="h1"
+                />
+                <LeadMagnetAbText
+                  className="magnet-page-muted mb-10 max-w-2xl text-lg font-medium leading-relaxed text-gray-600"
+                  control={magnet.subtitle}
+                  field="subtitle"
+                  magnet={magnet}
+                />
               </section>
 
               <aside className="mb-10 min-w-0 lg:sticky lg:top-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mb-0">
@@ -334,42 +342,20 @@ function MediaAndCapture({
 }) {
   return (
     <div className="space-y-8">
-      {magnet.imageUrl && <MagnetImage magnet={magnet} />}
+      {(magnet.imageUrl || magnet.abTestVariants.some((variant) => variant.imageUrl)) && <MagnetImage magnet={magnet} />}
       <CaptureCard account={account} magnet={magnet} />
     </div>
   );
 }
 
 function MagnetImage({ magnet }: { magnet: LeadMagnet }) {
-  const imageUrl = leadMagnetDisplayImageUrl({
-    id: magnet.id,
-    imageUrl: magnet.imageUrl,
-    updatedAt: magnet.updatedAt,
-  });
-  const imageSrcSet = leadMagnetImageSrcSet(magnet.imageUrl);
-
   return (
-    <div
+    <LeadMagnetAbImage
       className="magnet-image group overflow-hidden rounded-[20px] border border-gray-200/70 bg-gray-50"
-      style={{
-        backgroundImage: 'linear-gradient(135deg, #f3f6fb 0%, #ffffff 55%, #eef4fb 100%)',
-      }}
-    >
-      <div className="relative aspect-[16/10] w-full">
-        <img
-          alt={magnet.title}
-          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-          decoding="async"
-          fetchPriority="high"
-          height={750}
-          loading="eager"
-          sizes={leadMagnetImageSizes}
-          src={imageUrl}
-          srcSet={imageSrcSet}
-          width={1200}
-        />
-      </div>
-    </div>
+      imageClassName="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+      magnet={magnet}
+      sizes={leadMagnetImageSizes}
+    />
   );
 }
 

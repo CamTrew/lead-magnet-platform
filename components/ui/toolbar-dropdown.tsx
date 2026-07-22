@@ -81,7 +81,7 @@ export function ToolbarDropdown<T extends string>({
         className={cn(
           'inline-flex items-center rounded-md text-xs font-medium text-ink-700 outline-none transition',
           compact
-            ? 'h-9 w-9 justify-center'
+            ? 'h-8 w-7 justify-center sm:w-8'
             : 'h-8 min-w-[8.5rem] justify-between gap-3 px-2.5',
           open ? 'bg-ink-100 text-ink-950' : 'hover:bg-ink-100 hover:text-ink-950',
           'focus-visible:ring-2 focus-visible:ring-ink-400 focus-visible:ring-offset-1'

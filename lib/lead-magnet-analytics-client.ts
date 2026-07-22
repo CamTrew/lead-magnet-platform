@@ -34,3 +34,33 @@ export function getLeadMagnetAnalyticsSessionId(leadMagnetId: string) {
   }
   return created;
 }
+
+function variantKey(leadMagnetId: string) {
+  return `${sessionKey(leadMagnetId)}:variant`;
+}
+
+export function leadMagnetAbBucket(sessionId: string, versionCount: number) {
+  if (versionCount <= 1) return 0;
+  const seed = sessionId.replace(/-/g, '').slice(-8);
+  return Number.parseInt(seed || '0', 16) % versionCount;
+}
+
+export function getLeadMagnetAbVariantId(leadMagnetId: string, variantIds: string[] = []) {
+  if (typeof window === 'undefined' || variantIds.length === 0) return 'control';
+  const allowed = ['control', ...variantIds];
+  try {
+    const existing = window.sessionStorage.getItem(variantKey(leadMagnetId));
+    if (existing && allowed.includes(existing)) return existing;
+  } catch {
+    // Use the deterministic fallback below when storage is unavailable.
+  }
+  const sessionId = getLeadMagnetAnalyticsSessionId(leadMagnetId);
+  const index = leadMagnetAbBucket(sessionId, allowed.length);
+  const selected = allowed[index] || 'control';
+  try {
+    window.sessionStorage.setItem(variantKey(leadMagnetId), selected);
+  } catch {
+    // Stable for this tab because the analytics session id is held in memory.
+  }
+  return selected;
+}

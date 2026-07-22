@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import {
   getLeadMagnetAnalyticsSessionId,
+  getLeadMagnetAbVariantId,
   leadMagnetAnalyticsElapsedKey,
 } from '@/lib/lead-magnet-analytics-client';
 
@@ -25,9 +26,11 @@ function storeElapsedSeconds(leadMagnetId: string, seconds: number) {
   }
 }
 
-export function LeadMagnetAnalyticsTracker({ leadMagnetId }: { leadMagnetId: string }) {
+export function LeadMagnetAnalyticsTracker({ leadMagnetId, variantIds = [] }: { leadMagnetId: string; variantIds?: string[] }) {
+  const variantIdsKey = variantIds.join(',');
   useEffect(() => {
     const sessionId = getLeadMagnetAnalyticsSessionId(leadMagnetId);
+    const variantId = getLeadMagnetAbVariantId(leadMagnetId, variantIdsKey ? variantIdsKey.split(',') : []);
     if (!sessionId) return;
 
     let accumulatedSeconds = readElapsedSeconds(leadMagnetId);
@@ -51,6 +54,7 @@ export function LeadMagnetAnalyticsTracker({ leadMagnetId }: { leadMagnetId: str
         leadMagnetId,
         sessionId,
         engagedSeconds: currentSeconds(),
+        variantId,
       });
     }
 
@@ -101,7 +105,7 @@ export function LeadMagnetAnalyticsTracker({ leadMagnetId }: { leadMagnetId: str
       window.removeEventListener('pagehide', handlePageHide);
       handlePageHide();
     };
-  }, [leadMagnetId]);
+  }, [leadMagnetId, variantIdsKey]);
 
   return null;
 }

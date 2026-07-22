@@ -17,6 +17,7 @@ import {
   createHostedResource,
   deleteHostedResource,
   HostedResourceLimitError,
+  HostedResourceStorageLimitError,
 } from '@/lib/platform-store';
 import {
   enforceRateLimits,
@@ -264,15 +265,29 @@ export async function PUT(
       );
     }
 
-    const resource = await createHostedResource({
-      id: resourceId,
-      accountId: payload.account.id,
-      name: parsed.data.name,
-      originalFilename: parsed.data.originalFilename,
-      contentType,
-      sizeBytes: blob.size,
-      blobUrl: parsed.data.blobUrl,
-    });
+    let resource;
+    try {
+      resource = await createHostedResource({
+        id: resourceId,
+        accountId: payload.account.id,
+        name: parsed.data.name,
+        originalFilename: parsed.data.originalFilename,
+        contentType,
+        sizeBytes: blob.size,
+        blobUrl: parsed.data.blobUrl,
+      });
+    } catch (error) {
+      // A presigned upload reaches Blob before its metadata is finalised. If an
+      // account loses the last available slot in a concurrent upload, remove
+      // this unrecorded blob instead of quietly charging storage for an orphan.
+      if (error instanceof HostedResourceLimitError || error instanceof HostedResourceStorageLimitError) {
+        after(() => del(parsed.data.blobUrl, {
+          storeId: blobStoreId(),
+          token: blobToken(),
+        }).catch(() => undefined));
+      }
+      throw error;
+    }
 
     log.info('Hosted resource recorded', {
       route: ROUTE,
@@ -286,7 +301,7 @@ export async function PUT(
     return NextResponse.json({ resource });
   } catch (error) {
     if (error instanceof RateLimitError) return rateLimitResponse(error);
-    if (error instanceof HostedResourceLimitError) {
+    if (error instanceof HostedResourceLimitError || error instanceof HostedResourceStorageLimitError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     log.warn('Hosted resource record failed', {

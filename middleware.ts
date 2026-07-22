@@ -9,6 +9,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
+  '/api/auth/email-verification',
   '/api/auth/password-reset',
   '/api/analytics/visit',
   '/api/analytics/video-play',
@@ -35,6 +36,7 @@ const RESERVED_PUBLIC_PATHS = new Set([
   'sequence',
   'sitemap.xml',
   'terms',
+  'verify-email',
   'youtube-thumbnails',
 ]);
 

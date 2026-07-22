@@ -362,6 +362,11 @@ const magnet: LeadMagnet = {
   postSignupQuizDescription: '',
   postSignupQuizQuestions: [],
   postSignupQuizRoutes: [],
+  abTestEnabled: false,
+  abTestVariants: [],
+  abTestStartedAt: '',
+  abTestCompletedAt: '',
+  abTestWinnerId: '',
   published: true,
   createdAt: now,
   updatedAt: now,
@@ -527,13 +532,16 @@ async function run() {
   assert.match(String(ownedEmailRequest?.body?.html), /border:2px dotted #334455;border-radius:4px/);
   assert.match(String(ownedEmailRequest?.body?.html), /src="https:\/\/magnets\.so\/youtube-thumbnails\/dQw4w9WgXcQ"/);
   assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
-  assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/magnets\.so"/);
+  assert.match(
+    String(ownedEmailRequest?.body?.html),
+    /href="https:\/\/magnets\.so\/register\?utm_source=email_footer&amp;utm_medium=referral&amp;utm_campaign=powered_by_magnets"/
+  );
   assert.doesNotMatch(String(ownedEmailRequest?.body?.html), /(?:^|>)#{1,6}\s|\*\*Bold\*\*|:::|\[\[toc\]\]|---/);
   assert.match(String(ownedEmailRequest?.body?.text), /book a call \(https:\/\/example\.com\/book\)/);
   assert.match(String(ownedEmailRequest?.body?.text), /Audit preview: https:\/\/cdn\.example\.com\/audit-preview\.png/);
   assert.match(String(ownedEmailRequest?.body?.text), /Framed audit preview\./);
   assert.match(String(ownedEmailRequest?.body?.text), /YouTube video: https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ/);
-  assert.match(String(ownedEmailRequest?.body?.text), /Powered by Magnets: https:\/\/magnets\.so/);
+  assert.match(String(ownedEmailRequest?.body?.text), /Build yours free with Magnets: https:\/\/magnets\.so\/register/);
 
   const legacySenderAccount = {
     ...account,
@@ -949,6 +957,12 @@ async function run() {
   resetRequests();
   const replacement = await syncLeadMagnetFollowUpAutomation(account, currentSyncedMagnet);
   assert.equal(replacement.automationId, 'auto_2');
+  assert.ok(
+    replacement.emails.every(
+      (email) => !synced.emails.some((previous) => previous.resendTemplateId === email.resendTemplateId)
+    ),
+    'A sequence edit must use new templates so existing runs keep the copy they entered with.'
+  );
   assert.deepEqual(automationPatchBodies('auto_1'), [{ status: 'disabled' }]);
   assert.deepEqual(automationPatchBodies('auto_orphan'), [{ status: 'disabled' }]);
   assert.deepEqual(automationPatchBodies('auto_2'), [{ status: 'enabled' }]);
@@ -1013,6 +1027,65 @@ async function run() {
     leadMagnetId: magnet.id,
     email: 'lead@example.com',
   });
+
+  resetRequests();
+  const concurrentRunKeys = new Set<string>();
+  const concurrentStore = {
+    createFollowUpRun: async (input: { email: string }) => {
+      const key = input.email.trim().toLowerCase();
+      if (concurrentRunKeys.has(key)) return { created: false, runId: null };
+      concurrentRunKeys.add(key);
+      return { created: true, runId: `run_${concurrentRunKeys.size}` };
+    },
+    markFollowUpRunFailed: async () => undefined,
+    hasActiveFollowUpRunForEmail: async () => false,
+    stopFollowUpRunForEmail: async () => ({ stopped: false, runId: null }),
+    listActiveStopOnBookingFollowUpRunsForEmail: async () => [],
+    stopFollowUpRunsForAccountEmail: async () => ({
+      stopped: false,
+      stoppedCount: 0,
+      leadMagnetIds: [],
+    }),
+  };
+  const concurrentResults = await Promise.all([
+    startLeadMagnetFollowUpSequence({
+      account,
+      magnet: currentSyncedMagnet,
+      email: 'person-one@example.com',
+      name: 'Person One',
+      store: concurrentStore,
+    }),
+    startLeadMagnetFollowUpSequence({
+      account,
+      magnet: currentSyncedMagnet,
+      email: 'person-two@example.com',
+      name: 'Person Two',
+      store: concurrentStore,
+    }),
+    startLeadMagnetFollowUpSequence({
+      account,
+      magnet: currentSyncedMagnet,
+      email: 'PERSON-ONE@example.com',
+      name: 'Person One Again',
+      store: concurrentStore,
+    }),
+  ]);
+  assert.deepEqual(
+    concurrentResults,
+    [
+      { started: true, reason: null },
+      { started: true, reason: null },
+      { started: false, reason: 'duplicate' },
+    ],
+    'Different people must start independent runs while the same normalized address starts only once.'
+  );
+  assert.deepEqual(
+    eventSendBodies()
+      .map((event) => event?.email)
+      .filter((email): email is string => typeof email === 'string')
+      .sort(),
+    ['person-one@example.com', 'person-two@example.com']
+  );
 
   resetRequests();
   const staleRenderResult = await startLeadMagnetFollowUpSequence({
@@ -1434,7 +1507,7 @@ async function run() {
     globalThis.fetch = resendFetch;
   }
 
-  console.log('Follow-up smoke test passed: managed Resend sending, automation creation and repair, sequence cancellation, email images, account-level booking cancellation, Beehiiv lead-magnet tags, Slack notifications, and Pipedrive create/update sync.');
+  console.log('Follow-up smoke test passed: concurrent recipients, duplicate prevention, immutable templates for existing runs, automation creation and repair, sequence cancellation, sender selection, email images, booking cancellation, and integration fan-out.');
 }
 
 run()

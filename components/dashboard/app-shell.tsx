@@ -25,13 +25,13 @@ import { WalkthroughModal } from '@/components/walkthrough-video';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/dashboard/pages', icon: FileText, label: 'Pages', requiresSetup: true },
-  { href: '/dashboard/resources', icon: FolderOpen, label: 'Hosted resource', requiresSetup: false },
+  { href: '/dashboard/pages', icon: FileText, label: 'Lead magnets', requiresSetup: true },
+  { href: '/dashboard/resources', icon: FolderOpen, label: 'Hosted resources', requiresSetup: false },
   { href: '/dashboard/signups', icon: Users, label: 'Signups', requiresSetup: true },
   {
     href: '/dashboard',
     icon: LayoutDashboard,
-    label: 'Configure',
+    label: 'Workspace setup',
     requiresSetup: false,
     dividerBefore: true,
   },
@@ -399,10 +399,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mx-auto mb-5 flex max-w-6xl flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto mb-5 flex max-w-7xl flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 sm:text-2xl">{title}</h1>
-        <p className="mt-1 text-sm text-ink-500">{subtitle}</p>
+        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-[28px]">{title}</h1>
+        <p className="mt-1.5 text-sm leading-6 text-ink-500">{subtitle}</p>
       </div>
       {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
     </div>

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
+import {
+  aiUsageLimitResponse,
+  enforceAiUsageLimit,
+  isAiUsageLimitError,
+} from '@/lib/ai-usage';
 import { generateLeadMagnetCopy, LeadMagnetAiError } from '@/lib/lead-magnet-ai';
 import { log } from '@/lib/logger';
 import {
@@ -50,6 +55,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await enforceAiUsageLimit(accountId, 'draft');
     const draft = await generateLeadMagnetCopy({
       account: payload.account,
       brief: parsed.data.brief,
@@ -66,6 +72,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ draft });
   } catch (error) {
+    if (isAiUsageLimitError(error)) return aiUsageLimitResponse(error);
     if (error instanceof RateLimitError) return rateLimitResponse(error);
     if (error instanceof LeadMagnetAiError) {
       log.warn('Lead magnet AI draft failed', {

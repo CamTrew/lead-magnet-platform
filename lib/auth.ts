@@ -3,9 +3,11 @@ import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  consumeEmailVerificationToken,
+  createEmailVerificationToken,
   createPasswordResetToken,
   createDatabaseSession,
-  createUserWithPasswordSession,
+  createUserWithPassword,
   deleteDatabaseSession,
   findUserWithPasswordByEmail,
   getDashboardBasePayloadBySessionToken,
@@ -17,12 +19,14 @@ import { hashPassword, verifyPassword } from './passwords';
 export const sessionCookieName = 'magnets_session';
 
 export class AuthActionError extends Error {
+  code?: string;
   status: number;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'AuthActionError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -60,12 +64,20 @@ export async function createLoginSession(email: string, password: string) {
     throw new AuthActionError('Email or password is incorrect.', 401);
   }
 
+  if (!result.emailVerified) {
+    throw new AuthActionError(
+      'Verify your email before signing in.',
+      403,
+      'email_verification_required'
+    );
+  }
+
   await createSessionForUser(result.user.id);
   return result.user;
 }
 
-export async function createRegisterSession(email: string, password: string, name?: string) {
-  const result = await createUserWithPasswordSession(email, await hashPassword(password), name);
+export async function createRegistration(email: string, password: string, name?: string) {
+  const result = await createUserWithPassword(email, await hashPassword(password), name);
 
   if (!result) {
     throw new AuthActionError('Could not create an account. Try again.', 500);
@@ -75,12 +87,47 @@ export async function createRegisterSession(email: string, password: string, nam
     throw new AuthActionError('An account already exists for that email. Sign in instead.', 409);
   }
 
-  if (!result.sessionToken) {
-    throw new AuthActionError('That account was just created. Sign in to continue.', 409);
+  return result.user;
+}
+
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function hashEmailVerificationToken(token: string) {
+  return `sha256:${createHash('sha256').update(token).digest('hex')}`;
+}
+
+async function issueEmailVerification(userId: string, email: string) {
+  const token = randomBytes(32).toString('base64url');
+  await createEmailVerificationToken(
+    userId,
+    hashEmailVerificationToken(token),
+    new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS)
+  );
+  return { email, token };
+}
+
+export async function createEmailVerificationForUser(userId: string, email: string) {
+  return issueEmailVerification(userId, email);
+}
+
+/** Unknown or already-verified addresses return null to prevent enumeration. */
+export async function createEmailVerificationForAddress(email: string) {
+  const result = await findUserWithPasswordByEmail(email);
+  if (!result || result.emailVerified || !result.passwordHash) return null;
+  return issueEmailVerification(result.user.id, result.user.email);
+}
+
+export async function completeEmailVerification(token: string) {
+  const userId = await consumeEmailVerificationToken(hashEmailVerificationToken(token));
+  if (!userId) {
+    throw new AuthActionError(
+      'This verification link is invalid or has expired. Request a new one.',
+      400,
+      'invalid_email_verification'
+    );
   }
 
-  await setSessionCookie(result.sessionToken);
-  return result.user;
+  await createSessionForUser(userId);
 }
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;

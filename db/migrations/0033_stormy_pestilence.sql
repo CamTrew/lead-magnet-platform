@@ -1,0 +1,2 @@
+ALTER TABLE "magnets_lead_magnets" ADD COLUMN "ab_test_completed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "magnets_lead_magnets" ADD COLUMN "ab_test_winner_id" text DEFAULT '' NOT NULL;

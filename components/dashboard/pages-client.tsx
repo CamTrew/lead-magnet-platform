@@ -10,6 +10,8 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Search,
+  Sparkles,
   X,
 } from 'lucide-react';
 import {
@@ -40,6 +42,10 @@ type AnalyticsLeadMagnet = Pick<
   | 'postSignupVideoUrl'
   | 'postSignupQuizEnabled'
   | 'postSignupQuizQuestions'
+  | 'abTestEnabled'
+  | 'abTestVariants'
+  | 'abTestCompletedAt'
+  | 'abTestWinnerId'
 >;
 
 type AnalyticsResponse = {
@@ -238,9 +244,11 @@ function PageThumbnail({ imageUrl, title }: Pick<LeadMagnetSummary, 'imageUrl' |
     return (
       <div
         aria-hidden="true"
-        className="flex h-12 w-16 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-ink-50 text-ink-400"
+        className="lead-magnet-thumbnail-placeholder flex aspect-[16/9] w-full items-center justify-center bg-[radial-gradient(circle_at_top,#fff7f2,transparent_55%),linear-gradient(135deg,#f7f5f2,#efebe6)] text-ink-400"
       >
-        <ImageIcon className="h-4 w-4" />
+        <div className="dashboard-glass-stat flex h-12 w-12 items-center justify-center rounded-2xl border border-white/80 bg-white/70 shadow-sm backdrop-blur">
+          <ImageIcon className="h-5 w-5" />
+        </div>
       </div>
     );
   }
@@ -250,7 +258,7 @@ function PageThumbnail({ imageUrl, title }: Pick<LeadMagnetSummary, 'imageUrl' |
     // eslint-disable-next-line @next/next/no-img-element
     <img
       alt={`Preview of ${title}`}
-      className="h-12 w-16 shrink-0 rounded-md border border-ink-200 bg-ink-50 object-cover"
+      className="aspect-[16/9] w-full bg-ink-50 object-cover transition duration-500 group-hover/card:scale-[1.025]"
       decoding="async"
       onError={() => setHasImageError(true)}
       src={imageUrl}
@@ -376,6 +384,7 @@ export function PagesClient({
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
   const [analyticsTarget, setAnalyticsTarget] = useState<Pick<LeadMagnetSummary, 'id' | 'title'> | null>(null);
+  const [query, setQuery] = useState('');
   const isCreating = createState === 'saving';
   const isCreateBusy = isCreating;
   const isOpening = Boolean(openingPageId) || isPending;
@@ -385,6 +394,12 @@ export function PagesClient({
     : isCreateBusy
       ? 'Creating page'
       : 'New page';
+  const publishedCount = leadMagnets.filter((leadMagnet) => leadMagnet.published).length;
+  const filteredLeadMagnets = leadMagnets.filter((leadMagnet) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return `${leadMagnet.title} ${leadMagnet.subtitle} ${leadMagnet.slug}`.toLowerCase().includes(needle);
+  });
 
   function openCreateDialog() {
     if (isCreateBusy || isOpening) return;
@@ -482,7 +497,7 @@ export function PagesClient({
 
   return (
     <>
-      <PageHeader title="Pages" subtitle="Create and edit magnets" />
+      <PageHeader title="Lead magnets" subtitle="Build, publish, and improve every conversion experience" />
       {createOpen && (
         <CreatePageModal
           error={createError}
@@ -501,23 +516,32 @@ export function PagesClient({
         <AnalyticsModal onClose={() => setAnalyticsTarget(null)} target={analyticsTarget} />
       )}
 
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto max-w-7xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
-        <AceternityCard className="overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-ink-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-ink-950">All pages</h2>
-              <p className="mt-1 text-sm text-ink-600">
-                Open a page to edit the copy and email.
-              </p>
-              <p className="mt-1 text-xs font-medium text-ink-500">
-                {leadMagnets.length} / {MAX_LEAD_MAGNETS_PER_ACCOUNT} pages used
+        <section className="dashboard-hero-panel overflow-hidden rounded-2xl border border-ink-200 bg-[radial-gradient(circle_at_8%_0%,rgba(254,111,52,0.12),transparent_28%),linear-gradient(135deg,#fff,#faf9f7)] px-5 py-6 shadow-[0_18px_60px_-48px_rgba(17,17,17,0.45)] sm:px-7 sm:py-7">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-orange/20 bg-brand-orange/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-700">
+                <Sparkles className="h-3 w-3 text-brand-orange" />
+                Conversion workspace
+              </span>
+              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-3xl">Your lead magnet library</h2>
+              <p className="mt-2 text-sm leading-6 text-ink-600 sm:text-base">
+                Create the page, delivery email, follow-up journey, and next step in one place.
               </p>
             </div>
-            <div className="flex w-full items-center gap-2 sm:w-auto">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <div className="dashboard-glass-stat rounded-xl border border-white bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Published</p>
+                <p className="mt-0.5 text-xl font-semibold text-ink-950">{publishedCount}</p>
+              </div>
+              <div className="dashboard-glass-stat rounded-xl border border-white bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Total</p>
+                <p className="mt-0.5 text-xl font-semibold text-ink-950">{leadMagnets.length}</p>
+              </div>
               <AceternityButton
-                className="w-full min-w-[152px] sm:w-auto"
+                className="col-span-2 min-h-11 rounded-xl px-5 sm:col-auto"
                 disabled={pageLimitReached || isCreateBusy || isOpening}
                 onClick={openCreateDialog}
               >
@@ -530,143 +554,110 @@ export function PagesClient({
               </AceternityButton>
             </div>
           </div>
+        </section>
 
-          <div>
-            <table className="block w-full text-left text-sm xl:table xl:table-fixed">
-              <colgroup className="hidden xl:table-column-group">
-                <col className="w-[32%]" />
-                <col className="w-[31%]" />
-                <col className="w-[11%]" />
-                <col className="w-[12%]" />
-                <col className="w-[14%]" />
-              </colgroup>
-              <thead className="hidden border-b border-ink-200 bg-ink-50 text-xs font-semibold uppercase text-ink-500 xl:table-header-group">
-                <tr>
-                  <th className="px-5 py-3">Page</th>
-                  <th className="px-5 py-3">URL</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Updated</th>
-                  <th className="w-32 px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="block divide-y divide-[#dfd8cf] xl:table-row-group">
-                {leadMagnets.length === 0 && !isCreating && (
-                  <tr className="block bg-white xl:table-row">
-                    <td colSpan={5} className="block px-5 py-10 text-center xl:table-cell">
-                      <p className="font-semibold text-ink-950">No pages yet</p>
-                      <p className="mt-1 text-sm text-ink-500">Create a page when the resource is ready.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <label className="relative block w-full sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+            <input
+              aria-label="Search lead magnets"
+              className="h-11 w-full rounded-xl border border-ink-200 bg-white pl-10 pr-3 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by title or URL…"
+              value={query}
+            />
+          </label>
+          <p className="text-xs font-medium text-ink-500">{leadMagnets.length} of {MAX_LEAD_MAGNETS_PER_ACCOUNT} spaces used</p>
+        </div>
+
+        {leadMagnets.length === 0 && !isCreating ? (
+          <AceternityCard className="flex min-h-72 flex-col items-center justify-center rounded-2xl border-dashed px-6 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-orange/10 text-brand-orange"><Sparkles className="h-5 w-5" /></div>
+            <p className="mt-4 font-semibold text-ink-950">Create your first lead magnet</p>
+            <p className="mt-1 max-w-sm text-sm leading-6 text-ink-500">Build the landing page, resource email, and follow-up sequence in one guided flow.</p>
                       <AceternityButton
-                        className="mt-4 min-w-[152px]"
+              className="mt-5 rounded-xl"
                         disabled={pageLimitReached || isCreateBusy || isOpening}
                         onClick={openCreateDialog}
                       >
                         <Plus className="h-4 w-4" />
-                        Create page
+              Create lead magnet
                       </AceternityButton>
-                    </td>
-                  </tr>
-                )}
-                {leadMagnets.map((leadMagnet) => {
+          </AceternityCard>
+        ) : filteredLeadMagnets.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-ink-200 bg-white px-6 py-14 text-center">
+            <p className="font-semibold text-ink-950">No lead magnets match “{query.trim()}”</p>
+            <button className="mt-2 text-sm font-medium text-brand-orange hover:underline" onClick={() => setQuery('')} type="button">Clear search</button>
+          </div>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {filteredLeadMagnets.map((leadMagnet) => {
                   const url = leadMagnetUrl(account, leadMagnet);
 
                   return (
-                    <tr
+                <article
                       key={leadMagnet.id}
-                      className="block bg-white px-5 py-4 transition hover:bg-ink-50 xl:table-row xl:px-0 xl:py-0"
+                  className="group/card overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-[0_1px_2px_rgba(17,17,17,0.03)] transition duration-200 hover:-translate-y-0.5 hover:border-ink-300 hover:shadow-[0_22px_55px_-38px_rgba(17,17,17,0.45)]"
                     >
-                      <td className="block max-w-[360px] py-0 xl:table-cell xl:px-5 xl:py-3">
-                        <div className="flex min-w-0 items-center gap-3">
+                  <div className="relative overflow-hidden border-b border-ink-100">
                           <PageThumbnail imageUrl={leadMagnet.imageUrl} title={leadMagnet.title} />
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-ink-950">{leadMagnet.title}</p>
-                            <p className="mt-0.5 truncate text-xs text-ink-500">{leadMagnet.subtitle}</p>
-                          </div>
+                    <span className={cn('absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur', leadMagnet.published ? 'border-emerald-200/80 bg-emerald-50/95 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-950/90 dark:text-emerald-300' : 'border-white/80 bg-white/90 text-ink-600 dark:border-ink-700 dark:bg-ink-900/95 dark:text-ink-300')}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', leadMagnet.published ? 'bg-emerald-500' : 'bg-ink-400')} />
+                      {leadMagnet.published ? 'Published' : 'Draft'}
+                    </span>
                         </div>
-                      </td>
-                      <td className="mt-3 block max-w-[360px] xl:mt-0 xl:table-cell xl:px-5 xl:py-4">
-                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">URL</span>
-                        {leadMagnet.published ? (
+
+                  <div className="p-5">
+                    <div className="min-h-[4.75rem]">
+                      <h3 className="line-clamp-2 text-base font-semibold leading-6 text-ink-950">{leadMagnet.title}</h3>
+                      <p className="mt-1 line-clamp-2 text-sm leading-5 text-ink-500">{leadMagnet.subtitle || 'Add a compelling subheadline in the editor.'}</p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-ink-100 pt-4">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-[11px] text-ink-500" title={url}>/{leadMagnet.slug}</p>
+                        <p className="mt-1 text-[11px] text-ink-400">Updated {formatDate(leadMagnet.updatedAt)}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          aria-label={`View analytics for ${leadMagnet.title}`}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 transition hover:border-ink-300 hover:bg-ink-50 hover:text-ink-950"
+                          onClick={() => setAnalyticsTarget({ id: leadMagnet.id, title: leadMagnet.title })}
+                          title="Analytics"
+                          type="button"
+                        ><BarChart3 className="h-4 w-4" /></button>
+                        {leadMagnet.published && (
                           <a
-                            className="block truncate font-mono text-xs text-ink-700 underline-offset-2 hover:text-ink-950 hover:underline"
+                            aria-label={`View ${leadMagnet.title}`}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 transition hover:border-ink-300 hover:bg-ink-50 hover:text-ink-950"
                             href={url}
                             rel="noreferrer"
                             target="_blank"
-                            title={url}
-                          >
-                            {url}
-                          </a>
-                        ) : (
-                          <span className="block truncate font-mono text-xs text-ink-600" title={url}>
-                            {url}
-                          </span>
+                            title="View published page"
+                          ><ExternalLink className="h-4 w-4" /></a>
                         )}
-                      </td>
-                      <td className="mt-3 block xl:mt-0 xl:table-cell xl:px-5 xl:py-4">
-                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Status</span>
-                        <span
-                          className={cn(
-                            'rounded-lg border px-2 py-1 text-xs font-bold',
-                            leadMagnet.published
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : 'border-ink-200 bg-ink-50 text-ink-900'
-                          )}
-                        >
-                          {leadMagnet.published ? 'Published' : 'Draft'}
-                        </span>
-                      </td>
-                      <td className="mt-3 block text-ink-600 xl:mt-0 xl:table-cell xl:px-5 xl:py-4">
-                        <span className="mr-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">Updated</span>
-                        {formatDate(leadMagnet.updatedAt)}
-                      </td>
-                      <td className="mt-4 block xl:mt-0 xl:table-cell xl:px-5 xl:py-4">
-                        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-500 xl:hidden">
-                          Actions
-                        </span>
-                        <div className="flex flex-nowrap items-center gap-2 xl:justify-end">
-                          <button
-                            aria-label={`View analytics for ${leadMagnet.title}`}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-900 transition hover:bg-ink-50"
-                            onClick={() => setAnalyticsTarget({ id: leadMagnet.id, title: leadMagnet.title })}
-                            title="Analytics"
-                            type="button"
-                          >
-                            <BarChart3 className="h-3.5 w-3.5" />
-                          </button>
-                          {leadMagnet.published && (
-                            <a
-                              aria-label={`View ${leadMagnet.title}`}
-                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-900 transition hover:bg-ink-50"
-                              href={url}
-                              rel="noreferrer"
-                              target="_blank"
-                              title={url}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
                           <AceternityButton
                             aria-label={`Open ${leadMagnet.title}`}
-                            className="h-9 min-h-9 w-9 shrink-0 px-0"
+                          className="h-9 min-h-9 rounded-lg px-3"
                             disabled={isCreating || isOpening}
                             onClick={() => openLeadMagnet(leadMagnet.id)}
                             size="sm"
-                            title="Open"
+                          title="Edit lead magnet"
                           >
                             {openingPageId === leadMagnet.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <Pencil className="h-4 w-4" />
                             )}
+                          <span className="hidden sm:inline">Edit</span>
                           </AceternityButton>
                         </div>
-                      </td>
-                    </tr>
+                    </div>
+                  </div>
+                </article>
                   );
                 })}
-              </tbody>
-            </table>
           </div>
-        </AceternityCard>
+        )}
       </div>
     </>
   );

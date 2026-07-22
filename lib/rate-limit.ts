@@ -4,11 +4,13 @@ import { query } from './db';
 
 export class RateLimitError extends Error {
   retryAfterSeconds: number;
+  scope: string;
 
-  constructor(retryAfterSeconds: number) {
+  constructor(retryAfterSeconds: number, scope = '') {
     super('Too many requests');
     this.name = 'RateLimitError';
     this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+    this.scope = scope;
   }
 }
 
@@ -47,7 +49,7 @@ export async function enforceRateLimits(inputs: RateLimitInput[]) {
     window_seconds: windowSeconds,
   }));
 
-  const result = await query<{ attempts: number; retry_after_seconds: string }>(
+  const result = await query<{ attempts: number; retry_after_seconds: string; scope: string }>(
     `
       with input as (
         select
@@ -111,6 +113,7 @@ export async function enforceRateLimits(inputs: RateLimitInput[]) {
           public.magnets_rate_limits.attempts
       )
       select
+        upserted.scope,
         upserted.attempts,
         greatest(
           1,
@@ -131,7 +134,7 @@ export async function enforceRateLimits(inputs: RateLimitInput[]) {
 
   const row = result.rows[0];
   if (row) {
-    throw new RateLimitError(Number(row.retry_after_seconds));
+    throw new RateLimitError(Number(row.retry_after_seconds), row.scope);
   }
 }
 

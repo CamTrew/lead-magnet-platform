@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getCurrentDashboardBase } from '@/lib/auth';
-import { listHostedResources } from '@/lib/platform-store';
+import {
+  getHostedResourceStorageUsage,
+  listHostedResources,
+} from '@/lib/platform-store';
 
 export async function GET() {
   const payload = await getCurrentDashboardBase();
@@ -8,7 +11,9 @@ export async function GET() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  return NextResponse.json({
-    resources: await listHostedResources(payload.account.id),
-  });
+  const [resources, usage] = await Promise.all([
+    listHostedResources(payload.account.id),
+    getHostedResourceStorageUsage(payload.account.id),
+  ]);
+  return NextResponse.json({ resources, usage });
 }

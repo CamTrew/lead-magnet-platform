@@ -79,7 +79,7 @@ function auditBody(
     ? renderFollowUpEmailHtml(body, previewText, 'https://magnets.so/follow-up/stop/audit')
     : renderDeliveryEmailHtml(body, previewText);
   assert.match(html, /class="magnets-email-card"/, `${label}: missing responsive email shell`);
-  assert.match(html, /Powered by Magnets/, `${label}: missing required email footer`);
+  assert.match(html, /Build yours free with Magnets/, `${label}: missing required email footer`);
   if (kind === 'follow-up') {
     assert.match(html, /Stop this sequence/, `${label}: missing follow-up opt-out`);
   }

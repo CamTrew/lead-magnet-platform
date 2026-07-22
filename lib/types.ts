@@ -128,6 +128,14 @@ export interface QuizResponse {
   createdAt: string;
 }
 
+export interface LeadMagnetAbVariant {
+  id: string;
+  name: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+}
+
 export interface LeadMagnet {
   id: string;
   accountId: string;
@@ -162,6 +170,11 @@ export interface LeadMagnet {
   postSignupQuizDescription: string;
   postSignupQuizQuestions: PostSignupQuizQuestion[];
   postSignupQuizRoutes: PostSignupQuizRoute[];
+  abTestEnabled: boolean;
+  abTestVariants: LeadMagnetAbVariant[];
+  abTestStartedAt: string;
+  abTestCompletedAt: string;
+  abTestWinnerId: string;
   published: boolean;
   createdAt: string;
   updatedAt: string;
@@ -180,6 +193,9 @@ export type LeadMagnetVersionSnapshot = Omit<
   | 'updatedAt'
   | 'resendFollowUpAutomationId'
   | 'resendFollowUpRenderVersion'
+  | 'abTestStartedAt'
+  | 'abTestCompletedAt'
+  | 'abTestWinnerId'
 >;
 
 export interface LeadMagnetVersionSummary {
@@ -221,6 +237,22 @@ export interface LeadMagnetAnalytics {
   recentVideoPlays: number;
   recentQuizCompletions: number;
   daily: LeadMagnetAnalyticsDay[];
+  variants: Array<{
+    variantId: string;
+    name: string;
+    visits: number;
+    conversions: number;
+    conversionRate: number;
+  }>;
+}
+
+export interface QuizInsightsData {
+  completionCount: number;
+  responseCount: number;
+  questions: Array<{
+    question: string;
+    answers: Array<{ label: string; count: number; percentage: number }>;
+  }>;
 }
 
 export type LeadMagnetSummary = Pick<

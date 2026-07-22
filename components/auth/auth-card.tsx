@@ -97,16 +97,27 @@ export function AuthCard({
         body: JSON.stringify(body),
       });
 
+      const data = (await response.json().catch(() => null)) as {
+        code?: string;
+        error?: string;
+        verificationRequired?: boolean;
+      } | null;
+
       if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        if (mode === 'login' && data?.code === 'email_verification_required') {
+          setIsNavigating(true);
+          window.dispatchEvent(new Event('magnets:navigation-start'));
+          window.location.assign(`/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+          return;
+        }
         throw new Error(data?.error || activeCopy.error);
       }
 
       setIsNavigating(true);
       window.dispatchEvent(new Event('magnets:navigation-start'));
-      const destination = mode === 'login'
-        ? loginDestination(nextPath)
-        : '/dashboard/pages';
+      const destination = mode === 'register' && data?.verificationRequired
+        ? `/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`
+        : loginDestination(nextPath);
       window.location.assign(destination);
       return;
     } catch (err) {

@@ -119,7 +119,10 @@ button {
   font-family: inherit;
 }
 
-.dashboard-canvas,
+.dashboard-canvas {
+  background-color: #f7f7f6;
+}
+
 .dashboard-chrome {
   background-color: #ffffff;
 }
@@ -443,6 +446,34 @@ button {
 
 .dark .app-theme .dashboard-chrome {
   background-color: #18181b;
+}
+
+/* Premium dashboard surfaces use layered light gradients and translucent
+   cards. They need dedicated dark surfaces because opacity utilities retain
+   their original white RGB values even when the generic palette flips. */
+.dark .app-theme .dashboard-hero-panel {
+  border-color: #343439 !important;
+  background-color: #18181b !important;
+  background-image:
+    radial-gradient(circle at 7% 0%, rgb(254 111 52 / 0.18), transparent 34%),
+    linear-gradient(135deg, #1d1d21, #151517) !important;
+}
+
+.dark .app-theme .dashboard-glass-stat {
+  border-color: #3b3b41 !important;
+  background-color: rgb(32 32 36 / 0.9) !important;
+}
+
+.dark .app-theme .lead-magnet-thumbnail-placeholder {
+  background-color: #202024 !important;
+  background-image:
+    radial-gradient(circle at top, rgb(254 111 52 / 0.14), transparent 56%),
+    linear-gradient(135deg, #242429, #18181b) !important;
+}
+
+.dark .app-theme .email-formatting-toolbar {
+  border-color: #343439 !important;
+  background-color: rgb(32 32 36 / 0.96) !important;
 }
 
 .dark .app-theme .brand-soft-bg {
@@ -787,4 +818,19 @@ button {
 .dark .app-theme footer.bg-ink-950,
 .dark .app-theme section.bg-ink-950 {
   background-color: #080809;
+}
+
+@media print {
+  @page { margin: 14mm; }
+  body:has(.quiz-results-page) * { visibility: hidden !important; }
+  body:has(.quiz-results-page) .quiz-results-report,
+  body:has(.quiz-results-page) .quiz-results-report * { visibility: visible !important; }
+  body:has(.quiz-results-page) .quiz-results-report {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .quiz-results-actions { display: none !important; }
 }

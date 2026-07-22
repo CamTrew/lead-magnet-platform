@@ -7,11 +7,15 @@ import {
   Clock3,
   ExternalLink,
   ListChecks,
+  Loader2,
   MousePointerClick,
+  Sparkles,
   Users,
 } from 'lucide-react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { AbTestResultsCard } from '@/components/dashboard/ab-test-results-card';
 import { aceternityButtonClassName } from '@/components/ui/aceternity';
 import { postSignupVideoEmbedUrl } from '@/lib/post-signup';
 import type { LeadMagnet, LeadMagnetAnalytics } from '@/lib/types';
@@ -50,9 +54,20 @@ export function LeadMagnetAnalyticsView({
     | 'postSignupVideoUrl'
     | 'postSignupQuizEnabled'
     | 'postSignupQuizQuestions'
+    | 'abTestEnabled'
+    | 'abTestVariants'
+    | 'abTestCompletedAt'
+    | 'abTestWinnerId'
   >;
   pageUrl: string;
 }) {
+  const [quizInsight, setQuizInsight] = useState<null | {
+    summary: string;
+    patterns: string[];
+    recommendations: string[];
+  }>(null);
+  const [insightState, setInsightState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [insightError, setInsightError] = useState('');
   const maxDailyVisits = Math.max(...analytics.daily.map((day) => day.visits), 1);
   const hasVideo = leadMagnet.postSignupMode === 'page'
     && Boolean(postSignupVideoEmbedUrl(leadMagnet.postSignupVideoUrl));
@@ -100,6 +115,22 @@ export function LeadMagnetAnalyticsView({
       detail: `${formatNumber(analytics.recentQuizCompletions)} in the last 30 days`,
       icon: ListChecks,
     });
+  }
+
+  async function generateQuizInsights() {
+    setInsightState('loading');
+    setInsightError('');
+    try {
+      const response = await fetch(`/api/lead-magnets/${leadMagnet.id}/quiz-insights`, { method: 'POST' });
+      const body = await response.json().catch(() => null) as { error?: string; insight?: typeof quizInsight } | null;
+      if (!response.ok) throw new Error(body?.error || 'Quiz insights could not be generated.');
+      if (!body?.insight) throw new Error('There are not enough quiz answers to analyse yet.');
+      setQuizInsight(body.insight);
+      setInsightState('idle');
+    } catch (error) {
+      setInsightError(error instanceof Error ? error.message : 'Quiz insights could not be generated.');
+      setInsightState('error');
+    }
   }
 
   return (
@@ -214,6 +245,33 @@ export function LeadMagnetAnalyticsView({
             </div>
           )}
         </section>
+
+        {(leadMagnet.abTestEnabled || Boolean(leadMagnet.abTestCompletedAt)) && analytics.variants.length > 0 && (
+          <AbTestResultsCard experiment={leadMagnet} variants={analytics.variants} />
+        )}
+
+        {hasQuiz && (
+          <section className="rounded-lg border border-ink-200 bg-white p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-ink-950">AI quiz analysis</h2>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-500">Find patterns and practical actions from aggregate answers. Names and email addresses are never sent to the model.</p>
+              </div>
+              <button className={aceternityButtonClassName({ variant: 'secondary' })} disabled={insightState === 'loading'} onClick={generateQuizInsights} type="button">
+                {insightState === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {quizInsight ? 'Refresh analysis' : 'Analyse results'}
+              </button>
+            </div>
+            {insightError && <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">{insightError}</p>}
+            {quizInsight && (
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg bg-ink-50 p-4 lg:col-span-2"><h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Summary</h3><p className="mt-2 text-sm leading-6 text-ink-800">{quizInsight.summary}</p></div>
+                <div className="rounded-lg border border-ink-200 p-4"><h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Patterns</h3><ul className="mt-3 space-y-2 text-sm leading-6 text-ink-700">{quizInsight.patterns.map((item) => <li key={item}>• {item}</li>)}</ul></div>
+                <div className="rounded-lg border border-ink-200 p-4"><h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">What to do next</h3><ul className="mt-3 space-y-2 text-sm leading-6 text-ink-700">{quizInsight.recommendations.map((item) => <li key={item}>• {item}</li>)}</ul></div>
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="rounded-md border border-ink-200 bg-ink-50 px-4 py-3 text-xs leading-5 text-ink-600">
           A visit is one anonymous browser-tab session, so refreshing the same page does not inflate the count. Engaged time only counts while the page is visible. A video play is one successful signup explicitly pressing Play, counted once. A quiz completion requires every configured answer to be saved. No names, emails, cookies, or raw IP addresses are stored in visit analytics. Tracking starts when each metric is deployed; historical activity cannot be reconstructed.

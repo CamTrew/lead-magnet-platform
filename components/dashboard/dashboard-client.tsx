@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Newspaper,
   ScrollText,
+  Sparkles,
   Webhook,
 } from 'lucide-react';
 import {
@@ -140,7 +141,7 @@ function ConnectionStatus({
 }
 
 const connectionCardClass =
-  'connection-card group overflow-hidden rounded-xl border border-ink-200 bg-ink-50/70 shadow-[0_1px_2px_rgba(17,17,17,0.03)] transition hover:border-ink-300 hover:bg-white hover:shadow-[0_8px_24px_rgba(17,17,17,0.06)] open:bg-white open:shadow-[0_8px_24px_rgba(17,17,17,0.06)]';
+  'connection-card group overflow-hidden bg-white transition hover:bg-ink-50 open:col-span-full open:bg-white';
 
 function HelpTooltip({ ariaLabel, help, width = 'w-64' }: { ariaLabel: string; help: string; width?: string }) {
   const [open, setOpen] = useState(false);
@@ -1127,56 +1128,74 @@ export function DashboardClient({
 
   return (
     <>
-      <PageHeader title="Get started" subtitle="Claim your free Magnets link first. Everything else can wait." />
-      <div className="mx-auto max-w-6xl space-y-5">
+      <PageHeader title="Workspace setup" subtitle="Manage your publishing address, email delivery, and connections" />
+      <div className="mx-auto max-w-5xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
-        <AceternityCard className="overflow-hidden p-0">
-          <div className="border-b border-ink-200 bg-ink-50 px-6 py-4">
-            <p className="text-sm font-semibold text-ink-950">Start here</p>
-            <p className="mt-1 text-sm text-ink-600">Choose the link you will share. You can create a page as soon as this is saved.</p>
+        <section className="dashboard-hero-panel overflow-hidden rounded-2xl border border-ink-200 bg-[radial-gradient(circle_at_6%_0%,rgba(254,111,52,0.13),transparent_32%),linear-gradient(135deg,#fff,#faf9f7)] px-5 py-6 shadow-[0_18px_60px_-48px_rgba(17,17,17,0.5)] sm:px-7 sm:py-7">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-xl">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-orange/20 bg-brand-orange/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-700">
+                <Sparkles className="h-3 w-3 text-brand-orange" />
+                Workspace essentials
+              </span>
+              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-3xl">Set up once, then get back to creating</h2>
+              <p className="mt-2 text-sm leading-6 text-ink-600 sm:text-base">Your Magnets URL is the only required setting. Domains and integrations stay out of the way until you need them.</p>
+            </div>
+            <div className="dashboard-glass-stat min-w-0 rounded-xl border border-white bg-white/85 px-4 py-3 shadow-sm backdrop-blur md:w-72">
+              <div className="flex items-center gap-2">
+                <span className={cn('h-2 w-2 rounded-full', account.username ? 'bg-emerald-500' : 'bg-amber-500')} />
+                <p className="text-xs font-semibold text-ink-900">{account.username ? 'Public URL ready' : 'Choose your public URL'}</p>
+              </div>
+              <p className="mt-1 truncate font-mono text-xs text-ink-500">{account.domainAttachedHost ? pageHost : platformHost}</p>
+            </div>
           </div>
-          <div className="p-6">
+        </section>
+
+        <AceternityCard className="overflow-hidden rounded-2xl p-0">
+          <div className="p-5 sm:p-7">
           <div className="space-y-6">
             <SectionHeader
-              description="Your pages work on Magnets straight away. A custom domain is an optional upgrade, not a requirement."
+              description="This is the link you can share immediately. A custom domain is completely optional."
               icon={Globe2}
-              title="Your public page"
+              title="Public URL"
             />
 
             <div className="space-y-5">
-              <Field
-                label="Choose your Magnets URL"
-                hint="Lowercase letters, numbers, and hyphens. This is the only required step."
-              >
-                <div className="flex h-10 items-stretch overflow-hidden rounded-md border border-ink-200 bg-white focus-within:border-ink-950 focus-within:ring-1 focus-within:ring-ink-950">
-                  <span className="flex shrink-0 items-center border-r border-ink-200 bg-ink-50 px-3 font-mono text-sm text-ink-500">
-                    magnets.so/
-                  </span>
-                  <input
-                    className="min-w-0 flex-1 bg-transparent px-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
-                    maxLength={40}
-                    onBlur={() => commitSection('publishing')}
-                    onChange={(event) => patchAccount({ username: event.target.value.toLowerCase() }, 'publishing')}
-                    placeholder="your-brand"
-                    value={account.username}
-                  />
-                </div>
-              </Field>
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                <Field
+                  label="Magnets URL"
+                  hint="Lowercase letters, numbers, and hyphens."
+                >
+                  <div className="flex h-11 items-stretch overflow-hidden rounded-lg border border-ink-200 bg-white focus-within:border-brand-orange focus-within:ring-2 focus-within:ring-brand-orange/15">
+                    <span className="flex shrink-0 items-center border-r border-ink-200 bg-ink-50 px-3 font-mono text-sm text-ink-500">
+                      magnets.so/
+                    </span>
+                    <input
+                      className="min-w-0 flex-1 bg-transparent px-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                      maxLength={40}
+                      onBlur={() => commitSection('publishing')}
+                      onChange={(event) => patchAccount({ username: event.target.value.toLowerCase() }, 'publishing')}
+                      placeholder="your-brand"
+                      value={account.username}
+                    />
+                  </div>
+                </Field>
 
-              <div className="rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
-                <p className="text-xs font-medium text-ink-500">Your page link</p>
-                <p className="mt-1 break-all font-mono text-sm text-ink-900">
-                  {account.domainAttachedHost ? pageHost : platformHost}
-                </p>
+                <div className="rounded-xl border border-ink-200 bg-ink-50 px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-ink-400">Share this link</p>
+                  <p className="mt-1.5 truncate font-mono text-sm text-ink-900" title={account.domainAttachedHost ? pageHost : platformHost}>
+                    {account.domainAttachedHost ? pageHost : platformHost}
+                  </p>
+                </div>
               </div>
 
               <details
-                className="group rounded-lg border border-ink-200 bg-ink-50 open:bg-white"
+                className="group rounded-xl border border-ink-200 bg-ink-50/70 transition open:bg-white open:shadow-[0_12px_35px_-28px_rgba(17,17,17,0.45)]"
                 onToggle={(event) => setCustomDomainOpen(event.currentTarget.open)}
                 open={customDomainOpen}
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 transition hover:bg-white">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3.5 transition hover:bg-white">
                   <div className="flex min-w-0 gap-3">
                     <ConnectionIcon icon={Globe2} tone="aqua" />
                     <div>
@@ -1282,49 +1301,25 @@ export function DashboardClient({
                   </p>
                 </div>
               </div>
-              <span className="optional-connections-chevron connection-chevron flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition-transform">
-                <ChevronDown aria-hidden="true" className="h-4 w-4" />
-              </span>
-            </summary>
-            <div className="border-t border-ink-200 p-5 sm:p-6">
-          <div className="space-y-5">
-            <SectionHeader
-              description="Magnets handles the basics. Turn on an integration when you have a real reason to use it."
-              icon={Mail}
-              title="Email delivery and integrations"
-            />
-
-            <div className="space-y-5">
-              <div className="connection-status-strip flex items-start gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(17,17,17,0.03)]">
-                <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', account.resendConfigured ? 'status-check-icon bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')}>
-                  {account.resendConfigured ? <Check className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+              <div className="flex shrink-0 items-center gap-2">
+                {account.resendConfigured && <ConnectionStatus>Email ready</ConnectionStatus>}
+                <span className="optional-connections-chevron connection-chevron flex h-8 w-8 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-700 transition-transform">
+                  <ChevronDown aria-hidden="true" className="h-4 w-4" />
                 </span>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold text-ink-950">
-                      {account.resendManagedByPlatform
-                        ? 'Email sending is ready'
-                        : account.resendConfigured
-                          ? 'Your existing sending connection is ready'
-                          : 'Email sending needs attention'}
-                    </p>
-                    {account.resendConfigured && (
-                      <ConnectionStatus tone={account.resendManagedByPlatform ? 'platform' : 'connected'}>
-                        {account.resendManagedByPlatform ? 'Magnets managed' : 'Configured'}
-                      </ConnectionStatus>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-ink-600">
-                  {account.resendManagedByPlatform
-                    ? 'Magnets sends the resource email from our verified address by default. You can add your own sender domain below when you are ready.'
-                    : account.resendConfigured
-                      ? 'Magnets keeps this connection in place so your verified domain, active emails, and follow-up sequences continue working.'
-                      : 'Contact support to finish connecting Magnets-managed sending.'}
-                  </p>
-                </div>
               </div>
-
-              <div className="grid items-start gap-3 lg:grid-cols-2">
+            </summary>
+            <div className="space-y-6 border-t border-ink-200 p-4 sm:p-6">
+              <section>
+                <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Email &amp; scheduling</h3>
+                    <p className="mt-1 text-xs text-ink-500">Where messages come from and when sequences should stop.</p>
+                  </div>
+                  <ConnectionStatus tone={account.resendManagedByPlatform ? 'platform' : account.resendConfigured ? 'connected' : 'pending'}>
+                    {account.resendConfigured ? 'Sending ready' : 'Needs attention'}
+                  </ConnectionStatus>
+                </div>
+                <div className="grid items-start gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 lg:grid-cols-2">
               <details className={connectionCardClass}>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
                   <div className="flex min-w-0 gap-3">
@@ -1371,7 +1366,15 @@ export function DashboardClient({
                 }}
                 resendConfigured={resendConfigured}
               />
+                </div>
+              </section>
 
+              <section>
+                <div className="mb-2 px-1">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Automations</h3>
+                  <p className="mt-1 text-xs text-ink-500">Send each new signup to the tools your team already uses.</p>
+                </div>
+                <div className="grid items-start gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 lg:grid-cols-2">
               <SlackNotificationsSetup
                 account={account}
                 onCommit={() => commitSection('delivery')}
@@ -1409,8 +1412,16 @@ export function DashboardClient({
                   setAccount(nextAccount);
                 }}
               />
+                </div>
+              </section>
 
-              <details className={`${connectionCardClass} lg:col-span-2`}>
+              <section>
+                <div className="mb-2 px-1">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Audience sync</h3>
+                  <p className="mt-1 text-xs text-ink-500">Forward signups into an existing newsletter audience.</p>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-ink-200 bg-ink-200">
+              <details className={connectionCardClass}>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
                   <div className="flex min-w-0 gap-3">
                     <ConnectionIcon icon={Newspaper} tone="yellow" />
@@ -1476,9 +1487,8 @@ export function DashboardClient({
                   </Field>
                 </div>
               </details>
-            </div>
-            </div>
-            </div>
+                </div>
+              </section>
             </div>
           </details>
         </AceternityCard>

@@ -43,7 +43,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ user });
   } catch (err) {
     if (err instanceof AuthActionError) {
-      return NextResponse.json({ error: err.message }, { status: err.status });
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: err.status }
+      );
     }
 
     if (err instanceof RateLimitError) {

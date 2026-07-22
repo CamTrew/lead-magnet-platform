@@ -32,6 +32,7 @@ const schema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254),
   analyticsSessionId: z.string().uuid().optional(),
+  abVariantId: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).optional(),
 }).strict();
 
 async function runPostSubmissionWork({
@@ -47,8 +48,8 @@ async function runPostSubmissionWork({
   email: string;
   submissionId: string;
 }) {
-  // AI/MAINTAINER CONTEXT: these are optional fan-out destinations. allSettled
-  // is intentional: one provider outage must not suppress another provider or
+  // These are optional fan-out destinations. allSettled is intentional: one
+  // provider outage must not suppress another provider or
   // retroactively fail a signup whose email/submission were already accepted.
   const tasks = [
     {
@@ -87,7 +88,7 @@ async function runPostSubmissionWork({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
-    const { accountId, analyticsSessionId, leadMagnetId, slug, name, email } = schema.parse(body);
+    const { accountId, analyticsSessionId, abVariantId, leadMagnetId, slug, name, email } = schema.parse(body);
     const normalizedEmail = email.toLowerCase();
 
     await enforceRateLimits([{
@@ -185,6 +186,7 @@ export async function POST(request: NextRequest) {
           accountId,
           leadMagnetId,
           sessionId: analyticsSessionId,
+          variantId: abVariantId,
         });
       } catch (analyticsError) {
         // Analytics can never make an otherwise successful signup fail.

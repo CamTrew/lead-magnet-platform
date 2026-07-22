@@ -1,6 +1,5 @@
 import { MAX_HOSTED_RESOURCE_BYTES } from './limits';
 
-// AI/MAINTAINER CONTEXT:
 // Browser MIME values are advisory. Server routes must validate the extension,
 // the normalized MIME, the account/resource-scoped blob pathname, and the blob
 // URL returned by Vercel before inserting metadata. The private blob URL is not
@@ -138,6 +137,9 @@ export function hostedResourceTypeLabel(contentType: string, filename: string) {
 export function formatHostedResourceBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  if (size >= 1024 * 1024 * 1024) {
+    return `${(size / (1024 * 1024 * 1024)).toFixed(size >= 10 * 1024 * 1024 * 1024 ? 0 : 1)} GB`;
+  }
   return `${(size / (1024 * 1024)).toFixed(size >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 

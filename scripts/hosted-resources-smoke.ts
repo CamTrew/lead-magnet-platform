@@ -10,6 +10,11 @@ import {
   safeHostedResourceFilename,
   validateHostedResourceFile,
 } from '../lib/hosted-resources';
+import {
+  MAX_HOSTED_RESOURCE_BYTES,
+  MAX_HOSTED_RESOURCE_STORAGE_BYTES,
+  MAX_HOSTED_RESOURCES_PER_ACCOUNT,
+} from '../lib/limits';
 
 const accountId = '11111111-1111-4111-8111-111111111111';
 const resourceId = '22222222-2222-4222-8222-222222222222';
@@ -70,6 +75,10 @@ assert.equal(
 assert.equal(hostedResourcePublicPath(token), `/resources/${token}`);
 assert.equal(formatHostedResourceBytes(1024), '1 KB');
 assert.equal(formatHostedResourceBytes(5 * 1024 * 1024), '5.0 MB');
+assert.equal(formatHostedResourceBytes(MAX_HOSTED_RESOURCE_STORAGE_BYTES), '1.0 GB');
+assert.equal(MAX_HOSTED_RESOURCE_BYTES, 50 * 1024 * 1024);
+assert.equal(MAX_HOSTED_RESOURCES_PER_ACCOUNT, 100);
+assert.equal(MAX_HOSTED_RESOURCE_STORAGE_BYTES, 1024 * 1024 * 1024);
 
 const disposition = hostedResourceContentDisposition('guide\r\nX-Evil: yes.pdf');
 assert.equal(disposition.includes('\r'), false);
