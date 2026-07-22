@@ -115,6 +115,7 @@ export function InlineText({
       )}
       contentEditable
       data-empty={isEmpty || undefined}
+      data-form-type="other"
       data-placeholder={emptyPlaceholder}
       onBlur={handleBlur}
       onFocus={() => setIsFocused(true)}
@@ -201,6 +202,7 @@ export function InlineParagraphs({
       )}
       contentEditable
       data-empty={!value || undefined}
+      data-form-type="other"
       data-placeholder={emptyPlaceholder}
       onBlur={handleBlur}
       onFocus={() => setIsFocused(true)}

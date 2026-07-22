@@ -196,7 +196,7 @@ export function BrandClient({
     <>
       <PageHeader title="Brand" subtitle="Logo, page appearance, and colour settings for every magnet" />
 
-      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+      <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
         <AceternityCard className="p-5">
           <div className="space-y-5">
             <div className="flex items-start gap-3">

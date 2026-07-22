@@ -2304,10 +2304,10 @@ function EmailBodyEditor({
         </button>
         <details className="group/list relative shrink-0">
           <summary
-            aria-label="List and divider options"
+            aria-label="List options"
             className={cn(toolbarButton, 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
             onMouseDown={(event) => event.preventDefault()}
-            title="Lists and divider"
+            title="Lists"
           >
             <List className="h-4 w-4" />
           </summary>
@@ -2319,7 +2319,6 @@ function EmailBodyEditor({
               { command: 'unorderedList', icon: List, label: 'Bulleted list' },
               { command: 'dashedList', icon: ListMinus, label: 'Dashed list' },
               { command: 'orderedList', icon: ListOrdered, label: 'Numbered list' },
-              { command: 'divider', icon: Minus, label: 'Divider' },
             ] as const).map((item) => {
               const Icon = item.icon;
               return (
@@ -2340,6 +2339,16 @@ function EmailBodyEditor({
             })}
           </div>
         </details>
+        <button
+          aria-label="Divider"
+          className={toolbarButton}
+          onClick={() => applyFormat('divider')}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Divider"
+          type="button"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
         <span aria-hidden="true" className={divider} />
         <button
           aria-label="Insert content block"
@@ -3805,6 +3814,7 @@ const EmailTextSegmentEditor = forwardRef<EmailTextSegmentEditorHandle, {
         className="email-rich-editor relative w-full whitespace-pre-wrap break-words py-1.5 text-base leading-6 text-ink-900 outline-none sm:text-sm"
         contentEditable
         data-empty={!value || undefined}
+        data-form-type="other"
         data-placeholder={placeholder}
         onBeforeInput={(event) => {
           unlinkForMutation((event.nativeEvent as InputEvent).inputType || '');

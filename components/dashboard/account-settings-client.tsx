@@ -21,7 +21,7 @@ export function AccountSettingsClient({
   return (
     <>
       <PageHeader title="Account" subtitle="Password, identity, and danger zone." />
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto max-w-7xl space-y-4">
         <ProfileCard userEmail={userEmail} userName={userName} />
 
         <PasswordCard />

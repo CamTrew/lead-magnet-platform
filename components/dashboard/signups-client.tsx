@@ -207,7 +207,7 @@ export function SignupsClient({
         />
       )}
 
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto max-w-7xl space-y-4">
         <div className="grid gap-3 md:grid-cols-3">
           <AceternityCard className="flex items-center gap-3 p-5">
             <span className="flex h-9 w-9 items-center justify-center rounded-md border border-ink-200 bg-ink-50 text-ink-900">

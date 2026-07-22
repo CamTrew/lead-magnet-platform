@@ -1129,7 +1129,7 @@ export function DashboardClient({
   return (
     <>
       <PageHeader title="Workspace setup" subtitle="Manage your publishing address, email delivery, and connections" />
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className="mx-auto max-w-7xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
         <section className="dashboard-hero-panel overflow-hidden rounded-2xl border border-ink-200 bg-[radial-gradient(circle_at_6%_0%,rgba(254,111,52,0.13),transparent_32%),linear-gradient(135deg,#fff,#faf9f7)] px-5 py-6 shadow-[0_18px_60px_-48px_rgba(17,17,17,0.5)] sm:px-7 sm:py-7">

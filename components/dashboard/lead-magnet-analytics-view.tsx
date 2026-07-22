@@ -165,7 +165,7 @@ export function LeadMagnetAnalyticsView({
         )}
       />}
 
-      <div className={cn('space-y-5', !embedded && 'mx-auto max-w-6xl')}>
+      <div className={cn('space-y-5', !embedded && 'mx-auto max-w-7xl')}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {metricCards.map((metric) => {
             const Icon = metric.icon;
