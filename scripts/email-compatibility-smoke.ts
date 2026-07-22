@@ -401,7 +401,7 @@ assert.doesNotMatch(proxiedRow, /private\.blob/);
 const footerHtml = renderPlainEmailHtml('Hello.', '', MAGNETS_EMAIL_FOOTER_HTML);
 assert.doesNotMatch(footerHtml, /<Northstar>|<Your guide>/);
 assert.ok(footerHtml.indexOf('Build yours free with Magnets') < footerHtml.lastIndexOf('</table>'));
-assert.match(footerHtml, /href="https:\/\/magnets\.so\/register\?utm_source=email_footer&amp;utm_medium=referral&amp;utm_campaign=powered_by_magnets" target="_blank" rel="noopener noreferrer"/);
+assert.match(footerHtml, /href="https:\/\/magnets\.so\/\?utm_source=email_footer&amp;utm_medium=referral&amp;utm_campaign=powered_by_magnets" target="_blank" rel="noopener noreferrer"/);
 assert.match(footerHtml, /class="magnets-email-footer"/);
 assert.match(footerHtml, /<\/td><\/tr><tr><td class="magnets-email-footer-cell"/);
 assert.match(footerHtml, /background:#080d18/);

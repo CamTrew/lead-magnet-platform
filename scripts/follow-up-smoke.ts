@@ -534,14 +534,14 @@ async function run() {
   assert.match(String(ownedEmailRequest?.body?.html), /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
   assert.match(
     String(ownedEmailRequest?.body?.html),
-    /href="https:\/\/magnets\.so\/register\?utm_source=email_footer&amp;utm_medium=referral&amp;utm_campaign=powered_by_magnets"/
+    /href="https:\/\/magnets\.so\/\?utm_source=email_footer&amp;utm_medium=referral&amp;utm_campaign=powered_by_magnets"/
   );
   assert.doesNotMatch(String(ownedEmailRequest?.body?.html), /(?:^|>)#{1,6}\s|\*\*Bold\*\*|:::|\[\[toc\]\]|---/);
   assert.match(String(ownedEmailRequest?.body?.text), /book a call \(https:\/\/example\.com\/book\)/);
   assert.match(String(ownedEmailRequest?.body?.text), /Audit preview: https:\/\/cdn\.example\.com\/audit-preview\.png/);
   assert.match(String(ownedEmailRequest?.body?.text), /Framed audit preview\./);
   assert.match(String(ownedEmailRequest?.body?.text), /YouTube video: https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ/);
-  assert.match(String(ownedEmailRequest?.body?.text), /Build yours free with Magnets: https:\/\/magnets\.so\/register/);
+  assert.match(String(ownedEmailRequest?.body?.text), /Build yours free with Magnets: https:\/\/magnets\.so\/\?/);
 
   const legacySenderAccount = {
     ...account,

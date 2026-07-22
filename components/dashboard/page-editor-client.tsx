@@ -4287,7 +4287,7 @@ function MagnetsEmailFooterBlock({ edgeToEdge = false }: { edgeToEdge?: boolean 
     >
       <a
         className="inline-flex items-center gap-2 rounded-md border border-ink-300 bg-white px-4 py-2.5 text-sm font-semibold text-ink-800 shadow-sm transition hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-white/60"
-        href="https://magnets.so/register?utm_source=email_footer&utm_medium=referral&utm_campaign=powered_by_magnets"
+        href="https://magnets.so/?utm_source=email_footer&utm_medium=referral&utm_campaign=powered_by_magnets"
         rel="noopener noreferrer"
         target="_blank"
       >
