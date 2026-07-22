@@ -2607,7 +2607,7 @@ function EmailBodyEditor({
               <Fragment key={block.editorId}>
                 <div
                   className={cn(
-                    'group/email-block relative rounded-md bg-transparent py-1 pl-[4.75rem] pr-9 transition hover:bg-ink-50/60 focus-within:bg-ink-50/60 sm:-mx-3 sm:px-16',
+                    'group/email-block relative rounded-md bg-transparent py-1 pl-[5.25rem] pr-9 transition hover:bg-ink-50/60 focus-within:bg-ink-50/60 sm:-mx-3 sm:pl-[5.25rem] sm:pr-12',
                     draggedContentBlockIndex === index && 'scale-[0.99] opacity-40'
                   )}
                   onDragEnter={(event) => dragContentBlockOver(event, index)}
@@ -2706,7 +2706,7 @@ function EmailBlockRail({
   onMove: (direction: 'down' | 'up') => void;
 }) {
   return (
-    <div className="absolute left-1 top-1 z-20 flex items-center gap-0.5 text-ink-400 opacity-100 transition sm:left-3 sm:top-2 sm:opacity-0 sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:opacity-100">
+    <div className="absolute left-1 top-1.5 z-20 flex items-center gap-0.5 text-ink-400 opacity-100 transition sm:left-3 sm:top-1.5 sm:opacity-0 sm:group-hover/email-block:opacity-100 sm:group-focus-within/email-block:opacity-100">
       <button
         aria-label={`Add a content block after block ${blockNumber}`}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-ink-100 hover:text-ink-950 focus-visible:bg-ink-100 focus-visible:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300"
