@@ -13,6 +13,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
+import { buildDomainOwnershipRecord } from '@/lib/dns-records';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -104,14 +105,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
-    // Use "magnets-verify.<domain>" (no leading underscore) — DNS providers
-    // like Namecheap mishandle underscore-prefixed hosts in their UI.
-    const recordName = `magnets-verify.${domain}`;
+    const expectedRecord = buildDomainOwnershipRecord(domain, token);
+    const recordName = expectedRecord.lookupName;
     let found: string[] = [];
     try {
       found = await resolveTxtFresh(recordName);
     } catch (err) {
-      if (!isMissingDnsError(err)) {
+      const missing = isMissingDnsError(err);
+      if (!missing) {
         log.warn('TXT lookup error', {
           route: ROUTE,
           method: 'POST',
@@ -122,8 +123,14 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({
         verified: false,
-        message: 'No TXT record found yet. DNS can take a few minutes to propagate.',
-        expected: { type: 'TXT', name: recordName, value: token },
+        message: missing
+          ? `No TXT record found at ${recordName}. Check that the root domain above is spelled correctly and that your DNS provider did not append the domain twice. DNS can take 1 to 60 minutes to propagate.`
+          : `We could not query ${recordName} right now. Try again in a minute.`,
+        expected: {
+          type: expectedRecord.type,
+          name: expectedRecord.lookupName,
+          value: expectedRecord.value,
+        },
       });
     }
 
@@ -141,7 +148,11 @@ export async function POST(request: NextRequest) {
           found.length > 0
             ? `Found ${found.length} TXT record(s) at ${recordName}, but none match the expected value. Copy it exactly, including the "magnets-verify-" prefix. If you recently changed your domain in Configure, the token may have rotated — copy the value shown below.`
             : `No TXT record found at ${recordName} yet. DNS can take 1 to 60 minutes to propagate after you save it at your DNS provider.`,
-        expected: { type: 'TXT', name: recordName, value: token },
+        expected: {
+          type: expectedRecord.type,
+          name: expectedRecord.lookupName,
+          value: expectedRecord.value,
+        },
         found: preview,
       });
     }

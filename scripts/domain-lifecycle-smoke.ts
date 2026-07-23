@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import {
+  buildDomainOwnershipRecord,
+  buildPageDnsRecords,
+} from '../lib/dns-records';
 import { syncProjectDomain } from '../lib/vercel';
 
 process.env.VERCEL_API_TOKEN = 'test-token';
@@ -27,6 +31,27 @@ globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) =
 }) as typeof fetch;
 
 async function main() {
+  const ownershipRecord = buildDomainOwnershipRecord(
+    'Example.COM.',
+    'magnets-verify-test-token'
+  );
+  assert.deepEqual(ownershipRecord, {
+    id: 'page-txt',
+    type: 'TXT',
+    name: 'magnets-verify',
+    lookupName: 'magnets-verify.example.com',
+    value: 'magnets-verify-test-token',
+  });
+  assert.deepEqual(
+    buildPageDnsRecords({
+      domain: 'example.com',
+      subdomain: 'get',
+      verificationToken: 'magnets-verify-test-token',
+    })[1],
+    ownershipRecord,
+    'The dashboard record and verification lookup must share one hostname.'
+  );
+
   const replaced = await syncProjectDomain({
     previous: ['old.example.com'],
     current: ['new.example.com'],

@@ -89,13 +89,13 @@ export function senderMatchesAccountDomain({
 }
 
 export function buildPageDnsRecords({
-  accountId,
   domain,
   subdomain,
+  verificationToken,
 }: {
-  accountId: string;
   domain: string;
   subdomain: string;
+  verificationToken: string;
 }): DnsRecordDefinition[] {
   const rootDomain = normaliseRootDomain(domain);
   const pageSubdomain = normaliseSubdomain(subdomain);
@@ -108,14 +108,25 @@ export function buildPageDnsRecords({
       lookupName: `${pageSubdomain}.${rootDomain}`,
       value: 'cname.vercel-dns.com',
     },
-    {
-      id: 'page-txt',
-      type: 'TXT',
-      name: `_magnets.${pageSubdomain}`,
-      lookupName: `_magnets.${pageSubdomain}.${rootDomain}`,
-      value: `magnets_verify_${accountId}`,
-    },
+    buildDomainOwnershipRecord(rootDomain, verificationToken),
   ];
+}
+
+export function buildDomainOwnershipRecord(
+  domain: string,
+  verificationToken: string
+): DnsRecordDefinition {
+  const rootDomain = normaliseRootDomain(domain);
+
+  return {
+    id: 'page-txt',
+    type: 'TXT',
+    // DNS provider forms normally expect the label relative to the root
+    // domain, while server-side resolution always needs the full hostname.
+    name: 'magnets-verify',
+    lookupName: `magnets-verify.${rootDomain}`,
+    value: verificationToken,
+  };
 }
 
 export function buildEmailDnsRecords(domain: string): DnsRecordDefinition[] {

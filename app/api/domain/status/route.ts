@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireDashboardPayload } from '@/lib/auth';
 import { getOrCreateDomainVerificationToken } from '@/lib/platform-store';
+import { buildDomainOwnershipRecord } from '@/lib/dns-records';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -169,6 +170,9 @@ export async function GET(request: NextRequest) {
     if (domain) {
       token = (await getOrCreateDomainVerificationToken(accountId)) || '';
     }
+    const ownershipRecord = token
+      ? buildDomainOwnershipRecord(domain, token)
+      : null;
 
     // If we believe the domain is attached, ask the host whether it's actually
     // serving traffic. That flips us from attached-pending to live.
@@ -277,15 +281,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       stage,
       host,
-      verificationRecord: token
+      verificationRecord: ownershipRecord
         ? {
-            type: 'TXT',
-            // Bare label is what DNS providers' Host fields expect (Namecheap
-            // in particular rewrites or rejects fully-qualified hosts). The
-            // resolver on the server side reconstructs the FQDN.
-            name: 'magnets-verify',
-            value: token,
-            fullName: `magnets-verify.${domain}`,
+            type: ownershipRecord.type,
+            name: ownershipRecord.name,
+            value: ownershipRecord.value,
+            fullName: ownershipRecord.lookupName,
           }
         : null,
       cnameRecord: account.domainAttachedHost && recommendedCname
