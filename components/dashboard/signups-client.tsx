@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronDown,
@@ -32,6 +32,12 @@ import type { AccountSignup } from '@/lib/types';
 type LeadMagnetOption = { id: string; title: string; slug: string };
 
 type ImportSummary = { imported: number; skipped: number; invalid: number; total: number };
+type SignupPageResponse = {
+  signups: AccountSignup[];
+  totalCount: number;
+  nextCursor: string | null;
+  error?: string;
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', {
@@ -47,56 +53,139 @@ const MAX_CSV_CHARS = 2_000_000;
 const MAX_PREVIEW_ROWS = 5;
 
 export function SignupsClient({
+  initialNextCursor,
   initialSignups,
+  initialTotalCount,
   leadMagnets,
 }: {
+  initialNextCursor: string | null;
   initialSignups: AccountSignup[];
+  initialTotalCount: number;
   leadMagnets: LeadMagnetOption[];
 }) {
   const router = useRouter();
   const [signups, setSignups] = useState<AccountSignup[]>(initialSignups);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [leadMagnetFilter, setLeadMagnetFilter] = useState('');
+  const [accountTotalCount, setAccountTotalCount] = useState(initialTotalCount);
+  const [resultTotalCount, setResultTotalCount] = useState(initialTotalCount);
+  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [manualOpen, setManualOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [signupToRemove, setSignupToRemove] = useState<AccountSignup | null>(null);
   const [startingEmail, setStartingEmail] = useState('');
   const [stoppingEmail, setStoppingEmail] = useState('');
   const [actionError, setActionError] = useState('');
+  const requestIdRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const skippedInitialQueryRef = useRef(false);
 
-  const magnetFiltered = useMemo(() => {
-    if (!leadMagnetFilter) return signups;
-    return signups.filter((signup) =>
-      signup.leadMagnets.some((magnet) => magnet.id === leadMagnetFilter)
-    );
-  }, [leadMagnetFilter, signups]);
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return magnetFiltered;
-    return magnetFiltered.filter(
-      (signup) =>
-        signup.email.toLowerCase().includes(query) ||
-        signup.name.toLowerCase().includes(query) ||
-        signup.leadMagnets.some(
-          (magnet) =>
-            magnet.title.toLowerCase().includes(query) ||
-            magnet.slug.toLowerCase().includes(query)
-        )
-    );
-  }, [magnetFiltered, search]);
-
-  const totalCount = signups.length;
-  const exportCount = magnetFiltered.length;
-  const matchCount = filtered.length;
   const hasMagnets = leadMagnets.length > 0;
-  const exportHref = leadMagnetFilter
-    ? `/api/signups/export?leadMagnetId=${encodeURIComponent(leadMagnetFilter)}`
-    : '/api/signups/export';
+  const activeFilters = Boolean(debouncedSearch || leadMagnetFilter);
+  const exportParams = new URLSearchParams();
+  if (leadMagnetFilter) exportParams.set('leadMagnetId', leadMagnetFilter);
+  if (debouncedSearch) exportParams.set('search', debouncedSearch);
+  const exportHref = `/api/signups/export${exportParams.size ? `?${exportParams.toString()}` : ''}`;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  const loadPage = useCallback(async ({
+    cursor,
+    replace,
+  }: {
+    cursor?: string;
+    replace: boolean;
+  }) => {
+    if (!replace && loadingMoreRef.current) return;
+
+    const requestId = ++requestIdRef.current;
+    if (replace) {
+      setIsRefreshing(true);
+    } else {
+      loadingMoreRef.current = true;
+      setIsLoadingMore(true);
+    }
+    setLoadError('');
+
+    const params = new URLSearchParams();
+    if (leadMagnetFilter) params.set('leadMagnetId', leadMagnetFilter);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (cursor) params.set('cursor', cursor);
+
+    try {
+      const response = await fetch(`/api/signups?${params.toString()}`, {
+        cache: 'no-store',
+      });
+      const data = (await response.json().catch(() => null)) as SignupPageResponse | null;
+      if (!response.ok || !data) {
+        throw new Error(data?.error || 'Could not load signups');
+      }
+      if (requestId !== requestIdRef.current) return;
+
+      setSignups((current) => {
+        if (replace) return data.signups;
+        const merged = new Map(current.map((signup) => [signup.email.toLowerCase(), signup]));
+        for (const signup of data.signups) {
+          merged.set(signup.email.toLowerCase(), signup);
+        }
+        return Array.from(merged.values());
+      });
+      setResultTotalCount(data.totalCount);
+      setNextCursor(data.nextCursor);
+      if (!leadMagnetFilter && !debouncedSearch) {
+        setAccountTotalCount(data.totalCount);
+      }
+    } catch (err) {
+      if (requestId === requestIdRef.current) {
+        setLoadError(err instanceof Error ? err.message : 'Could not load signups');
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setIsRefreshing(false);
+        setIsLoadingMore(false);
+      }
+      loadingMoreRef.current = false;
+    }
+  }, [debouncedSearch, leadMagnetFilter]);
+
+  useEffect(() => {
+    if (!skippedInitialQueryRef.current) {
+      skippedInitialQueryRef.current = true;
+      return;
+    }
+    void loadPage({ replace: true });
+  }, [loadPage]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !nextCursor || isRefreshing || loadError) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          void loadPage({ cursor: nextCursor, replace: false });
+        }
+      },
+      { rootMargin: '400px 0px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isRefreshing, loadError, loadPage, nextCursor]);
 
   function onAfterImport() {
     setManualOpen(false);
     setImportOpen(false);
+    void loadPage({ replace: true });
     router.refresh();
   }
 
@@ -200,6 +289,8 @@ export function SignupsClient({
             setSignups((current) =>
               current.filter((signup) => signup.email.toLowerCase() !== email.toLowerCase())
             );
+            setAccountTotalCount((current) => Math.max(0, current - 1));
+            setResultTotalCount((current) => Math.max(0, current - 1));
             setSignupToRemove(null);
             router.refresh();
           }}
@@ -215,7 +306,7 @@ export function SignupsClient({
             </span>
             <div>
               <p className="text-xs font-medium uppercase text-ink-500">Unique signups</p>
-              <p className="mt-0.5 text-2xl font-semibold text-ink-950">{totalCount}</p>
+              <p className="mt-0.5 text-2xl font-semibold text-ink-950">{accountTotalCount}</p>
             </div>
           </AceternityCard>
           <AceternityCard className="flex items-center gap-3 p-5">
@@ -297,9 +388,9 @@ export function SignupsClient({
                 Import CSV
               </AceternityButton>
               <a
-                aria-disabled={exportCount === 0}
+                aria-disabled={resultTotalCount === 0}
                 className={
-                  exportCount === 0
+                  resultTotalCount === 0
                     ? 'pointer-events-none inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60 sm:w-auto'
                     : 'inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800 sm:w-auto'
                 }
@@ -312,10 +403,22 @@ export function SignupsClient({
             </div>
           </div>
 
-          {(search.trim() || leadMagnetFilter) && (
+          {activeFilters && (
             <p className="border-b border-ink-200 bg-ink-50 px-5 py-2 text-xs font-medium text-ink-500">
-              {matchCount} of {totalCount} signups match
+              {resultTotalCount} of {accountTotalCount} signups match
             </p>
+          )}
+          {loadError && (
+            <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-5 py-2 text-xs font-medium text-red-700">
+              <span>{loadError}</span>
+              <button
+                className="shrink-0 underline underline-offset-2"
+                onClick={() => void loadPage({ replace: true })}
+                type="button"
+              >
+                Try again
+              </button>
+            </div>
           )}
           {actionError && (
             <p className="border-b border-red-200 bg-red-50 px-5 py-2 text-xs font-medium text-red-700">
@@ -345,22 +448,32 @@ export function SignupsClient({
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="block divide-y divide-ink-200 xl:table-row-group">
-                {filtered.length === 0 ? (
+              <tbody
+                className={`block divide-y divide-ink-200 transition-opacity xl:table-row-group ${
+                  isRefreshing ? 'opacity-50' : 'opacity-100'
+                }`}
+              >
+                {signups.length === 0 ? (
                   <tr className="block bg-white xl:table-row">
                     <td colSpan={7} className="block px-5 py-12 text-center xl:table-cell">
                       <p className="font-semibold text-ink-950">
-                        {totalCount === 0 ? 'No signups yet' : 'No matches'}
+                        {isRefreshing
+                          ? 'Loading signups'
+                          : accountTotalCount === 0
+                            ? 'No signups yet'
+                            : 'No matches'}
                       </p>
                       <p className="mt-1 text-sm text-ink-500">
-                        {totalCount === 0
+                        {isRefreshing
+                          ? 'Fetching the latest results.'
+                          : accountTotalCount === 0
                           ? 'Signups appear here once someone enters their email on a published magnet. Or use Import CSV / Add manually.'
                           : 'Try a different search term or lead magnet filter.'}
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((signup) => {
+                  signups.map((signup) => {
                     const associatedMagnets = signup.leadMagnets.length
                       ? signup.leadMagnets
                       : [
@@ -490,6 +603,23 @@ export function SignupsClient({
               </tbody>
             </table>
           </div>
+          {signups.length > 0 && (
+            <div
+              className="flex min-h-14 items-center justify-center gap-2 border-t border-ink-200 bg-ink-50 px-5 py-3 text-xs font-medium text-ink-500"
+              ref={loadMoreRef}
+            >
+              {isLoadingMore ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading more signups
+                </>
+              ) : nextCursor ? (
+                `Showing ${signups.length} of ${resultTotalCount}. Scroll to load more.`
+              ) : (
+                `All ${resultTotalCount} ${resultTotalCount === 1 ? 'signup' : 'signups'} loaded`
+              )}
+            </div>
+          )}
         </AceternityCard>
       </div>
     </>

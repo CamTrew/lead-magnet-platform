@@ -3651,6 +3651,8 @@ type SignupRow = {
   follow_up_stopped_at: Date | null;
   follow_up_stop_reason: string;
   quiz_answers: SignupQuizAnswer[] | string | null;
+  total_count: string;
+  cursor_latest_signup_at: string;
 };
 
 function mapSignup(row: SignupRow): AccountSignup {
@@ -3704,13 +3706,48 @@ function mapSignup(row: SignupRow): AccountSignup {
   };
 }
 
-export async function listAccountSignups(
+export type AccountSignupCursor = {
+  latestSignupAt: string;
+  email: string;
+};
+
+export type AccountSignupPage = {
+  signups: AccountSignup[];
+  totalCount: number;
+  hasMore: boolean;
+  nextCursor: AccountSignupCursor | null;
+};
+
+type ListAccountSignupsOptions = {
+  leadMagnetId?: string;
+  search?: string;
+};
+
+async function queryAccountSignups(
   accountId: string,
-  options: { leadMagnetId?: string } = {}
-): Promise<AccountSignup[]> {
+  options: ListAccountSignupsOptions & {
+    cursor?: AccountSignupCursor;
+    limit: number | null;
+  }
+) {
+  const normalizedSearch = options.search?.trim().toLowerCase() || null;
   const result = await query<SignupRow>(
     `
-      with ranked as (
+      with matching_emails as (
+        select distinct lower(s.email) as email_key
+        from public.magnets_submissions s
+        join public.magnets_lead_magnets lm on lm.id = s.lead_magnet_id
+        where s.account_id = $1
+          and ($2::uuid is null or s.lead_magnet_id = $2::uuid)
+          and (
+            $3::text is null
+            or lower(s.email) like '%' || $3::text || '%'
+            or lower(s.name) like '%' || $3::text || '%'
+            or lower(lm.title) like '%' || $3::text || '%'
+            or lower(lm.slug) like '%' || $3::text || '%'
+          )
+      ),
+      ranked as (
         select
           s.email,
           s.name,
@@ -3731,12 +3768,50 @@ export async function listAccountSignups(
           max(s.created_at) over (partition by lower(s.email)) as latest_signup_at
         from public.magnets_submissions s
         join public.magnets_lead_magnets lm on lm.id = s.lead_magnet_id
+        join matching_emails matching on matching.email_key = lower(s.email)
         where s.account_id = $1
           and ($2::uuid is null or s.lead_magnet_id = $2::uuid)
+      ),
+      deduped as (
+        select
+          latest.email,
+          latest.name,
+          first.lead_magnet_id as first_lead_magnet_id,
+          first.lead_magnet_title as first_lead_magnet_title,
+          first.lead_magnet_slug as first_lead_magnet_slug,
+          first.first_signup_at,
+          first.latest_signup_at,
+          first.signup_count::text as signup_count
+        from ranked first
+        join ranked latest
+          on lower(latest.email) = lower(first.email)
+         and latest.latest_rank = 1
+        where first.first_rank = 1
+      ),
+      counted as (
+        select
+          deduped.*,
+          count(*) over()::text as total_count,
+          latest_signup_at::text as cursor_latest_signup_at
+        from deduped
+      ),
+      paged as (
+        select *
+        from counted
+        where (
+          $4::timestamptz is null
+          or latest_signup_at < $4::timestamptz
+          or (
+            latest_signup_at = $4::timestamptz
+            and lower(email) > $5::text
+          )
+        )
+        order by latest_signup_at desc, lower(email) asc
+        limit $6
       )
       select
-        latest.email,
-        latest.name,
+        paged.email,
+        paged.name,
         (
           select coalesce(
             jsonb_agg(
@@ -3758,17 +3833,17 @@ export async function listAccountSignups(
             join public.magnets_lead_magnets associated_magnet
               on associated_magnet.id = associated_submission.lead_magnet_id
             where associated_submission.account_id = $1::uuid
-              and lower(associated_submission.email) = lower(first.email)
+              and lower(associated_submission.email) = lower(paged.email)
               and ($2::uuid is null or associated_submission.lead_magnet_id = $2::uuid)
             group by associated_magnet.id, associated_magnet.title, associated_magnet.slug
           ) magnet_signup
         ) as lead_magnets,
-        first.lead_magnet_id as first_lead_magnet_id,
-        first.lead_magnet_title as first_lead_magnet_title,
-        first.lead_magnet_slug as first_lead_magnet_slug,
-        first.first_signup_at,
-        first.latest_signup_at,
-        first.signup_count::text as signup_count,
+        paged.first_lead_magnet_id,
+        paged.first_lead_magnet_title,
+        paged.first_lead_magnet_slug,
+        paged.first_signup_at,
+        paged.latest_signup_at,
+        paged.signup_count,
         coalesce(
           case
             when run.id is null then 'none'
@@ -3798,23 +3873,68 @@ export async function listAccountSignups(
           join public.magnets_submissions response_submission
             on response_submission.id = response.submission_id
           where response.account_id = $1::uuid
-            and lower(response_submission.email) = lower(first.email)
-        ) as quiz_answers
-      from ranked first
-      join ranked latest
-        on lower(latest.email) = lower(first.email)
-       and latest.latest_rank = 1
+            and lower(response_submission.email) = lower(paged.email)
+        ) as quiz_answers,
+        paged.total_count,
+        paged.cursor_latest_signup_at
+      from paged
       left join public.magnets_follow_up_runs run
         on run.account_id = $1::uuid
-       and run.lead_magnet_id = first.lead_magnet_id
-       and run.email = lower(first.email)
-      where first.first_rank = 1
-      order by first.latest_signup_at desc
+       and run.lead_magnet_id = paged.first_lead_magnet_id
+       and run.email = lower(paged.email)
+      order by paged.latest_signup_at desc, lower(paged.email) asc
     `,
-    [accountId, options.leadMagnetId ?? null]
+    [
+      accountId,
+      options.leadMagnetId ?? null,
+      normalizedSearch,
+      options.cursor?.latestSignupAt ?? null,
+      options.cursor?.email.toLowerCase() ?? null,
+      options.limit,
+    ]
   );
 
-  return result.rows.map(mapSignup);
+  return result.rows;
+}
+
+export async function listAccountSignupsPage(
+  accountId: string,
+  options: ListAccountSignupsOptions & {
+    cursor?: AccountSignupCursor;
+    limit?: number;
+  } = {}
+): Promise<AccountSignupPage> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+  const rows = await queryAccountSignups(accountId, {
+    ...options,
+    limit: limit + 1,
+  });
+  const hasMore = rows.length > limit;
+  const visibleRows = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = visibleRows.at(-1);
+
+  return {
+    signups: visibleRows.map(mapSignup),
+    totalCount: Number(rows[0]?.total_count || 0),
+    hasMore,
+    nextCursor: hasMore && lastRow
+      ? {
+          latestSignupAt: lastRow.cursor_latest_signup_at,
+          email: lastRow.email.toLowerCase(),
+        }
+      : null,
+  };
+}
+
+export async function listAccountSignups(
+  accountId: string,
+  options: ListAccountSignupsOptions = {}
+): Promise<AccountSignup[]> {
+  const rows = await queryAccountSignups(accountId, {
+    ...options,
+    limit: null,
+  });
+  return rows.map(mapSignup);
 }
 
 export async function deleteAccountSignup(accountId: string, email: string) {

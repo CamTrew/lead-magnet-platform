@@ -12,7 +12,10 @@ import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-const leadMagnetIdSchema = z.string().uuid();
+const exportFiltersSchema = z.object({
+  leadMagnetId: z.string().uuid().optional(),
+  search: z.string().trim().max(200).optional(),
+}).strict();
 
 function escapeCsvCell(value: string) {
   if (value === '' || (!value.includes(',') && !value.includes('"') && !value.includes('\n') && !value.includes('\r'))) {
@@ -53,19 +56,19 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    const rawLeadMagnetId = request.nextUrl.searchParams.get('leadMagnetId');
-    const parsedLeadMagnetId = rawLeadMagnetId
-      ? leadMagnetIdSchema.safeParse(rawLeadMagnetId)
-      : null;
-    if (parsedLeadMagnetId && !parsedLeadMagnetId.success) {
-      return new Response(JSON.stringify({ error: 'Invalid lead magnet filter' }), {
+    const parsedFilters = exportFiltersSchema.safeParse({
+      leadMagnetId: request.nextUrl.searchParams.get('leadMagnetId') || undefined,
+      search: request.nextUrl.searchParams.get('search') || undefined,
+    });
+    if (!parsedFilters.success) {
+      return new Response(JSON.stringify({ error: 'Invalid signup filters' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const leadMagnetId = parsedLeadMagnetId?.data;
-    const signups = await listAccountSignups(payload.account.id, { leadMagnetId });
+    const { leadMagnetId, search } = parsedFilters.data;
+    const signups = await listAccountSignups(payload.account.id, { leadMagnetId, search });
 
     const header = toCsvRow(['Email', 'Name', 'Lead magnet', 'Lead magnet slug', 'Signed up at', 'Last signed up at', 'Signup count']);
     const rows = signups.map((signup) =>
@@ -88,7 +91,11 @@ export async function GET(request: NextRequest) {
       status: 200,
       userId,
       accountId,
-      extra: { count: signups.length, leadMagnetId: leadMagnetId || undefined },
+      extra: {
+        count: signups.length,
+        leadMagnetId: leadMagnetId || undefined,
+        searchApplied: Boolean(search),
+      },
     });
 
     return new Response(csv, {

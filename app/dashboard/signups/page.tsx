@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { requireDashboardBase } from '@/lib/auth';
-import { listAccountSignups, listLeadMagnetOptions } from '@/lib/platform-store';
+import { listAccountSignupsPage, listLeadMagnetOptions } from '@/lib/platform-store';
 import { isSetupComplete } from '@/lib/setup';
+import { encodeSignupCursor, SIGNUPS_PAGE_SIZE } from '@/lib/signup-pagination';
 import { SignupsClient } from '@/components/dashboard/signups-client';
 
 export const dynamic = 'force-dynamic';
@@ -12,14 +13,18 @@ export default async function SignupsPage() {
     redirect('/dashboard?setup=incomplete');
   }
 
-  const [signups, leadMagnets] = await Promise.all([
-    listAccountSignups(payload.account.id),
+  const [signupPage, leadMagnets] = await Promise.all([
+    listAccountSignupsPage(payload.account.id, { limit: SIGNUPS_PAGE_SIZE }),
     listLeadMagnetOptions(payload.account.id),
   ]);
 
   return (
     <SignupsClient
-      initialSignups={signups}
+      initialNextCursor={
+        signupPage.nextCursor ? encodeSignupCursor(signupPage.nextCursor) : null
+      }
+      initialSignups={signupPage.signups}
+      initialTotalCount={signupPage.totalCount}
       leadMagnets={leadMagnets}
     />
   );

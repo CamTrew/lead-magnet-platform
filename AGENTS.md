@@ -297,6 +297,8 @@ The dashboard mirrors the check client-side, but treat the server check as autho
 
 The dashboard import UI starts with the column-mapping dropdowns **empty** — the user picks Email column and (optionally) Name column. No auto-guessing.
 
+The signups dashboard uses stable cursor pagination over `(latest_signup_at, lower(email))`, loading 50 deduplicated emails at a time. Search and lead-magnet filters run in the database before pagination; do not replace them with filtering over the currently loaded client rows.
+
 ### Conventions
 
 - `'use client'` only where state/effects are needed. Most pages are server components; client logic lives in `components/dashboard/*-client.tsx`.

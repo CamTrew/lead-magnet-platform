@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
-import { deleteAccountSignup, listAccountSignups } from '@/lib/platform-store';
+import { deleteAccountSignup, listAccountSignupsPage } from '@/lib/platform-store';
+import {
+  decodeSignupCursor,
+  encodeSignupCursor,
+  SIGNUPS_PAGE_SIZE,
+} from '@/lib/signup-pagination';
 import {
   enforceRateLimits,
   rateLimitResponse,
@@ -16,7 +21,11 @@ const deleteSchema = z.object({
   email: z.string().trim().email().max(254),
 }).strict();
 
-const leadMagnetIdSchema = z.string().uuid();
+const listSchema = z.object({
+  leadMagnetId: z.string().uuid().optional(),
+  search: z.string().trim().max(200).optional(),
+  cursor: z.string().max(1024).optional(),
+}).strict();
 
 export async function GET(request: NextRequest) {
   let userId: string | undefined;
@@ -41,18 +50,34 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    const rawLeadMagnetId = request.nextUrl.searchParams.get('leadMagnetId');
-    const parsedLeadMagnetId = rawLeadMagnetId
-      ? leadMagnetIdSchema.safeParse(rawLeadMagnetId)
-      : null;
-    if (parsedLeadMagnetId && !parsedLeadMagnetId.success) {
-      return NextResponse.json({ error: 'Invalid lead magnet filter' }, { status: 400 });
+    const parsed = listSchema.safeParse({
+      leadMagnetId: request.nextUrl.searchParams.get('leadMagnetId') || undefined,
+      search: request.nextUrl.searchParams.get('search') || undefined,
+      cursor: request.nextUrl.searchParams.get('cursor') || undefined,
+    });
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid signup filters' }, { status: 400 });
     }
 
-    const signups = await listAccountSignups(payload.account.id, {
-      leadMagnetId: parsedLeadMagnetId?.data,
+    const decodedCursor = parsed.data.cursor
+      ? decodeSignupCursor(parsed.data.cursor)
+      : undefined;
+    if (parsed.data.cursor && !decodedCursor) {
+      return NextResponse.json({ error: 'Invalid signup cursor' }, { status: 400 });
+    }
+    const cursor = decodedCursor || undefined;
+
+    const page = await listAccountSignupsPage(payload.account.id, {
+      leadMagnetId: parsed.data.leadMagnetId,
+      search: parsed.data.search,
+      cursor,
+      limit: SIGNUPS_PAGE_SIZE,
     });
-    return NextResponse.json({ signups });
+    return NextResponse.json({
+      signups: page.signups,
+      totalCount: page.totalCount,
+      nextCursor: page.nextCursor ? encodeSignupCursor(page.nextCursor) : null,
+    });
   } catch (err) {
     if (err instanceof RateLimitError) {
       return rateLimitResponse(err);
