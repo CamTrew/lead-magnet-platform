@@ -223,7 +223,7 @@ rather than duplicating DNS behavior.
 
 App Router under `app/`:
 
-- `app/page.tsx` — marketing landing. Has `Organization`/`WebSite`/`SoftwareApplication` JSON-LD. Its `components/landing/hero-dashboard.tsx` preview is an interactive fictional workspace: keep every interaction in local client state, label the data as fictional, and never call authenticated APIs or persist demo activity. Preserve its mobile and dark-mode behavior when extending it.
+- `app/page.tsx` — marketing landing. Has `Organization`/`WebSite`/`SoftwareApplication` JSON-LD. Its `components/landing/hero-dashboard.tsx` hero media uses the existing `WalkthroughVideo`; preserve its responsive and dark-mode framing when changing the landing page.
 - `app/login`, `app/register` — auth.
 - `app/dashboard/*` — authenticated UI. `layout.tsx` reads the payload, computes `setupComplete`, and passes both into `DashboardLayoutShell`. The shell owns the sidebar; pages render their own `<PageHeader>` so the sidebar persists across navigation.
 - `app/[slug]/page.tsx` — **public lead-magnet page on the customer's custom domain**. Resolves the account via `host` header through `findPublishedLeadMagnet(host, slug)`. On `localhost` it falls back to "any published page with this slug".
