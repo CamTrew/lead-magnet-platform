@@ -11,6 +11,7 @@ import {
   FileText,
   FolderOpen,
   LayoutDashboard,
+  Lightbulb,
   Loader2,
   LogOut,
   Menu,
@@ -229,6 +230,14 @@ function SidebarContent({
             >
               <Bug className="h-4 w-4 shrink-0" />
               Report a bug
+            </a>
+            <a
+              href="mailto:hello@camerontrew.com?subject=Magnets%20feature%20request&body=Feature%20I%27d%20like%20to%20see%3A%0A%0AWhy%20it%20would%20help%3A%0A%0AAnything%20else%3A"
+              className="flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-950"
+              role="menuitem"
+            >
+              <Lightbulb className="h-4 w-4 shrink-0" />
+              Request a feature
             </a>
             <button
               type="button"
