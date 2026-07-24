@@ -1035,8 +1035,9 @@ function AnalyticsGuide({ onClose }: { onClose: () => void }) {
         <section className="rounded-xl border border-ink-200 bg-ink-50 p-4">
           <h4 className="text-sm font-semibold text-ink-950">Analytics</h4>
           <p className="mt-2 text-sm leading-6 text-ink-600">
-            Open a lead magnet and choose Analytics to see visits, signups, conversion rate, engagement,
-            and results from the after-signup experience.
+            Open a lead magnet and choose Analytics to see total signups, unique people, tracked visits
+            and conversions, conversion rate, engagement, and results from the after-signup experience.
+            Total signups include repeat requests. Conversion rate uses only signups matched to a tracked visit.
           </p>
         </section>
         <section className="rounded-xl border border-ink-200 bg-ink-50 p-4">

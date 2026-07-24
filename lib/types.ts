@@ -227,12 +227,16 @@ export interface LeadMagnetAnalyticsDay {
 
 export interface LeadMagnetAnalytics {
   totalVisits: number;
+  totalSignups: number;
+  uniqueSignups: number;
   totalConversions: number;
   totalVideoPlays: number;
   totalQuizCompletions: number;
   conversionRate: number;
   averageEngagedSeconds: number;
   recentVisits: number;
+  recentSignups: number;
+  recentUniqueSignups: number;
   recentConversions: number;
   recentVideoPlays: number;
   recentQuizCompletions: number;

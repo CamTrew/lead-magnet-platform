@@ -126,6 +126,9 @@ client counters, which would allow refreshes and retries to inflate results.
 - The browser tracker sends bounded heartbeats to `/api/analytics/visit`.
 - The submit route marks the matching session converted after the submission is retained.
 - All read queries must be account-scoped.
+- Analytics shows authoritative total signup events and the deduplicated unique-person count separately
+  from tracked conversions. Conversion rate, daily conversion charts, and A/B tests use only conversions
+  matched to an anonymous visit so the numerator and denominator cover the same tracking period.
 - Keep collection lightweight: no fingerprinting, raw browsing history, or marketing cookies.
 - Analytics endpoints are public but schema-validated and rate-limited.
 

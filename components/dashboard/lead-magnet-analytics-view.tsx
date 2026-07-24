@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   BarChart3,
+  CheckCircle2,
   CirclePlay,
   Clock3,
   ExternalLink,
@@ -79,19 +80,25 @@ export function LeadMagnetAnalyticsView({
       label: 'Visits',
       value: formatNumber(analytics.totalVisits),
       detail: `${formatNumber(analytics.recentVisits)} in the last 30 days`,
-      icon: Users,
+      icon: MousePointerClick,
     },
     {
-      label: 'Conversions',
-      value: formatNumber(analytics.totalConversions),
-      detail: `${formatNumber(analytics.recentConversions)} in the last 30 days`,
-      icon: MousePointerClick,
+      label: 'Total signups',
+      value: formatNumber(analytics.totalSignups),
+      detail: `${formatNumber(analytics.uniqueSignups)} unique people · ${formatNumber(analytics.recentSignups)} in the last 30 days`,
+      icon: Users,
     },
     {
       label: 'Conversion rate',
       value: `${analytics.conversionRate.toFixed(1)}%`,
-      detail: 'Successful page signups ÷ visits',
+      detail: 'Tracked conversions ÷ visits',
       icon: BarChart3,
+    },
+    {
+      label: 'Tracked conversions',
+      value: formatNumber(analytics.totalConversions),
+      detail: `${formatNumber(analytics.recentConversions)} in the last 30 days`,
+      icon: CheckCircle2,
     },
     {
       label: 'Average engaged time',
@@ -189,7 +196,7 @@ export function LeadMagnetAnalyticsView({
           <div className="flex flex-col gap-1 border-b border-ink-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-semibold text-ink-950">Visits over the last 30 days</h2>
-              <p className="mt-1 text-xs text-ink-500">Each bar is one day. Orange shows converted visits.</p>
+              <p className="mt-1 text-xs text-ink-500">Each bar is one day. Orange shows tracked conversions.</p>
             </div>
             <div className="mt-2 flex items-center gap-4 text-[11px] text-ink-500 sm:mt-0">
               <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-ink-800" />Visits</span>
@@ -275,7 +282,7 @@ export function LeadMagnetAnalyticsView({
         )}
 
         <div className="rounded-md border border-ink-200 bg-ink-50 px-4 py-3 text-xs leading-5 text-ink-600">
-          A visit is one anonymous browser-tab session, so refreshing the same page does not inflate the count. Engaged time only counts while the page is visible. A video play is one successful signup explicitly pressing Play, counted once. A quiz completion requires every configured answer to be saved. No names, emails, cookies, or raw IP addresses are stored in visit analytics. Tracking starts when each metric is deployed; historical activity cannot be reconstructed.
+          Total signups count every successful submission, including repeat requests from the same person. The unique people figure deduplicates those records by email address. A tracked conversion is a successful signup matched to an anonymous browser-tab visit; tracked conversions are used for the conversion rate, chart, and A/B tests. Refreshing the same page does not inflate visits. Engaged time only counts while the page is visible. A video play is one successful signup explicitly pressing Play, counted once. A quiz completion requires every configured answer to be saved. No names, emails, cookies, or raw IP addresses are stored in visit analytics. Historical visit activity from before tracking began cannot be reconstructed.
         </div>
       </div>
     </>

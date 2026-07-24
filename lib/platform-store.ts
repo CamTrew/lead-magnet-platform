@@ -267,11 +267,15 @@ type HostedResourceRow = {
 
 type LeadMagnetAnalyticsSummaryRow = {
   total_visits: number;
+  total_signups: number;
+  unique_signups: number;
   total_conversions: number;
   total_video_plays: number;
   total_quiz_completions: number;
   average_engaged_seconds: number;
   recent_visits: number;
+  recent_signups: number;
+  recent_unique_signups: number;
   recent_conversions: number;
   recent_video_plays: number;
   recent_quiz_completions: number;
@@ -3270,6 +3274,10 @@ export async function getLeadMagnetAnalytics(
           count(*) filter (
             where converted_at >= date_trunc('day', now()) - interval '29 days'
           )::int as recent_conversions,
+          coalesce(outcomes.total_signups, 0)::int as total_signups,
+          coalesce(outcomes.unique_signups, 0)::int as unique_signups,
+          coalesce(outcomes.recent_signups, 0)::int as recent_signups,
+          coalesce(outcomes.recent_unique_signups, 0)::int as recent_unique_signups,
           coalesce(outcomes.total_video_plays, 0)::int as total_video_plays,
           coalesce(outcomes.total_quiz_completions, 0)::int as total_quiz_completions,
           coalesce(outcomes.recent_video_plays, 0)::int as recent_video_plays,
@@ -3277,6 +3285,14 @@ export async function getLeadMagnetAnalytics(
         from public.magnets_lead_magnet_visits
         cross join lateral (
           select
+            count(*)::int as total_signups,
+            count(distinct lower(email))::int as unique_signups,
+            count(*) filter (
+              where created_at >= date_trunc('day', now()) - interval '29 days'
+            )::int as recent_signups,
+            count(distinct lower(email)) filter (
+              where created_at >= date_trunc('day', now()) - interval '29 days'
+            )::int as recent_unique_signups,
             count(*) filter (where post_signup_video_played_at is not null)::int as total_video_plays,
             count(*) filter (where post_signup_quiz_completed_at is not null)::int as total_quiz_completions,
             count(*) filter (
@@ -3292,6 +3308,10 @@ export async function getLeadMagnetAnalytics(
         where account_id = $1::uuid
           and lead_magnet_id = $2::uuid
         group by
+          outcomes.total_signups,
+          outcomes.unique_signups,
+          outcomes.recent_signups,
+          outcomes.recent_unique_signups,
           outcomes.total_video_plays,
           outcomes.total_quiz_completions,
           outcomes.recent_video_plays,
@@ -3359,11 +3379,15 @@ export async function getLeadMagnetAnalytics(
 
   const summary = summaryResult.rows[0] || {
     total_visits: 0,
+    total_signups: 0,
+    unique_signups: 0,
     total_conversions: 0,
     total_video_plays: 0,
     total_quiz_completions: 0,
     average_engaged_seconds: 0,
     recent_visits: 0,
+    recent_signups: 0,
+    recent_unique_signups: 0,
     recent_conversions: 0,
     recent_video_plays: 0,
     recent_quiz_completions: 0,
@@ -3373,12 +3397,16 @@ export async function getLeadMagnetAnalytics(
 
   return {
     totalVisits,
+    totalSignups: Number(summary.total_signups || 0),
+    uniqueSignups: Number(summary.unique_signups || 0),
     totalConversions,
     totalVideoPlays: Number(summary.total_video_plays || 0),
     totalQuizCompletions: Number(summary.total_quiz_completions || 0),
     conversionRate: totalVisits > 0 ? (totalConversions / totalVisits) * 100 : 0,
     averageEngagedSeconds: Math.round(Number(summary.average_engaged_seconds || 0)),
     recentVisits: Number(summary.recent_visits || 0),
+    recentSignups: Number(summary.recent_signups || 0),
+    recentUniqueSignups: Number(summary.recent_unique_signups || 0),
     recentConversions: Number(summary.recent_conversions || 0),
     recentVideoPlays: Number(summary.recent_video_plays || 0),
     recentQuizCompletions: Number(summary.recent_quiz_completions || 0),
