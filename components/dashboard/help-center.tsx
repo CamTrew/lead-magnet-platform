@@ -273,26 +273,40 @@ function StartHere({ onClose }: { onClose: () => void }) {
           Build a direct path from interest to your email list
         </h3>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-600">
-          Give the right person a quick win, collect their details, and follow up while the problem is
-          still relevant to them. You only need one useful resource and a clear promise to begin.
+          Magnets builds the signup, delivery, and follow-up journey. You create the actual resource
+          people receive, then add its download or access link to the Delivery email.
+        </p>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-brand-orange/20 bg-brand-orange/5 p-4">
+        <p className="text-sm font-semibold text-ink-950">Create the resource before you publish</p>
+        <p className="mt-1 text-sm leading-6 text-ink-600">
+          Make the PDF, template, video, email course, AI tool, or other useful resource yourself.
+          Magnets does not generate the finished resource for you. It gives that resource a page,
+          captures the signup, emails the link, and manages what happens next.
         </p>
       </div>
 
       <ol className="mt-6 grid gap-5">
         <Step
-          detail="Pick one small problem your audience wants solved today. A checklist, template, or short guide is a strong first choice."
+          detail="Pick one small problem and make the PDF, template, video, course, tool, or other resource that solves it."
           number={1}
-          title="Choose one useful outcome"
+          title="Create the actual resource"
         />
         <Step
-          detail="Use the Landing page, Delivery email, Sequence, and After signup tabs to build the full experience."
+          detail="Upload a file under Hosted resources and copy its unique link, or use a public share link from wherever the resource is hosted."
           number={2}
-          title="Complete the four editor tabs"
+          title="Get an accessible link"
         />
         <Step
-          detail="Preview the page, publish it, and share the link. New signups appear in your Signups area."
+          detail="Open the Delivery email tab and add a prominent linked button or line of text so subscribers can open or download the resource."
           number={3}
-          title="Publish and share"
+          title="Paste the link into the Delivery email"
+        />
+        <Step
+          detail="Finish the Landing page, optional Sequence, and After signup tabs. Preview everything, publish the page, and share its public link."
+          number={4}
+          title="Complete and publish the journey"
         />
       </ol>
 
@@ -467,11 +481,12 @@ function HowLeadMagnetsWork() {
         The resource, page, delivery, and follow-up work together as one simple flow.
       </p>
       <ol className="mt-8 grid gap-6">
-        <Step detail="Choose one problem and package a result someone can use quickly." number={1} title="Create a focused offer" />
-        <Step detail="Publish the page and share its link in the places your audience already pays attention." number={2} title="Promote the page" />
-        <Step detail="A visitor sees the promise and enters their details to request the resource." number={3} title="They sign up" />
-        <Step detail="Magnets sends the resource immediately and records the signup for you." number={4} title="They get the promised value" />
-        <Step detail="Relevant follow-up can help them use the resource, answer the next question, or introduce your offer." number={5} title="Continue the conversation" />
+        <Step detail="Create the actual PDF, template, video, course, tool, or other resource people will receive." number={1} title="Make the resource" />
+        <Step detail="Give the resource an accessible link and paste that link into the Delivery email in Magnets." number={2} title="Add it to the journey" />
+        <Step detail="Publish the page and share its link in the places your audience already pays attention." number={3} title="Promote the page" />
+        <Step detail="A visitor sees the promise and enters their details to request the resource." number={4} title="They sign up" />
+        <Step detail="Magnets emails the resource link immediately and records the signup for you." number={5} title="They get the promised value" />
+        <Step detail="Relevant follow-up can help them use the resource, answer the next question, or introduce your offer." number={6} title="Continue the conversation" />
       </ol>
       <p className="mt-7 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">
         Publishing is only the start. Put the link in your website, social profiles, posts, newsletter,
@@ -656,7 +671,7 @@ function HostedResourcesGuide({ onClose }: { onClose: () => void }) {
       <ol className="mt-8 grid gap-6">
         <Step detail="Open Hosted resources from the sidebar and choose Upload resource." number={1} title="Upload the file" />
         <Step detail="Give it a clear name. This is the name shown in your resource library." number={2} title="Name the resource" />
-        <Step detail="Copy its unique link and use that link as the resource URL in your lead magnet." number={3} title="Copy the download link" />
+        <Step detail="Copy its unique link, then paste it into the Delivery email for the lead magnet that should send it." number={3} title="Add it to the Delivery email" />
       </ol>
       <div className="mt-7 rounded-xl border border-ink-200 bg-ink-50 p-4">
         <p className="text-sm font-semibold text-ink-950">Deleting a resource revokes its link</p>
@@ -731,6 +746,14 @@ function DeliveryEmailGuide({ onClose }: { onClose: () => void }) {
         The delivery email is sent immediately after a successful signup. It should make the promised
         resource easy to find and remind the reader why it is useful.
       </p>
+      <div className="mt-5 rounded-xl border border-brand-orange/20 bg-brand-orange/5 p-4">
+        <p className="text-sm font-semibold text-ink-950">Bring your own resource link</p>
+        <p className="mt-1 text-sm leading-6 text-ink-600">
+          Create the resource yourself, then paste its full download or access link into this email.
+          For files, you can upload the resource under Hosted resources and use the unique link Magnets
+          gives you.
+        </p>
+      </div>
       <ol className="mt-8 grid gap-6">
         <Step detail="Open a lead magnet and choose the Delivery email tab." number={1} title="Open the email editor" />
         <Step detail="Write a clear subject and preview line so the reader recognises what they requested." number={2} title="Set the inbox details" />
