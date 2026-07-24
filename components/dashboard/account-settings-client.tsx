@@ -20,7 +20,7 @@ export function AccountSettingsClient({
 }) {
   return (
     <>
-      <PageHeader title="Account" subtitle="Password, identity, and danger zone." />
+      <PageHeader helpTopic="account" title="Account" subtitle="Password, identity, and danger zone." />
       <div className="mx-auto max-w-7xl space-y-4">
         <ProfileCard userEmail={userEmail} userName={userName} />
 

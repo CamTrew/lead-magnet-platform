@@ -50,7 +50,7 @@ export const metadata: Metadata = {
 const outcomes = [
   'Publish on a Magnets URL before you buy, connect, or configure anything else.',
   'Send the resource immediately from Magnets, then switch to your own verified sender when you want to.',
-  'Keep the lead, the follow-up, and the handoff to your tools in one place.',
+  'Keep each lead connected to the right follow-up and integrations.',
 ];
 
 const features = [

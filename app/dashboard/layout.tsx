@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { requireDashboardBase } from '@/lib/auth';
 import { isSetupComplete } from '@/lib/setup';
 import { DashboardLayoutShell } from '@/components/dashboard/app-shell';
+import { OnboardingGate } from '@/components/dashboard/onboarding-gate';
 
 export const metadata: Metadata = {
   title: { absolute: 'Magnets' },
@@ -22,6 +23,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       userName={payload.user.name}
     >
       {children}
+      {!payload.account.onboardingCompletedAt && (
+        <OnboardingGate userName={payload.user.name} />
+      )}
     </DashboardLayoutShell>
   );
 }

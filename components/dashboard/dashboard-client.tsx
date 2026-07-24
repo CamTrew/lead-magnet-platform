@@ -34,6 +34,15 @@ import { cn } from '@/lib/utils';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type SaveSection = 'publishing' | 'delivery';
 type SectionIcon = typeof Globe2;
+export type HelpConnectionTarget =
+  | 'sender'
+  | 'calendar'
+  | 'slack'
+  | 'zapier'
+  | 'pipedrive'
+  | 'kit'
+  | 'newsletter'
+  | 'legal';
 
 function SectionHeader({
   description,
@@ -243,7 +252,7 @@ function SaveStatus({ state }: { state: SaveState }) {
   }
   return (
     <div className="flex items-center justify-end gap-1.5 border-t border-ink-200 pt-3 text-xs text-red-700">
-      Could not save — try editing again.
+      Could not save. Try editing again.
     </div>
   );
 }
@@ -393,6 +402,7 @@ function CalendarConnectionSetup({
   return (
     <details
       className={connectionCardClass}
+      id="calendar-connection"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
@@ -566,7 +576,7 @@ function SlackNotificationsSetup({
   const connected = Boolean(account.slackWebhookUrl);
 
   return (
-    <details className={connectionCardClass}>
+    <details className={connectionCardClass} id="slack-connection">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
         <div className="flex min-w-0 gap-3">
           <BrandConnectionIcon
@@ -648,7 +658,7 @@ function ZapierSetup({
   const connected = Boolean(account.zapierWebhookUrl);
 
   return (
-    <details className={connectionCardClass}>
+    <details className={connectionCardClass} id="zapier-connection">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
         <div className="flex min-w-0 gap-3">
           <ConnectionIcon icon={Webhook} tone="orange" />
@@ -756,7 +766,7 @@ function KitConnectionSetup({
   }
 
   return (
-    <details className={connectionCardClass}>
+    <details className={connectionCardClass} id="kit-connection">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
         <div className="flex min-w-0 gap-3">
           <ConnectionIcon icon={Mail} tone="orange" />
@@ -842,7 +852,7 @@ function PipedriveSetup({
   const connected = Boolean(account.pipedriveApiToken);
 
   return (
-    <details className={connectionCardClass}>
+    <details className={connectionCardClass} id="pipedrive-connection">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
         <div className="flex min-w-0 gap-3">
           <BrandConnectionIcon
@@ -903,8 +913,12 @@ function PipedriveSetup({
 
 export function DashboardClient({
   initialData,
+  openConnectionInitially,
+  openCustomDomainInitially = false,
 }: {
   initialData: DashboardBasePayload;
+  openConnectionInitially?: HelpConnectionTarget;
+  openCustomDomainInitially?: boolean;
 }) {
   const initialAccount = initialData.account;
   const [account, setAccount] = useState<AccountSettings>(initialAccount);
@@ -924,7 +938,7 @@ export function DashboardClient({
   // we hide the input behind a LockedField. Setting one of these to true
   // re-reveals the input until the next save.
   const [unlockDomain, setUnlockDomain] = useState(false);
-  const [customDomainOpen, setCustomDomainOpen] = useState(false);
+  const [customDomainOpen, setCustomDomainOpen] = useState(openCustomDomainInitially);
 
   // We commit on blur instead of making the user click Save. The dirty refs
   // tell us whether a section has unsaved edits — without that flag every
@@ -949,8 +963,47 @@ export function DashboardClient({
     setPipedriveTestState('idle');
     setPipedriveTestMessage('');
     setUnlockDomain(false);
-    setCustomDomainOpen(false);
-  }, [initialAccount]);
+    setCustomDomainOpen(openCustomDomainInitially);
+  }, [initialAccount, openCustomDomainInitially]);
+
+  useEffect(() => {
+    if (!openCustomDomainInitially) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('custom-domain-setup')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openCustomDomainInitially]);
+
+  useEffect(() => {
+    if (!openConnectionInitially) return;
+
+    let scrollFrame = 0;
+    const openFrame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(
+        `${openConnectionInitially}-connection`
+      );
+      if (!(target instanceof HTMLDetailsElement)) return;
+
+      const drawer = target.closest('details.optional-connections-drawer');
+      if (drawer instanceof HTMLDetailsElement) drawer.open = true;
+      target.open = true;
+
+      scrollFrame = window.requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.querySelector<HTMLElement>('input, select, button')?.focus({
+          preventScroll: true,
+        });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(openFrame);
+      if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
+    };
+  }, [openConnectionInitially]);
 
   function setSaveState(section: SaveSection, state: SaveState) {
     setSectionState((current) => ({ ...current, [section]: state }));
@@ -1128,7 +1181,7 @@ export function DashboardClient({
 
   return (
     <>
-      <PageHeader title="Workspace setup" subtitle="Manage your publishing address, email delivery, and connections" />
+      <PageHeader helpTopic="workspace" title="Workspace setup" subtitle="Manage your publishing address, email delivery, and connections" />
       <div className="mx-auto max-w-7xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
@@ -1191,7 +1244,8 @@ export function DashboardClient({
               </div>
 
               <details
-                className="group rounded-xl border border-ink-200 bg-ink-50/70 transition open:bg-white open:shadow-[0_12px_35px_-28px_rgba(17,17,17,0.45)]"
+                className="custom-domain-card group scroll-mt-16 rounded-xl border border-ink-200 bg-ink-50/70 transition open:bg-white open:shadow-[0_12px_35px_-28px_rgba(17,17,17,0.45)]"
+                id="custom-domain-setup"
                 onToggle={(event) => setCustomDomainOpen(event.currentTarget.open)}
                 open={customDomainOpen}
               >
@@ -1320,7 +1374,7 @@ export function DashboardClient({
                   </ConnectionStatus>
                 </div>
                 <div className="grid items-start gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 lg:grid-cols-2">
-              <details className={connectionCardClass}>
+              <details className={connectionCardClass} id="sender-connection">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
                   <div className="flex min-w-0 gap-3">
                     <ConnectionIcon icon={Mail} tone="orange" />
@@ -1421,14 +1475,15 @@ export function DashboardClient({
                   <p className="mt-1 text-xs text-ink-500">Forward signups into an existing newsletter audience.</p>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-ink-200 bg-ink-200">
-              <details className={connectionCardClass}>
+              <details className={connectionCardClass} id="newsletter-connection">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 transition">
                   <div className="flex min-w-0 gap-3">
                     <ConnectionIcon icon={Newspaper} tone="yellow" />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink-950">Newsletter</p>
                       <p className="mt-0.5 text-xs leading-5 text-ink-600">
-                        Forward signups to Beehiiv, Substack, or Kit. They are always saved in Magnets too.
+                        Forward signups to Beehiiv or Substack. Connect Kit in Automations. Signups are
+                        always saved in Magnets too.
                       </p>
                     </div>
                   </div>
@@ -1441,7 +1496,7 @@ export function DashboardClient({
                       label={
                         <LabelHelp
                           label="Beehiiv publication ID"
-                          help="In Beehiiv, open the publication you want to use, then copy the publication ID from the API settings."
+                          help="In Beehiiv, open Settings, Workspace Settings, then API. Copy the API V2 publication ID for the publication you want to use."
                         />
                       }
                     >
@@ -1456,7 +1511,7 @@ export function DashboardClient({
                       label={
                         <LabelHelp
                           label="Beehiiv API key"
-                          help="In Beehiiv, go to Settings, then Integrations or API. Create an API key and paste it here."
+                          help="In Beehiiv, open Settings, Workspace Settings, then API. Create an API key and copy it when shown. Beehiiv only shows the key once."
                         />
                       }
                     >
@@ -1473,7 +1528,7 @@ export function DashboardClient({
                     label={
                       <LabelHelp
                         label="Substack publication"
-                        help="The subdomain on Substack. for example, type 'myletter' for myletter.substack.com. Substack has no official subscriber API, so this uses their public subscribe endpoint and may break if Substack changes it."
+                        help="The subdomain on Substack. For example, type 'myletter' for myletter.substack.com. Substack has no documented public subscriber API for this connection, so it uses the public signup flow and may break if Substack changes it."
                       />
                     }
                     hint="Just the subdomain. myletter, not myletter.substack.com"
@@ -1494,7 +1549,7 @@ export function DashboardClient({
         </AceternityCard>
 
         <AceternityCard className="overflow-hidden p-0">
-          <details className="group">
+          <details className="group" id="legal-connection">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 transition hover:bg-ink-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange [&::-webkit-details-marker]:hidden">
               <div className="flex min-w-0 items-start gap-3">
                 <ConnectionIcon icon={ScrollText} tone="orange" />

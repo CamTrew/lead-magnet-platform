@@ -48,7 +48,7 @@ export function setupChecklist(account: AccountSettings): SetupItem[] {
     {
       key: 'subdomain',
       label: 'Pick a page subdomain',
-      detail: 'The subdomain pages will publish at — usually "get".',
+      detail: 'The subdomain where pages will be published. We recommend "get".',
       done: Boolean(account.subdomain) && isValidSubdomain(account.subdomain),
     },
     {

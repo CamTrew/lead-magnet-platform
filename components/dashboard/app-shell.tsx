@@ -19,9 +19,13 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import {
+  HelpCenterModal,
+  OPEN_HELP_TOPIC_EVENT,
+  type HelpTopic,
+} from '@/components/dashboard/help-center';
 import { MagnetsLogo } from '@/components/magnets-logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { WalkthroughModal } from '@/components/walkthrough-video';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -189,7 +193,7 @@ function SidebarContent({
           className="group flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-ink-600 transition hover:bg-ink-50 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-inset lg:min-h-9"
         >
           <CircleHelp className="h-4 w-4 shrink-0" />
-          <span className="overflow-hidden whitespace-nowrap">Help &amp; walkthrough</span>
+          <span className="overflow-hidden whitespace-nowrap">Help</span>
         </button>
       </nav>
 
@@ -260,8 +264,21 @@ export function DashboardLayoutShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
   const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    function handleOpenHelp(event: Event) {
+      const topic = (event as CustomEvent<{ topic?: HelpTopic }>).detail?.topic;
+      if (!topic) return;
+      setHelpTopic(topic);
+      setHelpOpen(true);
+    }
+
+    window.addEventListener(OPEN_HELP_TOPIC_EVENT, handleOpenHelp);
+    return () => window.removeEventListener(OPEN_HELP_TOPIC_EVENT, handleOpenHelp);
+  }, []);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -299,7 +316,10 @@ export function DashboardLayoutShell({
         <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 border-r border-ink-200 bg-white lg:block">
           <SidebarContent
             isLoggingOut={isLoggingOut}
-            onOpenHelp={() => setWalkthroughOpen(true)}
+            onOpenHelp={() => {
+              setHelpTopic(null);
+              setHelpOpen(true);
+            }}
             onLogout={handleLogout}
             setupComplete={setupComplete}
             userName={userName}
@@ -340,7 +360,8 @@ export function DashboardLayoutShell({
                   isLoggingOut={isLoggingOut}
                   onOpenHelp={() => {
                     setMobileOpen(false);
-                    setWalkthroughOpen(true);
+                    setHelpTopic(null);
+                    setHelpOpen(true);
                   }}
                   onLogout={handleLogout}
                   onNavigate={() => setMobileOpen(false)}
@@ -383,7 +404,12 @@ export function DashboardLayoutShell({
         </div>
       </div>
 
-      <WalkthroughModal open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
+      <HelpCenterModal
+        initialTopic={helpTopic}
+        key={helpTopic || 'help-library'}
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+      />
 
     </main>
   );
@@ -392,16 +418,33 @@ export function DashboardLayoutShell({
 export function PageHeader({
   title,
   subtitle,
+  helpTopic,
   actions,
 }: {
   title: string;
   subtitle: string;
+  helpTopic: HelpTopic;
   actions?: ReactNode;
 }) {
   return (
     <div className="mx-auto mb-5 flex max-w-7xl flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-[28px]">{title}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-[28px]">{title}</h1>
+          <button
+            aria-label={`Help with ${title}`}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-400 transition hover:bg-ink-100 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent(OPEN_HELP_TOPIC_EVENT, {
+                detail: { topic: helpTopic },
+              }));
+            }}
+            title={`Help with ${title}`}
+            type="button"
+          >
+            <CircleHelp className="h-[18px] w-[18px]" />
+          </button>
+        </div>
         <p className="mt-1.5 text-sm leading-6 text-ink-500">{subtitle}</p>
       </div>
       {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}

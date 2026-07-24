@@ -367,15 +367,19 @@ function AnalyticsModal({
 export function PagesClient({
   initialData,
   initialLeadMagnets,
+  openCreateInitially = false,
 }: {
   initialData: DashboardBasePayload;
   initialLeadMagnets: LeadMagnetSummary[];
+  openCreateInitially?: boolean;
 }) {
   const router = useRouter();
   const account = initialData.account;
   const [isPending, startTransition] = useTransition();
   const [leadMagnets, setLeadMagnets] = useState<LeadMagnetSummary[]>(initialLeadMagnets);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(
+    openCreateInitially && initialLeadMagnets.length < MAX_LEAD_MAGNETS_PER_ACCOUNT
+  );
   const [createTitle, setCreateTitle] = useState('');
   const [createSlug, setCreateSlug] = useState('');
   const [createSlugTouched, setCreateSlugTouched] = useState(false);
@@ -497,7 +501,7 @@ export function PagesClient({
 
   return (
     <>
-      <PageHeader title="Lead magnets" subtitle="Build, publish, and improve every conversion experience" />
+      <PageHeader helpTopic="start" title="Lead magnets" subtitle="Create, publish, and manage your lead magnets" />
       {createOpen && (
         <CreatePageModal
           error={createError}
@@ -528,7 +532,7 @@ export function PagesClient({
               </span>
               <h2 className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-3xl">Your lead magnet library</h2>
               <p className="mt-2 text-sm leading-6 text-ink-600 sm:text-base">
-                Create the page, delivery email, follow-up journey, and next step in one place.
+                Create the signup page, delivery email, follow-up emails, and post-signup page.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">

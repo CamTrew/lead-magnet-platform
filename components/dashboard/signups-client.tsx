@@ -177,7 +177,7 @@ export function SignupsClient({
 
   return (
     <>
-      <PageHeader title="Signups" subtitle="Everyone who has signed up to a magnet" />
+      <PageHeader helpTopic="signups" title="Signups" subtitle="Everyone who has signed up to a magnet" />
 
       {manualOpen && (
         <ManualAddModal

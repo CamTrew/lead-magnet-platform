@@ -136,6 +136,7 @@ export function LeadMagnetAnalyticsView({
   return (
     <>
       {!embedded && <PageHeader
+        helpTopic="analytics"
         title="Analytics"
         subtitle={leadMagnet.title}
         actions={(

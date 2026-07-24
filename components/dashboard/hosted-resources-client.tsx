@@ -289,6 +289,7 @@ export function HostedResourcesClient({
   return (
     <>
       <PageHeader
+        helpTopic="resources"
         title="Hosted resource"
         subtitle="Upload files once, then copy their links into any lead magnet."
         actions={(

@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
         verified: false,
         message:
           found.length > 0
-            ? `Found ${found.length} TXT record(s) at ${recordName}, but none match the expected value. Copy it exactly, including the "magnets-verify-" prefix. If you recently changed your domain in Configure, the token may have rotated — copy the value shown below.`
+            ? `Found ${found.length} TXT record(s) at ${recordName}, but none match the expected value. Copy it exactly, including the "magnets-verify-" prefix. If you recently changed your domain in Configure, the token may have rotated. Copy the value shown below.`
             : `No TXT record found at ${recordName} yet. DNS can take 1 to 60 minutes to propagate after you save it at your DNS provider.`,
         expected: {
           type: expectedRecord.type,

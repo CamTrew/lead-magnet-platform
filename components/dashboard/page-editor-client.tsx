@@ -971,7 +971,7 @@ export function PageEditorClient({
 
   return (
     <>
-      <PageHeader title="Edit lead magnet" subtitle="Build the complete signup journey from one workspace" />
+      <PageHeader helpTopic="editor" title="Edit lead magnet" subtitle="Edit the page, emails, and post-signup experience" />
 
       {confirmDelete && (
         <ConfirmDialog

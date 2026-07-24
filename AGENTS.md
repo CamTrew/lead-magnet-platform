@@ -192,7 +192,32 @@ There are **three** layers of access control. Don't remove one assuming another 
 
 1. **`middleware.ts` (edge)** — bounces `/dashboard/*` to `/login?next=…` and returns 401 JSON for non-public `/api/*` when no session cookie is present. Allowlist of public APIs in `PUBLIC_API_PREFIXES`. Logged-in users hitting `/login` or `/register` are redirected to `/dashboard`. Also sets security headers (CSP-adjacent, HSTS in prod).
 2. **`requireDashboardPayload()`** in each authed page/API route — re-checks the session against the DB. The cookie can outlive the session row, so this catches that case.
-3. **`isSetupComplete(account)`** from `lib/setup.ts` — gates `/dashboard/pages`, `/dashboard/signups`, and `POST /api/lead-magnets` until the user has set domain, subdomain, sender email, and a Resend API key. Pages without these redirect to `/dashboard?setup=incomplete`. The sidebar dims the gated items via the `setupComplete` prop on `DashboardLayoutShell`.
+3. **`isSetupComplete(account)`** from `lib/setup.ts` — gates `/dashboard/pages`, `/dashboard/signups`, and `POST /api/lead-magnets` until the user has claimed a valid Magnets username or completed the legacy custom-domain publishing setup. Sender-domain and integration settings remain optional. Incomplete accounts redirect to `/dashboard?setup=incomplete`, and the sidebar dims gated items through the `setupComplete` prop on `DashboardLayoutShell`.
+
+### Onboarding and in-app help
+
+First-run education is mounted from `app/dashboard/layout.tsx` whenever
+`account.onboardingCompletedAt` is empty. `components/dashboard/onboarding-gate.tsx`
+must teach the lead-magnet model before collecting profile answers, make the
+free `magnets.so` publishing route the low-friction default, and offer custom
+domain setup as an optional branch. Completing onboarding reserves a platform
+username through `completeOnboarding`; do not make DNS or integrations a
+prerequisite for finishing it.
+
+Persistent education lives in `components/dashboard/help-center.tsx` and opens
+from the dashboard sidebar or the contextual help button in each page header.
+Keep the core explanations ("what", "why", "how", and "what works best"), the
+first-launch path, and the searchable operational guides available after
+onboarding. The modal starts with a full-width topic library and opens one
+focused article at a time with a Back control; do not reintroduce a permanently
+visible article sidebar. The help centre documents the editor, hosted resources,
+brand settings, workspace setup, delivery emails, sequences, after-signup
+experiences, custom domains, sender setup, legal links, newsletter and
+automation connections, calendars, signups, analytics, account settings, and
+the video walkthrough. Keep instructions aligned with the labels and paths in
+the live dashboard. Custom-domain help should link to
+`/dashboard?setup=custom-domain`, which opens the existing publishing wizard
+rather than duplicating DNS behavior.
 
 ### Routing layout
 

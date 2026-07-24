@@ -208,7 +208,7 @@ export function DeliverySection({
             ? 'Saving…'
             : saveState === 'saved'
               ? 'Saved'
-              : 'Could not save — try editing again.'}
+              : 'Could not save. Try editing again.'}
         </div>
       )}
     </div>

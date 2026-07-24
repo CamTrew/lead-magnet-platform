@@ -471,11 +471,6 @@ button {
     linear-gradient(135deg, #242429, #18181b) !important;
 }
 
-.dark .app-theme .email-formatting-toolbar {
-  border-color: #343439 !important;
-  background-color: rgb(32 32 36 / 0.96) !important;
-}
-
 .dark .app-theme .brand-soft-bg {
   background-image: linear-gradient(180deg, #151517 0%, #0f0f11 100%);
 }
@@ -494,6 +489,10 @@ button {
 
 .dark .app-theme .bg-ink-100 {
   background-color: #29292e;
+}
+
+.dark .app-theme .bg-ink-200 {
+  background-color: #343439;
 }
 
 .dark .app-theme :is(
@@ -627,11 +626,37 @@ button {
   color: #ff9a96;
 }
 
-.dark .app-theme :is(.text-emerald-950, .text-emerald-800, .text-emerald-700) {
+.dark .app-theme :is(.bg-red-50) {
+  background-color: #251718;
+}
+
+.dark .app-theme :is(.text-red-950, .text-red-900, .text-red-800) {
+  color: #ffb4b0;
+}
+
+.dark .app-theme :is(.bg-amber-50) {
+  background-color: #241f14;
+}
+
+.dark .app-theme :is(.border-amber-200) {
+  border-color: #5b4a24;
+}
+
+.dark .app-theme :is(.text-amber-950, .text-amber-900, .text-amber-800, .text-amber-700) {
+  color: #f4d58a;
+}
+
+.dark .app-theme :is(
+  .text-emerald-950,
+  .text-emerald-900,
+  .text-emerald-800,
+  .text-emerald-700,
+  .text-emerald-600
+) {
   color: #7ee2b8;
 }
 
-.dark .app-theme :is(.border-red-200, .border-emerald-200, .border-amber-200) {
+.dark .app-theme :is(.border-red-200, .border-emerald-200) {
   border-color: #513638;
 }
 
@@ -645,6 +670,54 @@ button {
 
 .dark .app-theme .hover\:bg-ink-100:hover {
   background-color: #2d2d32;
+}
+
+.dark .app-theme .help-topic-icon {
+  background-color: #29292e !important;
+  color: #fe6f34 !important;
+}
+
+.dark .app-theme .help-step-number {
+  background-color: #f7f5f1 !important;
+  color: #18181b !important;
+}
+
+.dark .app-theme.help-centre .help-centre-mark {
+  color: #18181b !important;
+}
+
+.dark .app-theme.help-centre .help-launch-card {
+  background-color: #1b1b1f !important;
+  background-image:
+    radial-gradient(circle at 0% 0%, rgb(254 111 52 / 0.2), transparent 42%),
+    linear-gradient(135deg, #202024, #18181b) !important;
+}
+
+.dark .app-theme.help-centre .help-launch-pill {
+  background-color: rgb(32 32 36 / 0.9) !important;
+}
+
+.dark .app-theme.help-centre .help-check-icon {
+  color: #7ee2b8 !important;
+}
+
+.dark .app-theme.help-centre .help-success-card {
+  border-color: #2b5041 !important;
+  background-color: #14211c !important;
+}
+
+.dark .app-theme .onboarding-success-icon {
+  background-color: #173127 !important;
+  color: #7ee2b8 !important;
+}
+
+.dark .app-theme .onboarding-success-callout {
+  border-color: #2b5041 !important;
+  background-color: #14211c !important;
+}
+
+.dark .app-theme.help-centre .text-emerald-900 {
+  color: #a7f3d0;
 }
 
 /* Connection cards use opacity and arbitrary-value utilities that are not
@@ -669,6 +742,20 @@ button {
 .dark .app-theme .connection-status-strip {
   border-color: #3b3b42 !important;
   background-color: #1d1d21 !important;
+}
+
+.dark .app-theme .custom-domain-card {
+  border-color: #3b3b42 !important;
+  background-color: #1d1d21 !important;
+}
+
+.dark .app-theme .custom-domain-card[open] {
+  border-color: #505058 !important;
+  background-color: #242429 !important;
+}
+
+.dark .app-theme .custom-domain-card summary:hover {
+  background-color: #29292e !important;
 }
 
 .app-theme .status-check-icon {
@@ -762,6 +849,38 @@ button {
   background-color: #ffffff !important;
 }
 
+.app-theme .page-editor-frame--light .email-formatting-toolbar,
+.dark .app-theme .page-editor-frame--light .email-formatting-toolbar {
+  border-color: #e4e4e7 !important;
+  background-color: rgb(248 250 252 / 0.96) !important;
+}
+
+.app-theme .page-editor-frame--light .email-formatting-toolbar button:disabled,
+.dark .app-theme .page-editor-frame--light .email-formatting-toolbar button:disabled {
+  color: #a1a1aa !important;
+}
+
+.app-theme .page-editor-frame--light .bg-ink-100,
+.dark .app-theme .page-editor-frame--light .bg-ink-100,
+.app-theme .page-editor-frame--light .hover\:bg-ink-100:hover,
+.dark .app-theme .page-editor-frame--light .hover\:bg-ink-100:hover,
+.app-theme .page-editor-frame--light .focus-visible\:bg-ink-100:focus-visible,
+.dark .app-theme .page-editor-frame--light .focus-visible\:bg-ink-100:focus-visible {
+  background-color: #f4f4f5 !important;
+}
+
+.app-theme .page-editor-frame--light .hover\:text-ink-950:hover,
+.dark .app-theme .page-editor-frame--light .hover\:text-ink-950:hover,
+.app-theme .page-editor-frame--light .focus-visible\:text-ink-950:focus-visible,
+.dark .app-theme .page-editor-frame--light .focus-visible\:text-ink-950:focus-visible {
+  color: #09090b !important;
+}
+
+.app-theme .page-editor-frame--light :is(.border-ink-100, .border-ink-200, .border-ink-300),
+.dark .app-theme .page-editor-frame--light :is(.border-ink-100, .border-ink-200, .border-ink-300) {
+  border-color: #e4e4e7 !important;
+}
+
 .app-theme .page-editor-frame--dark,
 .dark .app-theme .page-editor-frame--dark {
   background-color: #18181b !important;
@@ -775,8 +894,38 @@ button {
   background-color: #18181b !important;
 }
 
-.app-theme .page-editor-frame--dark :is(.bg-white, .bg-ink-50) {
+.app-theme .page-editor-frame--dark .email-formatting-toolbar,
+.dark .app-theme .page-editor-frame--dark .email-formatting-toolbar {
+  border-color: #343439 !important;
+  background-color: rgb(32 32 36 / 0.96) !important;
+}
+
+.app-theme .page-editor-frame--dark .email-formatting-toolbar .bg-ink-200,
+.dark .app-theme .page-editor-frame--dark .email-formatting-toolbar .bg-ink-200 {
+  background-color: #44444b !important;
+}
+
+.app-theme .page-editor-frame--dark .email-formatting-toolbar button:disabled,
+.dark .app-theme .page-editor-frame--dark .email-formatting-toolbar button:disabled {
+  color: #5f5f68 !important;
+}
+
+.app-theme .page-editor-frame--dark :is(.bg-white, .bg-ink-50, .bg-ink-100) {
   background-color: #202024 !important;
+}
+
+.app-theme .page-editor-frame--dark .hover\:bg-ink-100:hover,
+.dark .app-theme .page-editor-frame--dark .hover\:bg-ink-100:hover,
+.app-theme .page-editor-frame--dark .focus-visible\:bg-ink-100:focus-visible,
+.dark .app-theme .page-editor-frame--dark .focus-visible\:bg-ink-100:focus-visible {
+  background-color: #29292e !important;
+}
+
+.app-theme .page-editor-frame--dark .hover\:text-ink-950:hover,
+.dark .app-theme .page-editor-frame--dark .hover\:text-ink-950:hover,
+.app-theme .page-editor-frame--dark .focus-visible\:text-ink-950:focus-visible,
+.dark .app-theme .page-editor-frame--dark .focus-visible\:text-ink-950:focus-visible {
+  color: #f7f5f1 !important;
 }
 
 .app-theme .page-editor-frame--dark :is(.text-ink-950, .text-ink-900) {
