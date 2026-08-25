@@ -4,7 +4,7 @@ import {
   type MxRecord,
 } from 'node:dns';
 import { promisify } from 'node:util';
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
@@ -22,6 +22,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { log, redactForLog } from '@/lib/logger';
+import { syncAccountFollowUpAutomationSenders } from '@/lib/follow-up-sequences';
 
 const ROUTE_NAME = '/api/dns/verify';
 
@@ -451,6 +452,28 @@ export async function POST(request: NextRequest) {
 
     if (parsed.data.section === 'delivery' && status === 'verified' && resendSetup) {
       if (resendSetup.domainStatus === 'verified') {
+        after(async () => {
+          try {
+            const result = await syncAccountFollowUpAutomationSenders(payload.account.id);
+            if (result.failures.length > 0) {
+              log.warn('Follow-up sender reconciliation had failures', {
+                route: ROUTE_NAME,
+                method: 'POST',
+                userId,
+                accountId,
+                extra: result,
+              });
+            }
+          } catch (error) {
+            log.warn('Follow-up sender reconciliation failed', {
+              route: ROUTE_NAME,
+              method: 'POST',
+              userId,
+              accountId,
+              extra: { error },
+            });
+          }
+        });
         providerVerification = {
           status: 'verified',
           message: 'Resend has verified this sending domain.',

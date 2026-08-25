@@ -100,6 +100,7 @@ Run both `pnpm test:email-compatibility` and `pnpm smoke:follow-up` after touchi
 - Multiple different people can join the same sequence.
 - Editing a magnet's sequence must not stop existing runs.
 - The same person submitting twice must not receive duplicate active runs.
+- Follow-up Automations persist their sender at creation time. Account sender changes and successful Resend verification reconcile enabled Automations so follow-ups and delivery use the same resolved sender; existing recipients remain on their original Automation.
 - Booking webhooks stop only eligible active runs and are idempotent.
 - “Start sequence” in the signups UI is a recovery/manual action for a stored signup with no active sequence, not the normal signup path.
 

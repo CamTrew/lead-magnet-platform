@@ -1,11 +1,14 @@
 import {
   createFollowUpRun as createFollowUpRunInStore,
   followUpSequenceFingerprint,
+  getAccountWithSecrets,
   hasActiveFollowUpRunForEmail as hasActiveFollowUpRunForEmailInStore,
+  listEnabledFollowUpAutomationTargets,
   listActiveStopOnBookingFollowUpRunsForEmail as listActiveStopOnBookingFollowUpRunsForEmailInStore,
   markFollowUpRunFailed as markFollowUpRunFailedInStore,
   stopFollowUpRunsForAccountEmail as stopFollowUpRunsForAccountEmailInStore,
   stopFollowUpRunForEmail as stopFollowUpRunForEmailInStore,
+  updateLeadMagnetFollowUpSync,
 } from './platform-store';
 import {
   cleanEmailText,
@@ -22,10 +25,11 @@ import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 const RESEND_API_BASE = 'https://api.resend.com';
 const RESEND_RATE_LIMIT_RETRIES = 4;
 // AI/MAINTAINER CONTEXT: increment whenever stored Resend templates need to be
-// rebuilt with new HTML. This is deliberately separate from a magnet's content
-// fingerprint: renderer upgrades and copy edits are different reasons to
-// repair an automation. Never reset active run rows merely to refresh markup.
-export const FOLLOW_UP_RENDER_VERSION = 10;
+// rebuilt with new HTML or a rollout must replace all persisted Automations.
+// This is deliberately separate from a magnet's content fingerprint: renderer
+// upgrades and copy edits are different reasons to repair an automation. Never
+// reset active run rows merely to refresh markup or sender configuration.
+export const FOLLOW_UP_RENDER_VERSION = 11;
 const MAX_DELAY_MINUTES = 30 * 24 * 60;
 const RESEND_NAME_MAX_LENGTH = 50;
 const TEMPLATE_VARIABLES = [
@@ -491,6 +495,39 @@ function automationUsesTrigger(detail: ResendObject, triggerEvent: string) {
   });
 }
 
+function automationUsesSender(detail: ResendObject, expectedFrom: string, expectedEmailCount: number) {
+  if (!Array.isArray(detail.steps)) return false;
+  const emailSteps = detail.steps.filter((value) => isRecord(value) && value.type === 'send_email');
+  return emailSteps.length === expectedEmailCount && emailSteps.every((value) => {
+    if (!isRecord(value) || !isRecord(value.config)) return false;
+    return stringValue(value.config.from) === expectedFrom;
+  });
+}
+
+export async function followUpAutomationUsesResolvedSender(
+  account: AccountSettings,
+  magnet: LeadMagnet
+) {
+  if (!magnet.followUpEnabled || !magnet.resendFollowUpAutomationId) return false;
+
+  const { from, resendApiKey } = ensureResendReady(account);
+  try {
+    const detail = await resendRequest<ResendObject>(
+      resendApiKey,
+      `/automations/${encodeURIComponent(magnet.resendFollowUpAutomationId)}`
+    );
+    const expectedEmailCount = normaliseFollowUpEmails(magnet.followUpEmails)
+      .filter((email) => email.subject && email.body).length;
+    return automationUsesSender(detail, from, expectedEmailCount);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // A sender/API-key switch commonly means the old Automation ID belongs to
+    // the previous Resend workspace. Rebuild it in the newly selected one.
+    if (/404|not found/i.test(message)) return false;
+    throw error;
+  }
+}
+
 async function findCompetingAutomationIds(
   apiKey: string,
   magnet: LeadMagnet,
@@ -638,6 +675,37 @@ export async function syncLeadMagnetFollowUpAutomation(
     emails: syncedEmails,
     renderVersion: FOLLOW_UP_RENDER_VERSION,
   };
+}
+
+/**
+ * Delivery resolves its From address for every send, while Resend Automations
+ * persist it. Reconcile enabled sequences after sender settings or provider
+ * verification changes. Existing recipients remain on their old Automation.
+ */
+export async function syncAccountFollowUpAutomationSenders(accountId: string) {
+  const account = await getAccountWithSecrets(accountId);
+  if (!account) return { checked: 0, synced: 0, failures: ['Account not found'] };
+
+  const targets = await listEnabledFollowUpAutomationTargets(accountId);
+  let synced = 0;
+  const failures: string[] = [];
+
+  for (const magnet of targets) {
+    try {
+      if (await followUpAutomationUsesResolvedSender(account, magnet)) continue;
+      const result = await syncLeadMagnetFollowUpAutomation(account, magnet);
+      await updateLeadMagnetFollowUpSync(account.id, magnet.id, {
+        followUpEmails: result.emails,
+        resendFollowUpAutomationId: result.automationId,
+        resendFollowUpRenderVersion: result.renderVersion,
+      });
+      synced += 1;
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : 'Unknown follow-up sender sync error');
+    }
+  }
+
+  return { checked: targets.length, synced, failures };
 }
 
 export function followUpSequenceEndDate(magnet: Pick<LeadMagnet, 'followUpEmails'>) {

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
 import {
@@ -45,6 +45,8 @@ import {
 import { isValidSlackWebhookUrl } from '@/lib/slack';
 import { isValidZapierWebhookUrl } from '@/lib/zapier';
 import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
+import { syncAccountFollowUpAutomationSenders } from '@/lib/follow-up-sequences';
+import { resolveResendApiKey, resolveResendFromEmail } from '@/lib/platform-resend';
 
 const ROUTE = '/api/account';
 
@@ -343,6 +345,36 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
       invalidatePublishedLeadMagnetCache();
+
+      const refreshedAccount = await getAccountWithSecrets(payload.account.id);
+      const senderConfigurationChanged = refreshedAccount
+        ? resolveResendApiKey(storedAccount) !== resolveResendApiKey(refreshedAccount) ||
+          resolveResendFromEmail(storedAccount) !== resolveResendFromEmail(refreshedAccount)
+        : false;
+      if (senderConfigurationChanged) {
+        after(async () => {
+          try {
+            const result = await syncAccountFollowUpAutomationSenders(payload.account.id);
+            if (result.failures.length > 0) {
+              log.warn('Follow-up sender reconciliation had failures', {
+                route: ROUTE,
+                method: 'PUT',
+                userId: payload.user.id,
+                accountId: payload.account.id,
+                extra: result,
+              });
+            }
+          } catch (error) {
+            log.warn('Follow-up sender reconciliation failed', {
+              route: ROUTE,
+              method: 'PUT',
+              userId: payload.user.id,
+              accountId: payload.account.id,
+              extra: { error },
+            });
+          }
+        });
+      }
 
       const currentHost = buildHost(account.subdomain, account.domain);
 

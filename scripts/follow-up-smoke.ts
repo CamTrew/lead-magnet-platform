@@ -5,6 +5,7 @@ import {
 } from '../lib/calendar-webhook-payload';
 import {
   FollowUpSequenceError,
+  followUpAutomationUsesResolvedSender,
   followUpAutomationNeedsSync,
   startLeadMagnetFollowUpSequence,
   stopAccountFollowUpSequencesForEmail,
@@ -617,6 +618,19 @@ async function run() {
     resendFollowUpAutomationId: synced.automationId,
     resendFollowUpRenderVersion: synced.renderVersion,
   };
+  assert.equal(
+    await followUpAutomationUsesResolvedSender(account, currentSyncedMagnet),
+    true,
+    'A freshly synced Automation should use the currently resolved sender.'
+  );
+  assert.equal(
+    await followUpAutomationUsesResolvedSender(
+      { ...account, resendFromEmail: 'Updated sender <news@send.example.com>' },
+      currentSyncedMagnet
+    ),
+    false,
+    'Changing account sender settings must mark an existing Automation for replacement.'
+  );
   assert.equal(
     followUpAutomationNeedsSync(currentSyncedMagnet, { ...currentSyncedMagnet, title: 'Delivery-only edit' }),
     false,

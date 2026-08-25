@@ -1536,14 +1536,16 @@ export async function disconnectKitAccount(accountId: string) {
  * The caller must fetch each account separately with secrets before calling
  * Resend, so encrypted API keys never travel with this result.
  */
-export async function listEnabledFollowUpAutomationTargets() {
+export async function listEnabledFollowUpAutomationTargets(accountId?: string) {
   const result = await query<LeadMagnetRow>(
     `
       select m.*
       from public.magnets_lead_magnets m
       where m.follow_up_enabled = true
+        and ($1::uuid is null or m.account_id = $1::uuid)
       order by m.account_id, m.created_at
-    `
+    `,
+    [accountId || null]
   );
 
   return result.rows.map(mapLeadMagnet);

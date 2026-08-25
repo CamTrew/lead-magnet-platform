@@ -526,6 +526,6 @@ assert.match(renderFollowUpEmailHtml(structuredBody, parityPreview, '#'), /Stop 
 assert.equal(parseEmailImageLine('![Unsafe](javascript:alert(1))'), null);
 
 assert.equal(cleanEmailText('\r\nHello.   \r\n\r\n\r\nWorld.  '), 'Hello.\n\n\nWorld.');
-assert.equal(FOLLOW_UP_RENDER_VERSION, 10);
+assert.equal(FOLLOW_UP_RENDER_VERSION, 11);
 
 console.log('Email compatibility smoke test passed: legacy plain text, rich formatting, single images, proxy URLs, and new responsive image rows.');
