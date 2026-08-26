@@ -25,22 +25,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
   }
 
-  const magnets = await listPublishedLeadMagnetsForSitemap();
-  const publicMagnets: MetadataRoute.Sitemap = magnets
-    .filter((magnet) => !magnet.domainAttachedHost || isPlatformHost(magnet.domainAttachedHost))
-    .map((magnet) => ({
-      url: magnet.username
-        ? `${SITE_URL}/${encodeURIComponent(magnet.username)}/${encodeURIComponent(magnet.slug)}`
-        : `${SITE_URL}/p/${magnet.id}`,
-      lastModified: new Date(magnet.updatedAt),
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    }));
+  // The public hostname is authoritative when serving the production sitemap.
+  // This prevents a stale Vercel deployment URL in NEXT_PUBLIC_SITE_URL from
+  // leaking into every indexed URL on magnets.so.
+  const platformOrigin = hostname === 'magnets.so'
+    ? publicOriginForHost(requestHost)
+    : SITE_URL;
 
   return [
-    { url: SITE_URL, changeFrequency: 'weekly', priority: 1 },
-    { url: `${SITE_URL}/terms`, changeFrequency: 'yearly', priority: 0.2 },
-    { url: `${SITE_URL}/privacy`, changeFrequency: 'yearly', priority: 0.2 },
-    ...publicMagnets,
+    { url: platformOrigin, changeFrequency: 'weekly', priority: 1 },
+    { url: `${platformOrigin}/terms`, changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${platformOrigin}/privacy`, changeFrequency: 'yearly', priority: 0.2 },
   ];
 }

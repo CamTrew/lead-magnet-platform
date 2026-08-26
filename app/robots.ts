@@ -13,7 +13,9 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   const hostname = cleanHostname(requestHost);
   const origin = hostname && !isPlatformHost(hostname)
     ? publicOriginForHost(requestHost)
-    : SITE_URL;
+    : hostname === 'magnets.so'
+      ? publicOriginForHost(requestHost)
+      : SITE_URL;
 
   return {
     rules: [

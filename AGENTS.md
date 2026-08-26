@@ -234,7 +234,7 @@ App Router under `app/`:
 - `app/p/[id]/page.tsx` — **platform-managed URL** at `magnets.so/p/<lead-magnet-uuid>`. Looks the magnet up by UUID via `findPublishedLeadMagnetById` — does not depend on the host. Use this for the dashboard's "View" link until the user attaches a real domain.
 - Both render `components/lead-magnet-page-view.tsx`. Both `generateMetadata` for SEO.
 - `app/terms`, `app/privacy` — legal, render via `components/legal-page.tsx`.
-- `app/robots.ts`, `app/sitemap.ts` — disallow `/api/` and `/dashboard/`; list public routes.
+- `app/robots.ts`, `app/sitemap.ts` — disallow `/api/` and `/dashboard/`. The `magnets.so` sitemap lists only Magnets-owned pages; customer hostnames receive their own published lead-magnet URLs and must never be aggregated into the platform sitemap.
 - `app/api/account` — PUT settings. Also reconciles Vercel project domains via `syncProjectDomain` (best-effort).
 - `app/api/auth/{login,logout,register}` — session endpoints.
 - `app/api/lead-magnets`, `app/api/lead-magnets/[id]` — CRUD. POST creates a magnet (title + downloadLink both required); PUT/DELETE are gated by per-user rate limits.
