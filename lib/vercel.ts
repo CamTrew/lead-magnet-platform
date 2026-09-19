@@ -201,6 +201,37 @@ export async function getDomainStatus(host: string) {
   return getDomainStatusInternal(host);
 }
 
+/** Reading status does not complete Vercel's TXT challenge; verification needs a POST. */
+export async function verifyDomain(host: string): Promise<VercelDomainStatus | null> {
+  const config = vercelConfig();
+  if (!config || !host || !isValidHost(host)) return null;
+
+  const status = await getDomainStatusInternal(host);
+  if (!status?.configured || status.verified) return status;
+
+  const response = await vercelFetch(
+    withTeam(
+      `${API_BASE}/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(host)}/verify`,
+      config.teamId
+    ),
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.token}` },
+      cache: 'no-store',
+    }
+  );
+  if (!response.ok) {
+    const envelope = await readEnvelope(response);
+    throw new VercelApiError(
+      response.status,
+      envelope?.error?.message || `Vercel responded ${response.status}`,
+      envelope?.error?.code
+    );
+  }
+
+  return getDomainStatusInternal(host);
+}
+
 /**
  * Fetch the per-project DNS recommendation Vercel hands out for `host`.
  * This is the right CNAME target to show the user (e.g. <hash>.vercel-dns-017.com)

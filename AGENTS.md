@@ -264,6 +264,13 @@ The DNS verify route's error path scrubs Resend keys from any error message befo
 
 ### Vercel domain reconciliation
 
+Vercel TXT challenges require an explicit verification request; reading domain
+status does not complete them. The publishing wizard's **Check again** submits
+`POST /api/domain/verify-routing` when a challenge is pending, then refreshes
+status. This account-scoped, rate-limited route holds the domain mutation lock,
+re-reads the account, and calls Vercel's `/domains/:host/verify` only for its
+ownership-verified, attached hostname. Background status polling remains read-only.
+
 `lib/vercel.ts` calls the Vercel Projects-Domains API to keep the project in sync with each user's `subdomain.domain` and apex `domain`. `syncProjectDomain` diffs old → new on every account save and attaches/detaches accordingly. It is **idempotent and best-effort**:
 
 - 409 "already attached to this project" → success.

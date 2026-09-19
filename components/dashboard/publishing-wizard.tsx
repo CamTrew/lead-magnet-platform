@@ -139,8 +139,22 @@ export function PublishingWizard({
     if (checkingRouting) return;
     setCheckingRouting(true);
     setAttachError('');
-    await refresh();
-    setCheckingRouting(false);
+    try {
+      if (status?.platformVerificationRecords.length && !status.liveStatus?.verified) {
+        const response = await fetch('/api/domain/verify-routing', { method: 'POST' });
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        if (response.status === 429) {
+          setAttachError(formatCooldown(response));
+        } else if (!response.ok) {
+          setAttachError(data?.error || 'Could not verify publishing.');
+        }
+      }
+      await refresh();
+    } catch {
+      setAttachError('Could not verify publishing. Try again in a minute.');
+    } finally {
+      setCheckingRouting(false);
+    }
   }
 
   async function attach() {
