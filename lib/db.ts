@@ -87,6 +87,7 @@ export type QueryRunner = {
 
 export async function withTransaction<T>(callback: (client: QueryRunner) => Promise<T>) {
   const client = await retryAfterConnectionTimeout((pool) => pool.connect());
+  let discardClient = false;
 
   try {
     await client.query('begin');
@@ -94,10 +95,12 @@ export async function withTransaction<T>(callback: (client: QueryRunner) => Prom
     await client.query('commit');
     return result;
   } catch (error) {
-    await client.query('rollback').catch(() => undefined);
+    await client.query('rollback').catch(() => { discardClient = true; });
     throw error;
   } finally {
-    client.release();
+    // A failed rollback must not return an open transaction (and its locks)
+    // to the pool for the next request.
+    client.release(discardClient);
   }
 }
 
@@ -105,26 +108,17 @@ export async function withAdvisoryLock<T>(
   key: string,
   callback: (client: QueryRunner) => Promise<T>
 ) {
-  const client = await retryAfterConnectionTimeout((pool) => pool.connect());
-  let acquired = false;
-
-  try {
+  // Neon transaction pooling can change PostgreSQL sessions between queries.
+  // Pin the backend with a transaction and release the lock on commit/rollback.
+  return withTransaction(async (client) => {
     const result = await client.query<{ locked: boolean }>(
-      'select pg_try_advisory_lock(hashtextextended($1::text, 0)) as locked',
+      'select pg_try_advisory_xact_lock(hashtextextended($1::text, 0)) as locked',
       [key]
     );
-    acquired = Boolean(result.rows[0]?.locked);
-    if (!acquired) return { acquired: false as const, value: null };
+    if (!result.rows[0]?.locked) return { acquired: false as const, value: null };
 
     return { acquired: true as const, value: await callback(client) };
-  } finally {
-    if (acquired) {
-      await client
-        .query('select pg_advisory_unlock(hashtextextended($1::text, 0))', [key])
-        .catch(() => undefined);
-    }
-    client.release();
-  }
+  });
 }
 
 export function db() {

@@ -62,6 +62,11 @@ import {
 } from '@/lib/email-body-images';
 import { blobUploadErrorMessage } from '@/lib/blob-upload-error';
 import {
+  leadMagnetSaveRetryDelay,
+  requestLeadMagnetSave,
+  RetryableLeadMagnetSaveError,
+} from '@/lib/lead-magnet-save';
+import {
   emailTextForPreviousBlockMerge,
   normaliseEmailLinkUrl,
   parseYouTubeVideoUrl,
@@ -101,7 +106,7 @@ import type {
 // DOM/editor-only structures out of persistence so old emails remain readable.
 // Preview deliberately uses the production renderer, and history must include
 // uploads, deletes, grouping, captions, and copilot-applied edits.
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState = 'idle' | 'saving' | 'retrying' | 'saved' | 'error';
 type SaveSource = 'autosave' | 'manual';
 type Mode = 'page' | 'email' | 'sequence' | 'after';
 type PreviewCss = CSSProperties & Record<`--${string}`, string>;
@@ -449,6 +454,7 @@ export function PageEditorClient({
   const [leadMagnet, setLeadMagnet] = useState(initialLeadMagnet);
   const [mode, setMode] = useState<Mode>('page');
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveRetryDelay, setSaveRetryDelay] = useState(2000);
   const [error, setError] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingEmailImage, setIsUploadingEmailImage] = useState(false);
@@ -469,6 +475,7 @@ export function PageEditorClient({
   const lastSavedRef = useRef(initialLeadMagnet);
   const editRevisionRef = useRef(0);
   const saveInFlightRef = useRef(false);
+  const saveRetryAttemptRef = useRef(0);
   const [lastSaveSource, setLastSaveSource] = useState<SaveSource>('manual');
   const pageEditorHistoryRef = useRef({
     entries: [cloneLeadMagnetHistorySnapshot(leadMagnetHistorySnapshot(initialLeadMagnet))],
@@ -485,7 +492,9 @@ export function PageEditorClient({
     editRevisionRef.current += 1;
     dirtyRef.current = true;
     setError('');
-    if (!saveInFlightRef.current) setSaveState('idle');
+    if (!saveInFlightRef.current) {
+      setSaveState((current) => current === 'retrying' ? 'retrying' : 'idle');
+    }
   }, []);
 
   const updatePageEditorHistoryAvailability = useCallback(() => {
@@ -639,15 +648,12 @@ export function PageEditorClient({
 
     // Merge any caller overrides into the payload AND into local state. The
     // publish toggle uses this to flip `published` and persist it in the
-    // same request — without it the toggle just patched state and waited
-    // for a separate Save click, which read as "publish doesn't do anything".
+    // same request, so publishing does not wait for the autosave debounce.
     const payload = { ...leadMagnet, ...overrides };
     const delayError = validateFollowUpDelays(payload);
     if (delayError) {
-      if (source !== 'autosave') {
-        setError(delayError);
-        setSaveState('error');
-      }
+      setError(delayError);
+      setSaveState('error');
       return false;
     }
 
@@ -661,10 +667,9 @@ export function PageEditorClient({
     }
 
     try {
-      const response = await fetch(`/api/lead-magnets/${leadMagnet.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { response, data } = await requestLeadMagnetSave(
+        leadMagnet.id,
+        JSON.stringify({
           slug: payload.slug,
           title: payload.title,
           subtitle: payload.subtitle,
@@ -701,15 +706,14 @@ export function PageEditorClient({
           abTestCompletedAt: payload.abTestCompletedAt,
           abTestWinnerId: payload.abTestWinnerId,
           published: payload.published,
-        }),
-      });
+        })
+      );
 
       if (!response.ok) {
         if (response.status === 413) {
           throw new Error('The image is still embedded in this save request. Re-upload it so it goes straight to storage, then save again.');
         }
 
-        const data = (await response.json().catch(() => null)) as { error?: string } | null;
         // If the publish-time validation tripped, revert the toggle locally
         // so the user can see what's wrong without the page bouncing back
         // and forth.
@@ -719,17 +723,21 @@ export function PageEditorClient({
         throw new Error(data?.error || 'Page could not be saved');
       }
 
-      const data = (await response.json()) as { leadMagnet: LeadMagnet };
-      lastSavedRef.current = data.leadMagnet;
+      // The request helper treats an incomplete success response as retryable.
+      const savedLeadMagnet = data!.leadMagnet!;
+      lastSavedRef.current = savedLeadMagnet;
       if (syncFollowUp) {
         lastSyncedFollowUpRevisionRef.current = followUpRevisionAtStart;
       }
       setLastSaveSource(source);
+      setError('');
+      saveRetryAttemptRef.current = 0;
+      setSaveRetryDelay(2000);
 
       // Never replace characters entered while this request was in flight.
       // A following autosave will persist that newer revision.
       if (editRevisionRef.current === revisionAtStart) {
-        setLeadMagnet(data.leadMagnet);
+        setLeadMagnet(savedLeadMagnet);
         dirtyRef.current = false;
         setSaveState('saved');
       } else {
@@ -738,6 +746,13 @@ export function PageEditorClient({
       }
       return true;
     } catch (err) {
+      if (err instanceof RetryableLeadMagnetSaveError) {
+        dirtyRef.current = true;
+        setSaveRetryDelay(leadMagnetSaveRetryDelay(saveRetryAttemptRef.current++, err.retryAfterMs));
+        setError('');
+        setSaveState('retrying');
+        return false;
+      }
       const message = err instanceof Error ? err.message : 'Something went wrong';
       setError(source === 'autosave' ? `Autosave failed: ${message}` : message);
       setSaveState('error');
@@ -758,10 +773,18 @@ export function PageEditorClient({
 
     const timer = window.setTimeout(() => {
       void saveLeadMagnet({}, 'autosave');
-    }, 2000);
+    }, saveState === 'retrying' ? saveRetryDelay : 2000);
 
     return () => window.clearTimeout(timer);
-  }, [isUploadingEmailImage, isUploadingImage, leadMagnet, saveLeadMagnet, saveState]);
+  }, [isUploadingEmailImage, isUploadingImage, leadMagnet, saveLeadMagnet, saveRetryDelay, saveState]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      if (saveState === 'retrying' && dirtyRef.current) void saveLeadMagnet({}, 'autosave');
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [saveLeadMagnet, saveState]);
 
   async function performDelete() {
     if (isDeleting) return;
@@ -1033,18 +1056,18 @@ export function PageEditorClient({
                 </div>
               </div>
 
-              <div className="flex w-full flex-nowrap items-center justify-end gap-1.5 sm:w-auto">
+              <div className="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto">
               {saveState !== 'error' && (
                 <span
                   className={cn(
                     'inline-flex h-9 shrink-0 items-center gap-1.5 px-1 text-xs font-medium',
-                    saveState === 'saving' || isUploadingImage || isUploadingEmailImage
+                    saveState === 'saving' || saveState === 'retrying' || isUploadingImage || isUploadingEmailImage
                       ? 'text-ink-500'
                       : 'text-ink-400'
                   )}
                   role="status"
                 >
-                  {saveState === 'saving' || isUploadingImage || isUploadingEmailImage
+                  {saveState === 'saving' || saveState === 'retrying' || isUploadingImage || isUploadingEmailImage
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     : <Check className="h-3.5 w-3.5" />}
                   {isUploadingImage
@@ -1055,6 +1078,8 @@ export function PageEditorClient({
                       ? 'Uploading image…'
                       : saveState === 'saving'
                         ? 'Saving changes…'
+                        : saveState === 'retrying'
+                          ? 'Retrying save…'
                         : saveState === 'saved'
                           ? lastSaveSource === 'autosave'
                             ? 'Autosaved'

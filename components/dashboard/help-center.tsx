@@ -338,6 +338,7 @@ function EditorGuide({ onClose }: { onClose: () => void }) {
       <p className="mt-5 text-sm leading-6 text-ink-600">
         Each lead magnet has one editor for the page people visit, the email that delivers the resource,
         any follow-up emails, and what happens after signup. Changes save automatically while you work.
+        Temporary connection or save conflicts retry automatically; the toolbar confirms when your changes are saved.
       </p>
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
         {[

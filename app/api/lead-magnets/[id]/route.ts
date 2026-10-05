@@ -604,8 +604,8 @@ export async function PUT(
     }
     if (err instanceof LeadMagnetMutationInProgressError) {
       return NextResponse.json(
-        { error: 'This page is already being saved. Wait a moment and try again.' },
-        { status: 409 }
+        { error: 'This page is already being saved. Wait a moment and try again.', code: 'save_in_progress' },
+        { status: 409, headers: { 'Retry-After': '2' } }
       );
     }
     if (isUniqueViolation(err)) {

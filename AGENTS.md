@@ -19,6 +19,7 @@ pnpm db:check       # drizzle-kit check — validate snapshots vs migrations
 pnpm db:studio      # drizzle-kit studio
 
 pnpm test:email-compatibility   # legacy + current email renderer contract
+pnpm test:editor-save           # save conflict retries + Neon pooled mutation locks
 pnpm smoke:follow-up            # follow-up/integration regression suite
 pnpm test:hosted-resources      # private upload and public-token contract
 pnpm test:lead-magnet-copilot   # prompt, memory, and patch contract
@@ -88,7 +89,9 @@ The email editor is block-oriented in `components/dashboard/page-editor-client.t
 - Pasted images must upload first and store a durable app/Vercel URL. `blob:` and `data:` preview URLs must never be persisted into a sendable body.
 - Desktop images intentionally cap their rendered width; mobile remains fluid. Side-by-side image rows must collapse safely on narrow clients.
 - The editor has explicit undo/redo history. Deleting, grouping, ungrouping, pasting, and uploading blocks must enter that history.
-- Autosave is debounced, but manual save remains. Do not allow an older response to overwrite a newer local edit.
+- Autosave is debounced and must recover automatically without a Save button. Do not allow an older response to overwrite a newer local edit.
+- Save-lock conflicts (`save_in_progress`), network timeouts, rate limits, and server failures keep the draft dirty and retry the latest revision with capped backoff, including after connectivity returns. Permanent client errors (such as validation, authentication, or duplicate paths) pause retries until corrected. Never claim changes are saved before a confirmed successful response.
+- Database mutation locks use transaction-scoped advisory locks inside an explicit transaction. Never use session-scoped advisory locks with Neon's transaction pooler; commit/rollback must release them, and a failed rollback must discard the connection.
 - Increment `FOLLOW_UP_RENDER_VERSION` whenever stored Resend automation templates need regeneration because output HTML changed.
 
 Run both `pnpm test:email-compatibility` and `pnpm smoke:follow-up` after touching parsing, serialization, previews, delivery rendering, footer markup, images, or follow-up templates.
