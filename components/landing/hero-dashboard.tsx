@@ -42,7 +42,10 @@ export function HeroDashboard() {
               Magnets platform walkthrough
             </span>
           </div>
-          <WalkthroughVideo className="mt-2 border border-ink-100" />
+          <WalkthroughVideo
+            className="mt-2 border border-ink-100"
+            embedUrl="https://www.youtube-nocookie.com/embed/kXvswxdr_BM?rel=0"
+          />
         </div>
       </motion.div>
     </div>

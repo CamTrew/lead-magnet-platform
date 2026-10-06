@@ -10,7 +10,13 @@ import {
 } from '@/lib/walkthrough';
 import { cn } from '@/lib/utils';
 
-export function WalkthroughVideo({ className }: { className?: string }) {
+export function WalkthroughVideo({
+  className,
+  embedUrl = PLATFORM_WALKTHROUGH_EMBED_URL,
+}: {
+  className?: string;
+  embedUrl?: string;
+}) {
   return (
     <div
       className={cn(
@@ -23,7 +29,7 @@ export function WalkthroughVideo({ className }: { className?: string }) {
         allowFullScreen
         className="absolute inset-0 h-full w-full border-0"
         loading="lazy"
-        src={PLATFORM_WALKTHROUGH_EMBED_URL}
+        src={embedUrl}
         title="Magnets platform walkthrough"
       />
     </div>
