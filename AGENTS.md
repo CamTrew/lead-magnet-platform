@@ -107,6 +107,7 @@ Run both `pnpm test:email-compatibility` and `pnpm smoke:follow-up` after touchi
 - Follow-up Automations persist their sender at creation time. Account sender changes and successful Resend verification reconcile enabled Automations so follow-ups and delivery use the same resolved sender; existing recipients remain on their original Automation.
 - Booking webhooks stop only eligible active runs and are idempotent.
 - “Start sequence” in the signups UI is a recovery/manual action for a stored signup with no active sequence, not the normal signup path.
+- The production post-build renderer upgrade reports per-account failures without failing the deployment. Failed accounts retain their stored render version for retry; explicit maintenance runs still exit unsuccessfully on failure.
 
 ### Hosted resources
 

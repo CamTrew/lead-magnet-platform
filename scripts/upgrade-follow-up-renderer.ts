@@ -98,7 +98,10 @@ async function main() {
     report,
   }, null, 2));
 
-  if (failed > 0) process.exitCode = 1;
+  // A customer's invalid sender must not block releases for every account.
+  // Failed targets keep their stored version and remain eligible for repair;
+  // explicit maintenance runs still fail so operators can act on the report.
+  if (failed > 0 && !applyInProduction) process.exitCode = 1;
 }
 
 void main();
