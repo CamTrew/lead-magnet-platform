@@ -1,3 +1,4 @@
+import { cleanEmailHeaderText } from './email-header-text';
 import {
   normaliseEmailImageBorder,
   parseEmailImageLine,
@@ -36,7 +37,7 @@ export function cleanEmailText(value: string) {
 }
 
 export function cleanPreviewText(value: string) {
-  return value.replace(/\s+/g, ' ').trim();
+  return cleanEmailHeaderText(value);
 }
 
 export function renderEmailTextFallback(text: string) {

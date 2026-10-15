@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { cleanEmailHeaderText } from '../lib/email-header-text';
 import {
   DEFAULT_EMAIL_IMAGE_BORDER,
   emailImageWithBorder,
@@ -33,6 +34,17 @@ import { FOLLOW_UP_RENDER_VERSION } from '../lib/follow-up-sequences';
 
 const accountId = '11111111-1111-4111-8111-111111111111';
 const leadMagnetId = '22222222-2222-4222-8222-222222222222';
+
+for (const [pasted, expected] of [
+  ['Your Cold Email Offer Skill\n', 'Your Cold Email Offer Skill'],
+  ['  Hello\r\nworld\rfrom\nMagnets\t ', 'Hello world from Magnets'],
+  ['Hello\u2028world\u2029again\u00a0{name}', 'Hello world again {name}'],
+  ['\r\n\t ', ''],
+  ['Your guide — ready 🚀', 'Your guide — ready 🚀'],
+]) {
+  assert.equal(cleanEmailHeaderText(pasted), expected);
+  assert.equal(cleanPreviewText(pasted), expected);
+}
 
 assert.equal(
   parseYouTubeVideoUrl('https://youtu.be/dQw4w9WgXcQ?t=10')?.url,

@@ -334,8 +334,8 @@ const magnet: LeadMagnet = {
       id: 'email_1',
       delayMinutes: 0,
       delayHours: 0,
-      subject: 'First follow-up for {name}',
-      preview: 'First preview',
+      subject: '\r\n First follow-up\r\nfor {name}\u2028 ',
+      preview: ' First\r\npreview\t ',
       body: formattingMatrixBody,
       resendTemplateId: '',
     },
@@ -426,7 +426,11 @@ async function run() {
   resetRequests();
   const platformEmail = await sendLeadMagnetEmail({
     account: platformManagedAccount,
-    magnet,
+    magnet: {
+      ...magnet,
+      emailSubject: 'Your Cold Email\r\nOffer Skill\n',
+      emailPreview: ' Your\r\nguide\u2028is ready.\t ',
+    },
     to: 'new-user@example.com',
     name: 'New User',
   });
@@ -435,6 +439,8 @@ async function run() {
   assert.equal(platformEmailRequest?.authorization, 'Bearer re_platform_smoke');
   assert.equal(platformEmailRequest?.body?.from, 'Magnets <hello@mail.magnets.so>');
   assert.equal(platformEmailRequest?.body?.to, 'new-user@example.com');
+  assert.equal(platformEmailRequest?.body?.subject, 'Your Cold Email Offer Skill');
+  assert.match(String(platformEmailRequest?.body?.html), />Your guide is ready\.</);
 
   const accountKeyWithoutVerifiedSender = {
     ...platformManagedAccount,
@@ -608,6 +614,8 @@ async function run() {
   const synced = await syncLeadMagnetFollowUpAutomation(account, magnet);
 
   assert.equal(synced.automationId, 'auto_1');
+  assert.equal(synced.emails[0].subject, 'First follow-up for {name}');
+  assert.equal(synced.emails[0].preview, 'First preview');
   assert.deepEqual(
     synced.emails.map((email) => email.resendTemplateId),
     ['tmpl_1', 'tmpl_2']

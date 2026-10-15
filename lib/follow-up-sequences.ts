@@ -19,6 +19,7 @@ import {
   scrubResendErrorMessage,
 } from './resend';
 import { followUpStopUrl } from './follow-up-opt-out';
+import { cleanEmailHeaderText } from './email-header-text';
 import { resolveResendApiKey, resolveResendFromEmail } from './platform-resend';
 import type { AccountSettings, FollowUpEmail, LeadMagnet } from './types';
 
@@ -131,7 +132,7 @@ function normaliseFollowUpEmails(emails: FollowUpEmail[]) {
       id: email.id || `email-${index + 1}`,
       delayMinutes,
       delayHours: Math.round(delayMinutes / 60),
-      subject: email.subject.trim(),
+      subject: cleanEmailHeaderText(email.subject),
       preview: cleanPreviewText(email.preview),
       body: cleanEmailText(email.body),
       resendTemplateId: email.resendTemplateId || '',

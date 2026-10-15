@@ -86,6 +86,7 @@ The email editor is block-oriented in `components/dashboard/page-editor-client.t
 - `lib/email-body-images.ts` owns image-line and image-row parsing/serialization, insertion at the current selection, side-by-side grouping/ungrouping, captions, borders, and legacy image syntax.
 - `lib/email-body-links.ts` owns inline formatting plus structural tokens such as headings, quotes, sections, columns, content breaks, table of contents, footnotes, and YouTube cards.
 - `lib/email-render.ts` is the canonical HTML + text rendering layer. HTML must be conservative email-safe markup: tables, inline styles, explicit widths, no iframe/script assumptions.
+- `lib/email-header-text.ts` collapses whitespace in delivery/follow-up subjects and inbox preview text. Normalize on save and again before sending so legacy drafts with pasted line breaks cannot trigger Resend subject-validation errors. Preserve body line breaks.
 - Pasted images must upload first and store a durable app/Vercel URL. `blob:` and `data:` preview URLs must never be persisted into a sendable body.
 - Desktop images intentionally cap their rendered width; mobile remains fluid. Side-by-side image rows must collapse safely on narrow clients.
 - The editor has explicit undo/redo history. Deleting, grouping, ungrouping, pasting, and uploading blocks must enter that history.

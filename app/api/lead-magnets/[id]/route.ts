@@ -22,6 +22,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
+import { cleanEmailHeaderText } from '@/lib/email-header-text';
 import { proxyEmailImagesInBody } from '@/lib/email-image-proxy';
 import { invalidatePublishedLeadMagnetCache } from '@/lib/public-lead-magnet-cache';
 import { validateQuizConfiguration } from '@/lib/lead-magnet-validation';
@@ -192,8 +193,8 @@ const followUpEmailSchema = z.object({
   id: z.string().trim().min(1).max(80),
   delayHours: delayHoursSchema.optional(),
   delayMinutes: delayMinutesSchema.optional(),
-  subject: z.string().trim().max(180),
-  preview: z.string().max(240),
+  subject: z.string().transform(cleanEmailHeaderText).pipe(z.string().max(180)),
+  preview: z.string().transform(cleanEmailHeaderText).pipe(z.string().max(240)),
   body: z.string().max(10000),
   resendTemplateId: z.string().max(200),
 }).strict().transform((email) => {
@@ -226,9 +227,9 @@ const schema = z.object({
   formSubtext: z.string().max(240),
   imageUrl: imageSchema,
   downloadLink: downloadLinkSchema,
-  emailSubject: z.string().max(180),
+  emailSubject: z.string().transform(cleanEmailHeaderText).pipe(z.string().max(180)),
   emailBody: z.string().max(10000),
-  emailPreview: z.string().max(240),
+  emailPreview: z.string().transform(cleanEmailHeaderText).pipe(z.string().max(240)),
   followUpEnabled: z.boolean(),
   followUpStopOnBooking: z.boolean(),
   followUpEmails: z.array(followUpEmailSchema).max(10),

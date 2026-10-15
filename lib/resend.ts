@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { cleanEmailHeaderText } from './email-header-text';
 import { log } from './logger';
 import {
   cleanEmailText,
@@ -177,7 +178,7 @@ export async function sendLeadMagnetEmail({
     result = await resend.emails.send({
       from,
       to,
-      subject: magnet.emailSubject,
+      subject: cleanEmailHeaderText(magnet.emailSubject),
       text,
       html: renderDeliveryEmailHtml(body, previewText),
     });

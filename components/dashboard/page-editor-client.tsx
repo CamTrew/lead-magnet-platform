@@ -43,6 +43,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { cleanEmailHeaderText } from '@/lib/email-header-text';
 import { brandHighlightOpacity } from '@/lib/brand-highlight';
 import { safeLegalUrl } from '@/lib/legal-links';
 import {
@@ -4196,16 +4197,16 @@ function EmailPreviewDialog({
       id: 'delivery',
       kind: 'delivery' as const,
       label: 'Email 1',
-      previewText: leadMagnet.emailPreview,
-      subject: leadMagnet.emailSubject,
+      previewText: cleanEmailHeaderText(leadMagnet.emailPreview),
+      subject: cleanEmailHeaderText(leadMagnet.emailSubject),
     },
     ...leadMagnet.followUpEmails.map((email, index) => ({
       body: email.body,
       id: email.id,
       kind: 'follow-up' as const,
       label: `Email ${followUpEmailNumber(index)}`,
-      previewText: email.preview,
-      subject: email.subject,
+      previewText: cleanEmailHeaderText(email.preview),
+      subject: cleanEmailHeaderText(email.subject),
     })),
   ], [leadMagnet]);
   const [activeMessageId, setActiveMessageId] = useState(initialMessageId);
@@ -4379,6 +4380,7 @@ function EmailCanvas({
                   emptyPlaceholder="What people see in the inbox"
                   maxLength={140}
                   onChange={(value) => onPatch({ emailSubject: value })}
+                  onCommit={(value) => onPatch({ emailSubject: cleanEmailHeaderText(value) })}
                   value={leadMagnet.emailSubject}
                 />
               </label>
@@ -4391,6 +4393,7 @@ function EmailCanvas({
                   emptyPlaceholder="A short teaser shown after the subject"
                   maxLength={160}
                   onChange={(value) => onPatch({ emailPreview: value })}
+                  onCommit={(value) => onPatch({ emailPreview: cleanEmailHeaderText(value) })}
                   value={leadMagnet.emailPreview}
                 />
               </label>

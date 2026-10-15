@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { query, type QueryRunner, withAdvisoryLock, withTransaction } from './db';
 import { normaliseBrandHighlightIntensity } from './brand-highlight';
 import { senderMatchesAccountDomain } from './dns-records';
+import { cleanEmailHeaderText } from './email-header-text';
 import { platformUsernameStem } from './platform-username';
 import { hasPlatformResendApiKey } from './platform-resend';
 import { resolveQuizProgress } from './quiz-routing';
@@ -2093,9 +2094,9 @@ export async function createLeadMagnet(
     ctaText: generatedDraft.ctaText.trim(),
     formHeading: generatedDraft.formHeading.trim(),
     formSubtext: generatedDraft.formSubtext.trim(),
-    emailSubject: generatedDraft.emailSubject.trim(),
+    emailSubject: cleanEmailHeaderText(generatedDraft.emailSubject),
     emailBody: generatedDraft.emailBody.trim(),
-    emailPreview: generatedDraft.emailPreview.trim(),
+    emailPreview: cleanEmailHeaderText(generatedDraft.emailPreview),
   };
 
   return withTransaction(async (client) => {
@@ -2347,12 +2348,16 @@ async function updateLeadMagnetWithRunner(
       updates.formSubtext,
       updates.imageUrl,
       updates.downloadLink,
-      updates.emailSubject,
+      updates.emailSubject === undefined ? undefined : cleanEmailHeaderText(updates.emailSubject),
       updates.emailBody,
-      updates.emailPreview,
+      updates.emailPreview === undefined ? undefined : cleanEmailHeaderText(updates.emailPreview),
       updates.followUpEnabled,
       updates.followUpStopOnBooking,
-      JSON.stringify(updates.followUpEmails || []),
+      JSON.stringify((updates.followUpEmails || []).map((email) => ({
+        ...email,
+        subject: cleanEmailHeaderText(email.subject),
+        preview: cleanEmailHeaderText(email.preview),
+      }))),
       updates.resendFollowUpAutomationId,
       updates.postSignupMode,
       updates.postSignupRedirectUrl,
