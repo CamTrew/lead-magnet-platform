@@ -1309,7 +1309,13 @@ export function PageEditorClient({
  * Keep this preview visually in sync with the public renderer in
  * components/lead-magnet-page-view.tsx.
  */
-function PageCanvas({
+type CanvasAccount = Pick<DashboardBasePayload['account'], 'brand' | 'logoText' | 'logoUrl'>;
+export type CanvasMagnet = Pick<LeadMagnet,
+  'title' | 'subtitle' | 'description' | 'bullets' | 'bulletsHeading' |
+  'ctaText' | 'formHeading' | 'formSubtext' | 'signupFields' | 'imageUrl'
+>;
+
+export function PageCanvas({
   account,
   accountHasLogo,
   accountLogoFallback,
@@ -1320,12 +1326,12 @@ function PageCanvas({
   onPatch,
   onPickImage,
 }: {
-  account: DashboardBasePayload['account'];
+  account: CanvasAccount;
   accountHasLogo: boolean;
   accountLogoFallback: string;
   brandIntensity: number;
   brandPrimary: string;
-  leadMagnet: LeadMagnet;
+  leadMagnet: CanvasMagnet;
   imagePreviewUrl?: string;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   onPickImage: () => void;
@@ -1545,7 +1551,7 @@ function BrandPreviewLockup({
   accountHasLogo,
   fallback,
 }: {
-  account: DashboardBasePayload['account'];
+  account: CanvasAccount;
   accountHasLogo: boolean;
   fallback: string;
 }) {
