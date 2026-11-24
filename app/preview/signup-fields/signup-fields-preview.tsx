@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, Check, Globe, List, Mail, Pencil, Plus, Trash2, Type, UserRound } from 'lucide-react';
 import { MagnetsLogo } from '@/components/magnets-logo-mark';
@@ -46,7 +47,7 @@ export function SignupFieldsPreview() {
   }
 
   return <div className={styles.shell}>
-    <header className={styles.nav}><MagnetsLogo className="h-7 w-28" variant="dark" /><a href="/">View landing page <ArrowRight size={15} /></a></header>
+    <header className={styles.nav}><MagnetsLogo className="h-7 w-28" variant="dark" /><Link href="/">View landing page <ArrowRight size={15} /></Link></header>
     <main className={styles.main}>
       <h1>Signup form</h1><p className={styles.intro}>Choose what people share to get your lead magnet.</p>
       <div className={styles.grid}>
