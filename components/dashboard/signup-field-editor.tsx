@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import { Globe, List, Pencil, Plus, Trash2, Type } from 'lucide-react';
-import { signupFieldsSchema, type SignupField as Field } from '@/lib/signup-fields';
+import { useRef, useState, type FormEvent } from 'react';
+import { Globe, List, Pencil, Plus, Trash2, Type, X } from 'lucide-react';
+import { MAX_DROPDOWN_OPTIONS, signupFieldsSchema, type SignupField as Field } from '@/lib/signup-fields';
 import { StyledSelect } from '@/components/ui/styled-select';
 import styles from './signup-field-editor.module.css';
 
@@ -19,6 +19,7 @@ function editorDefault(): Field {
 export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange: (next: Field[]) => void}) {
   const [draft, setDraft] = useState<Field | null>(null);
   const [error, setError] = useState('');
+  const focusOption = useRef<number | null>(null);
   const editing = fields.some(field => field.id === draft?.id);
 
   function open(field: Field) {
@@ -45,8 +46,53 @@ export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange
             })}
           {draft ? <form className={styles.editor} onSubmit={save} key={draft.id}>
             <label>Field name<input autoFocus required maxLength={100} placeholder="e.g. Job title" value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} /></label>
-            <div><span className={styles.label}>Answer type</span><StyledSelect ariaLabel="Answer type" value={draft.format} options={[...formats]} onChange={value => setDraft({ ...draft, format: value as Field['format'] })} /></div>
-            {draft.format === 'choice' && <label>Options, one per line<textarea rows={3} value={draft.choices.join('\n')} onChange={e => setDraft({ ...draft, choices: e.target.value.split('\n') })} /></label>}
+            <div><span className={styles.label}>Answer type</span><StyledSelect ariaLabel="Answer type" value={draft.format} options={[...formats]} onChange={value => setDraft({
+              ...draft,
+              format: value as Field['format'],
+              choices: value === 'choice' && draft.choices.length === 0 ? ['', ''] : draft.choices,
+            })} /></div>
+            {draft.format === 'choice' && (
+              <fieldset className={styles.options}>
+                <legend className={styles.label}>Options</legend>
+                {draft.choices.map((choice, index) => (
+                  <div key={index} className={styles.option}>
+                    <input
+                      aria-label={`Option ${index + 1}`}
+                      placeholder={`Option ${index + 1}`}
+                      maxLength={100}
+                      value={choice}
+                      ref={input => {
+                        if (input && focusOption.current === index) {
+                          focusOption.current = null;
+                          input.focus();
+                        }
+                      }}
+                      onChange={event => {
+                        const choices = [...draft.choices];
+                        choices[index] = event.target.value;
+                        setDraft({ ...draft, choices });
+                      }}
+                    />
+                    {draft.choices.length > 2 && (
+                      <button
+                        type="button"
+                        aria-label={`Remove option ${index + 1}`}
+                        onClick={() => setDraft({ ...draft, choices: draft.choices.filter((_, i) => i !== index) })}
+                      ><X size={16} /></button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  className={styles.add}
+                  type="button"
+                  disabled={draft.choices.length >= MAX_DROPDOWN_OPTIONS}
+                  onClick={() => {
+                    focusOption.current = draft.choices.length;
+                    setDraft({ ...draft, choices: [...draft.choices, ''] });
+                  }}
+                ><Plus size={16} /> Add option</button>
+              </fieldset>
+            )}
             <label className={styles.check}><input type="checkbox" checked={draft.required} onChange={e => setDraft({ ...draft, required: e.target.checked })} /> Require an answer</label>
             {error && <p role="alert">{error}</p>}
             <div className={styles.actions}><button className={styles.dark} type="submit">{editing ? 'Save changes' : 'Add field'}</button><button type="button" onClick={() => setDraft(null)}>Cancel</button>

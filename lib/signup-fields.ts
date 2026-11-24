@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
+export const MAX_DROPDOWN_OPTIONS = 30;
+
 const fieldId = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/i);
 export const signupFieldsSchema = z.array(z.object({
   id: fieldId.describe('Stable identifier, e.g. business-website. Preserve it when editing.'),
   label: z.string().trim().min(1).max(100),
   format: z.enum(['text', 'url', 'choice']),
   required: z.boolean(),
-  choices: z.array(z.string().trim().min(1).max(100)).max(30).default([]),
+  choices: z.array(z.string().trim().min(1).max(100)).max(MAX_DROPDOWN_OPTIONS).default([]),
 }).strict()).max(12).superRefine((fields, ctx) => {
   const labels = new Set(['name', 'email']);
   const ids = new Set<string>();

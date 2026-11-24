@@ -8,9 +8,15 @@
 .add { justify-self:start; border-style:dashed; font-size:.875rem; min-height:40px; }
 .editor { display:grid; gap:12px; padding:16px; border:1px solid #aaa7; border-radius:12px; }
 .editor label,.label { display:block; font-size:.875rem; font-weight:550; }
-.editor input:not([type=checkbox]),.editor textarea { display:block; margin-top:5px; padding:9px 11px; width:100%; border:1px solid #999; border-radius:7px; color:#171717; background:white; font-size:16px; }
+.editor input:not([type=checkbox]) { display:block; margin-top:5px; padding:9px 11px; width:100%; border:1px solid #999; border-radius:7px; color:#171717; background:white; font-size:16px; }
 .label { margin-bottom:5px; }
 .editor .check { display:flex; min-height:32px; }
 .actions button { padding:6px 10px; min-height:40px; border-radius:6px; }
 .dark { background:#191919; color:white; }
 .remove { margin-left:auto; }
+.options { display:grid; min-width:0; gap:8px; }
+.option { display:flex; align-items:center; min-width:0; gap:4px; }
+.editor .option input { min-width:0; margin:0; }
+.option button { display:grid; place-items:center; width:40px; min-height:44px; flex-shrink:0; border-radius:6px; }
+.option button:hover,.option button:focus-visible { background:color-mix(in srgb, currentColor 8%, transparent); }
+.add:disabled { opacity:.5; }
