@@ -26,11 +26,12 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') redirect('/preview/signup-fields');
   const cookieStore = await cookies();
-  if (process.env.MAGNETS_STAGING_PREVIEW !== '1' && cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
+  if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
     redirect('/dashboard/pages');
   }
 
   const params = await searchParams;
-  return <AuthCard stagingPreview={process.env.MAGNETS_STAGING_PREVIEW === '1'} mode="login" nextPath={safeNextPath(params.next)} />;
+  return <AuthCard mode="login" nextPath={safeNextPath(params.next)} />;
 }

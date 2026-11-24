@@ -31,7 +31,7 @@ const examples = [
   },
 ];
 
-export function CreationLanding() {
+export function CreationLanding({ designPreview = false }: { designPreview?: boolean }) {
   const router = useRouter();
   const [navigating, startNavigation] = useTransition();
   const [brief, setBrief] = useState("");
@@ -97,8 +97,8 @@ export function CreationLanding() {
           <MagnetsLogo variant="light" />
         </Link>
         <nav aria-label="Main navigation" className={styles.nav}>
-          <Link href="/login" prefetch>
-            Sign in <ArrowRight size={15} />
+          <Link href={designPreview ? "/preview/signup-fields" : "/login"} prefetch>
+            {designPreview ? "Try the signup form" : "Sign in"} <ArrowRight size={15} />
           </Link>
         </nav>
       </header>

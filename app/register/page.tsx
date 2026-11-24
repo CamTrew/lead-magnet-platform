@@ -24,10 +24,11 @@ export const metadata: Metadata = {
 };
 
 export default async function RegisterPage() {
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') redirect('/preview/signup-fields');
   const cookieStore = await cookies();
-  if (process.env.MAGNETS_STAGING_PREVIEW !== '1' && cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
+  if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
     redirect('/dashboard/pages');
   }
 
-  return <AuthCard stagingPreview={process.env.MAGNETS_STAGING_PREVIEW === '1'} mode="register" />;
+  return <AuthCard mode="register" />;
 }

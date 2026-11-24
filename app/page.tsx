@@ -66,5 +66,5 @@ const structuredData = {
   ],
 };
 export default function HomePage() {
-  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(structuredData) }} /><CreationLanding /></>;
+  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(structuredData) }} /><CreationLanding designPreview={process.env.MAGNETS_STAGING_PREVIEW === '1'} /></>;
 }

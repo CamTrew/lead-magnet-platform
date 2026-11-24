@@ -769,3 +769,4 @@ select Magnets through ChatGPT's + menu before sending. No automatic consent
 or automatic message submission is claimed.
 
 The isolated design preview at `/preview/signup-fields` lets reviewers edit arbitrary signup questions and try the visitor form in memory. It requires visual staging mode and never calls the public submission endpoint.
+On this feature branch, the design-preview home link and auth routes open the signup-fields demo directly, before any session lookup.
