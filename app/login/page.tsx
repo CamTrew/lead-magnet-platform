@@ -27,10 +27,10 @@ export default async function LoginPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const cookieStore = await cookies();
-  if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
+  if (process.env.MAGNETS_STAGING_PREVIEW !== '1' && cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
     redirect('/dashboard/pages');
   }
 
   const params = await searchParams;
-  return <AuthCard mode="login" nextPath={safeNextPath(params.next)} />;
+  return <AuthCard stagingPreview={process.env.MAGNETS_STAGING_PREVIEW === '1'} mode="login" nextPath={safeNextPath(params.next)} />;
 }

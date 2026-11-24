@@ -83,7 +83,9 @@ function auditBody(
   if (kind === 'follow-up') {
     assert.match(html, /Stop this sequence/, `${label}: missing follow-up opt-out`);
   }
-  assert.doesNotMatch(html, /(?:javascript|data):/i, `${label}: unsafe protocol reached rendered HTML`);
+  // Ordinary copy such as "test data:" is not a URL. Inspect URL attributes,
+  // and do not include the customer's complete rendered email in failures.
+  assert.ok(!/(?:href|src)\s*=\s*["']\s*(?:javascript|data):/i.test(html), `${label}: unsafe protocol reached rendered HTML`);
   assert.equal(
     Array.from(html.matchAll(/<img\s/g)).length,
     expectedImages + expectedYouTubeVideos + 1,

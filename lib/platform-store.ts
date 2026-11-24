@@ -1,9 +1,14 @@
+import { withoutLegacyLaunchPost } from "./campaign-content";
+import { suggestLeadMagnetSlug } from './lead-magnet-slug';
+import { LeadMagnetCreationLimitError, leadMagnetCreationScope } from './lead-magnet-creation-limit';
+import { assistantProvider } from "./assistant-provider";
+import { campaignDeliveryBody } from "./campaign-email";
 import { createHash, randomBytes } from 'node:crypto';
 import { query, type QueryRunner, withAdvisoryLock, withTransaction } from './db';
 import { normaliseBrandHighlightIntensity } from './brand-highlight';
 import { senderMatchesAccountDomain } from './dns-records';
 import { cleanEmailHeaderText } from './email-header-text';
-import { platformUsernameStem } from './platform-username';
+import { suggestedPlatformUsername, normalisePlatformUsername, isValidNewPlatformUsername, PlatformUsernameUnavailableError } from './platform-username';
 import { hasPlatformResendApiKey } from './platform-resend';
 import { resolveQuizProgress } from './quiz-routing';
 import { selectLeadMagnetAbWinner } from './ab-testing';
@@ -13,6 +18,8 @@ import {
   MAX_HOSTED_RESOURCE_STORAGE_BYTES,
   MAX_HOSTED_RESOURCES_PER_ACCOUNT,
   MAX_LEAD_MAGNETS_PER_ACCOUNT,
+  MAX_LEAD_MAGNET_CREATIONS_PER_WINDOW,
+  LEAD_MAGNET_CREATION_WINDOW_SECONDS,
 } from './limits';
 import { hostedResourcePublicPath } from './hosted-resources';
 import {
@@ -56,6 +63,7 @@ const defaultBrand: BrandSettings = {
   success: '#7FD4DD',
   highlightIntensity: 100,
   pageTheme: 'light',
+  logoSize: 'small',
   privacyPolicyUrl: '',
   termsUrl: '',
 };
@@ -469,6 +477,10 @@ function parseBrand(value: AccountRow['brand']): BrandSettings {
     success: parsed.success || defaultBrand.success,
     highlightIntensity: normaliseBrandHighlightIntensity(parsed.highlightIntensity),
     pageTheme: parsed.pageTheme === 'dark' ? 'dark' : 'light',
+    logoSize:
+      parsed.logoSize === 'medium' || parsed.logoSize === 'large'
+        ? parsed.logoSize
+        : 'small',
     privacyPolicyUrl: parsed.privacyPolicyUrl || '',
     termsUrl: parsed.termsUrl || '',
   };
@@ -678,6 +690,27 @@ function isPrivateBlobStorageUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+// Older assistant campaigns stored a template-cover URL before any artwork was
+// uploaded. Hide only those matching, account-owned placeholders at read time;
+// preserve stored URLs, real artwork, and all unrelated legacy magnets.
+async function withoutPlaceholderCovers<T extends { id: string; accountId: string; imageUrl: string; abTestVariants?: { imageUrl: string }[] }>(magnets: T[], runner: QueryRunner = { query }) {
+  const tokenFrom = (url: string) => {
+    try { return new URL(url, 'https://magnets.so').pathname.match(/^\/campaign-covers\/([0-9a-f-]{36})$/i)?.[1] || ''; }
+    catch { return ''; }
+  };
+  const candidates = magnets.filter(m => tokenFrom(m.imageUrl) || m.abTestVariants?.some(v => tokenFrom(v.imageUrl)));
+  if (!candidates.length) return magnets;
+  const result = await runner.query<{ lead_magnet_id: string; account_id: string; public_token: string }>(
+    "select lead_magnet_id,account_id,public_token from public.magnets_campaigns where lead_magnet_id=any($1::uuid[]) and coalesce(cover_data,'')=''",
+    [candidates.map(m => m.id)]);
+  return magnets.map(m => {
+    const placeholder = result.rows.find(c => c.lead_magnet_id === m.id && c.account_id === m.accountId);
+    if (!placeholder) return m;
+    const clean = (url: string) => tokenFrom(url) === placeholder.public_token ? '' : url;
+    return { ...m, imageUrl: clean(m.imageUrl), ...(m.abTestVariants ? { abTestVariants: m.abTestVariants.map(v => ({ ...v, imageUrl: clean(v.imageUrl) })) } : {}) };
+  });
 }
 
 function leadMagnetImageProxyUrl(row: Pick<LeadMagnetRow, 'id' | 'image_url' | 'updated_at'>) {
@@ -1325,40 +1358,52 @@ export async function createEmailVerificationToken(
   );
 }
 
-export async function consumeEmailVerificationToken(tokenHash: string) {
-  const result = await query<{ user_id: string }>(
-    `
-      with consumed as (
-        update public.magnets_email_verification_tokens
-        set used_at = now()
-        where token_hash = $1
-          and used_at is null
-          and expires_at > now()
-        returning user_id
-      ),
-      invalidated as (
-        update public.magnets_email_verification_tokens t
-        set used_at = now()
-        from consumed c
-        where t.user_id = c.user_id
-          and t.used_at is null
-        returning t.id
-      ),
-      verified as (
-        update neon_auth."user" u
-        set
-          "emailVerified" = true,
-          "updatedAt" = now()
-        from consumed c
-        where u.id = c.user_id
-        returning u.id as user_id
-      )
-      select user_id from verified
-    `,
-    [tokenHash]
-  );
+/** Resending replaces only codes; links sent by the existing app remain valid. */
+export async function createEmailVerificationCodeToken(userId: string, tokenHash: string, expiresAt: Date) {
+  return withTransaction(async (client) => {
+    const user = await client.query<{ id: string }>(
+      'select id from neon_auth."user" where id = $1 and "emailVerified" is not true for update', [userId]
+    );
+    if (!user.rows.length) return;
+    await client.query(
+      `update public.magnets_email_verification_tokens set used_at = now()
+       where user_id = $1 and token_hash like 'code-v1:%' and used_at is null`, [userId]
+    );
+    // Random codes can repeat. Reissuing the same code refreshes its one-time slot.
+    await client.query(
+      `insert into public.magnets_email_verification_tokens (user_id, token_hash, expires_at)
+       values ($1, $2, $3)
+       on conflict (token_hash) do update set expires_at = excluded.expires_at,
+         used_at = null, created_at = now()`, [userId, tokenHash, expiresAt]
+    );
+  });
+}
 
-  return result.rows[0]?.user_id || null;
+export async function consumeEmailVerificationToken(tokenHash: string) {
+  return withTransaction(async (client) => {
+    // Serialize code/link consumption and resend for this user. Recheck validity
+    // after acquiring the lock so concurrent confirmations cannot create sessions twice.
+    const candidate = await client.query<{ id: string }>(
+      `select u.id from neon_auth."user" u
+       join public.magnets_email_verification_tokens t on t.user_id = u.id
+       where t.token_hash = $1 and t.used_at is null and t.expires_at > now()
+         and u."emailVerified" is not true for update of u`, [tokenHash]
+    );
+    const userId = candidate.rows[0]?.id;
+    if (!userId) return null;
+    const consumed = await client.query<{ user_id: string }>(
+      `update public.magnets_email_verification_tokens set used_at = now()
+       where token_hash = $1 and used_at is null and expires_at > now() returning user_id`, [tokenHash]
+    );
+    if (!consumed.rows.length) return null;
+    await client.query(
+      'update public.magnets_email_verification_tokens set used_at = now() where user_id = $1 and used_at is null', [userId]
+    );
+    await client.query(
+      'update neon_auth."user" set "emailVerified" = true, "updatedAt" = now() where id = $1', [userId]
+    );
+    return userId;
+  });
 }
 
 export async function createPasswordCredential(userId: string, passwordHash: string) {
@@ -1441,6 +1486,11 @@ export async function getDashboardBasePayload(
   userId: string
 ): Promise<DashboardBasePayload | null> {
   return getDashboardBaseByUserId(userId);
+}
+
+export async function getAccountPlatformUsername(accountId: string) {
+  const result = await query<{ username: string }>('select username from public.magnets_accounts where id=$1', [accountId]);
+  return result.rows[0]?.username || '';
 }
 
 export async function getAccountWithSecrets(accountId: string) {
@@ -1622,14 +1672,18 @@ export async function clearDomainAttached(accountId: string) {
 
 export async function completeOnboarding(
   accountId: string,
-  answers: { businessName: string; businessType: string; magnetType: string; cadence: string }
+  answers: { businessName: string; businessType: string; magnetType: string; cadence: string; username?: string }
 ) {
-  const stem = platformUsernameStem(answers.businessName);
+  const requestedUsername = answers.username === undefined ? undefined : normalisePlatformUsername(answers.username);
+  if (requestedUsername !== undefined && !isValidNewPlatformUsername(requestedUsername)) {
+    throw new Error('Choose 3 to 40 letters, numbers or hyphens for your Magnets URL.');
+  }
+  const stem = suggestedPlatformUsername(answers.businessName);
   const accountSuffix = accountId.replace(/-/g, '').slice(0, 6);
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < (requestedUsername ? 1 : 20); attempt += 1) {
     const suffix = attempt === 0 ? '' : `-${attempt === 1 ? accountSuffix : `${accountSuffix}-${attempt}`}`;
-    const username = `${stem.slice(0, Math.max(3, 40 - suffix.length))}${suffix}`;
+    const username = requestedUsername || `${stem.slice(0, Math.max(3, 40 - suffix.length))}${suffix}`;
 
     try {
       const result = await query<AccountRow>(
@@ -1645,6 +1699,7 @@ export async function completeOnboarding(
             logo_text = case when logo_text = '' then $2 else logo_text end,
             updated_at = now()
           where id = $1
+            and (not $7::boolean or username = '' or username = $6)
             and (
               username <> ''
               or not exists (
@@ -1656,10 +1711,16 @@ export async function completeOnboarding(
             )
           returning *
         `,
-        [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence, username]
+        [accountId, answers.businessName, answers.businessType, answers.magnetType, answers.cadence, username, Boolean(requestedUsername)]
       );
 
       if (result.rows[0]) return mapAccount(result.rows[0]);
+      if (requestedUsername) {
+        const existing = await query<{ username: string }>('select username from public.magnets_accounts where id=$1', [accountId]);
+        if (!existing.rows[0]) return null;
+        throw new PlatformUsernameUnavailableError(existing.rows[0].username
+          ? 'Your account already has a Magnets URL. Reload to continue with it.' : undefined);
+      }
     } catch (error) {
       const isUsernameCollision =
         typeof error === 'object' &&
@@ -1667,6 +1728,7 @@ export async function completeOnboarding(
         'code' in error &&
         error.code === '23505';
       if (!isUsernameCollision) throw error;
+      if (requestedUsername) throw new PlatformUsernameUnavailableError();
     }
   }
 
@@ -2064,6 +2126,37 @@ async function uniqueLeadMagnetSlug(accountId: string, title: string, runner: Qu
   return `${baseSlug}-${suffix}`;
 }
 
+/**
+ * Both creation paths hold the account row lock for this entire transaction.
+ * Each successful creation has a timestamped entry in the existing rate-limit
+ * store. Unlike a fixed-window counter, these entries enforce a rolling window
+ * and survive magnet deletion. Failed transactions roll the entry back too.
+ */
+async function enforceLeadMagnetCreationLimit(client: QueryRunner, accountId: string) {
+  const scope = leadMagnetCreationScope(accountId);
+  await client.query(`delete from public.magnets_rate_limits
+    where scope=$1 and window_start <= clock_timestamp() - ($2::int * interval '1 second')`,
+    [scope, LEAD_MAGNET_CREATION_WINDOW_SECONDS]);
+  // Include recent magnets from before this rule was introduced. Never replace
+  // an existing event: deleting a magnet must not reset its creation allowance.
+  await client.query(`insert into public.magnets_rate_limits (scope,identifier_hash,window_start,attempts)
+    select $1,md5(id::text),created_at,1 from public.magnets_lead_magnets
+    where account_id=$2 and created_at > clock_timestamp() - ($3::int * interval '1 second')
+    on conflict (scope,identifier_hash) do nothing`, [scope, accountId, LEAD_MAGNET_CREATION_WINDOW_SECONDS]);
+  const result = await client.query<{ retry_at: Date }>(`select
+      window_start + ($2::int * interval '1 second') as retry_at
+    from public.magnets_rate_limits where scope=$1
+      and window_start > clock_timestamp() - ($2::int * interval '1 second')
+    order by window_start desc offset $3 limit 1`,
+    [scope, LEAD_MAGNET_CREATION_WINDOW_SECONDS, MAX_LEAD_MAGNET_CREATIONS_PER_WINDOW - 1]);
+  if (result.rows[0]) throw new LeadMagnetCreationLimitError(new Date(result.rows[0].retry_at));
+}
+
+async function recordLeadMagnetCreation(client: QueryRunner, accountId: string, magnetId: string) {
+  await client.query(`insert into public.magnets_rate_limits (scope,identifier_hash,window_start,attempts)
+    values ($1,md5($2::text),clock_timestamp(),1)`, [leadMagnetCreationScope(accountId), magnetId]);
+}
+
 export async function createLeadMagnet(
   accountId: string,
   title: string,
@@ -2111,6 +2204,8 @@ export async function createLeadMagnet(
     if (pageCount >= MAX_LEAD_MAGNETS_PER_ACCOUNT) {
       throw new LeadMagnetLimitError();
     }
+
+    await enforceLeadMagnetCreationLimit(client, accountId);
 
     // If the user-chosen slug collides with another magnet on this account,
     // suffix with -2, -3, etc. Same behaviour as uniqueLeadMagnetSlug but
@@ -2181,6 +2276,7 @@ export async function createLeadMagnet(
       ]
     );
 
+    await recordLeadMagnetCreation(client, accountId, result.rows[0].id);
     return mapLeadMagnet(result.rows[0]);
   });
 }
@@ -2628,12 +2724,20 @@ export async function listLeadMagnetImageSources() {
 }
 
 export async function deleteLeadMagnet(accountId: string, leadMagnetId: string) {
-  const result = await query(
-    'delete from public.magnets_lead_magnets where account_id = $1 and id = $2',
-    [accountId, leadMagnetId]
-  );
-
-  return Number(result.rowCount || 0) > 0;
+  return withTransaction(async (client) => {
+    await client.query('select id from public.magnets_accounts where id=$1 for update', [accountId]);
+    // Preserve recent pre-limit creations too, even if their first action is deletion.
+    await client.query(`insert into public.magnets_rate_limits (scope,identifier_hash,window_start,attempts)
+      select $1,md5(id::text),created_at,1 from public.magnets_lead_magnets
+      where account_id=$2 and id=$3 and created_at > clock_timestamp() - ($4::int * interval '1 second')
+      on conflict (scope,identifier_hash) do nothing`,
+      [leadMagnetCreationScope(accountId), accountId, leadMagnetId, LEAD_MAGNET_CREATION_WINDOW_SECONDS]);
+    const result = await client.query(
+      'delete from public.magnets_lead_magnets where account_id = $1 and id = $2',
+      [accountId, leadMagnetId]
+    );
+    return Number(result.rowCount || 0) > 0;
+  });
 }
 
 export async function findPublishedLeadMagnet(host: string, slug: string) {
@@ -2664,7 +2768,7 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
     return localLookupRow
       ? {
           account: mapAccount(localLookupRow.account),
-          leadMagnet: mapLeadMagnet(localLookupRow.lead_magnet),
+          leadMagnet: (await withoutPlaceholderCovers([mapLeadMagnet(localLookupRow.lead_magnet)]))[0],
         }
       : null;
   }
@@ -2704,7 +2808,7 @@ export async function findPublishedLeadMagnet(host: string, slug: string) {
   if (publicLookupRow) {
     return {
       account: mapAccount(publicLookupRow.account),
-      leadMagnet: mapLeadMagnet(publicLookupRow.lead_magnet),
+      leadMagnet: (await withoutPlaceholderCovers([mapLeadMagnet(publicLookupRow.lead_magnet)]))[0],
     };
   }
 
@@ -2753,7 +2857,7 @@ export async function findPublishedLeadMagnetByUsername(username: string, slug: 
 
   return {
     account: mapAccount(row.account),
-    leadMagnet: mapLeadMagnet(row.lead_magnet),
+    leadMagnet: (await withoutPlaceholderCovers([mapLeadMagnet(row.lead_magnet)]))[0],
   };
 }
 
@@ -2776,7 +2880,7 @@ export async function findPublishedLeadMagnetById(leadMagnetId: string) {
 
   return {
     account: mapAccount(row.account),
-    leadMagnet: mapLeadMagnet(row.lead_magnet),
+    leadMagnet: (await withoutPlaceholderCovers([mapLeadMagnet(row.lead_magnet)]))[0],
   };
 }
 
@@ -2826,7 +2930,7 @@ export async function listLeadMagnetsForAccount(accountId: string): Promise<Lead
     [accountId]
   );
 
-  return result.rows.map(mapLeadMagnet);
+  return withoutPlaceholderCovers(result.rows.map(mapLeadMagnet));
 }
 
 export async function listLeadMagnetSummaries(
@@ -2857,7 +2961,7 @@ export async function listLeadMagnetSummaries(
     [accountId]
   );
 
-  return result.rows.map(mapLeadMagnetSummary);
+  return withoutPlaceholderCovers(result.rows.map(mapLeadMagnetSummary));
 }
 
 export async function listLeadMagnetOptions(
@@ -2901,6 +3005,27 @@ export async function listHostedResources(accountId: string): Promise<HostedReso
   return result.rows.map(mapHostedResource);
 }
 
+/** Resolve only a resource explicitly supplied by this account; never expose a private blob URL. */
+export async function resolveCampaignHostedResource(accountId: string, reference: string, runner: QueryRunner = { query }, lock = false) {
+  let value = reference, column = 'id';
+  if (!/^[a-f0-9-]{36}$/i.test(reference)) {
+    const url = new URL(reference);
+    const origin = process.env.MAGNETS_ASSISTANT_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
+    if (![origin, 'https://magnets.so'].includes(url.origin) || url.username || url.password || !/^\/resources\/[a-f0-9-]{36}$/i.test(url.pathname)) throw new Error('Use the Magnets link from Hosted resources.');
+    value = url.pathname.split('/').pop()!;
+    column = 'public_token';
+  }
+  const result = await runner.query<HostedResourceRow>(`select * from public.magnets_hosted_resources where account_id=$1 and ${column}::text=$2 ${lock ? 'for share' : ''}`, [accountId, value]);
+  if (!result.rows[0]) throw new Error('File not found in your Hosted resources. Upload it again or choose a file from your account.');
+  return mapHostedResource(result.rows[0]);
+}
+
+export async function withAssistantResourceUploadLock<T>(accountId: string, resourceId: string, action: (runner: QueryRunner) => Promise<T>) {
+  const result = await withAdvisoryLock(`magnets:assistant-upload:${accountId}:${resourceId}`, action);
+  if (!result.acquired) throw new Error('This file is already uploading. Retry the same upload shortly.');
+  return result.value;
+}
+
 export async function getHostedResourceStorageUsage(accountId: string) {
   const result = await query<{ resource_count: number; storage_bytes: string }>(
     `
@@ -2928,10 +3053,10 @@ export async function createHostedResource(input: {
   contentType: string;
   sizeBytes: number;
   blobUrl: string;
-}): Promise<HostedResource> {
+}, runner?: QueryRunner): Promise<HostedResource> {
   // Serialize the count+insert per account so concurrent uploads cannot both
   // observe one remaining slot and exceed the plan limit.
-  const lock = await withAdvisoryLock(`magnets:hosted-resources:${input.accountId}`, async (client) => {
+  const write = async (client: QueryRunner) => {
     const usageResult = await client.query<{ resource_count: number; storage_bytes: string }>(
       `
         select
@@ -2986,8 +3111,17 @@ export async function createHostedResource(input: {
       ]
     );
     return mapHostedResource(result.rows[0]);
-  });
+  };
 
+  // Assistant uploads already hold a transaction. Reuse its connection to avoid
+  // exhausting the pooled connections with nested transactions.
+  const key = `magnets:hosted-resources:${input.accountId}`;
+  if (runner) {
+    const lock = await runner.query<{ locked: boolean }>('select pg_try_advisory_xact_lock(hashtextextended($1::text, 0)) as locked', [key]);
+    if (!lock.rows[0]?.locked) throw new Error('Another hosted resource upload is already being saved.');
+    return write(runner);
+  }
+  const lock = await withAdvisoryLock(key, write);
   if (!lock.acquired) throw new Error('Another hosted resource upload is already being saved.');
   return lock.value;
 }
@@ -3449,7 +3583,7 @@ export async function findLatestPublishedLeadMagnetForAccount(accountId: string)
     [accountId]
   );
 
-  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+  return result.rows[0] ? (await withoutPlaceholderCovers([mapLeadMagnet(result.rows[0])]))[0] : null;
 }
 
 export async function findLeadMagnetForAccount(accountId: string, leadMagnetId: string) {
@@ -3458,7 +3592,7 @@ export async function findLeadMagnetForAccount(accountId: string, leadMagnetId: 
     [leadMagnetId, accountId]
   );
 
-  return result.rows[0] ? mapLeadMagnet(result.rows[0]) : null;
+  return result.rows[0] ? (await withoutPlaceholderCovers([mapLeadMagnet(result.rows[0])]))[0] : null;
 }
 
 function parseCopilotUpdatedFields(value: LeadMagnetCopilotMessageRow['updated_fields']) {
@@ -3654,6 +3788,8 @@ type SignupRow = {
   first_signup_at: Date;
   latest_signup_at: Date;
   signup_count: string;
+  follow_up_enabled: boolean;
+  follow_up_emails: LeadMagnetRow['follow_up_emails'];
   follow_up_status: FollowUpStatus;
   follow_up_stopped_at: Date | null;
   follow_up_stop_reason: string;
@@ -3706,6 +3842,8 @@ function mapSignup(row: SignupRow): AccountSignup {
     firstSignupAt: iso(row.first_signup_at),
     latestSignupAt: iso(row.latest_signup_at),
     signupCount: Number(row.signup_count) || 0,
+    followUpConfigured: row.follow_up_enabled && parseFollowUpEmails(row.follow_up_emails)
+      .some(email => cleanEmailHeaderText(email.subject) && email.body.trim()),
     followUpStatus: row.follow_up_status,
     followUpStoppedAt: row.follow_up_stopped_at ? iso(row.follow_up_stopped_at) : null,
     followUpStopReason: row.follow_up_stop_reason,
@@ -3851,6 +3989,8 @@ async function queryAccountSignups(
         paged.first_signup_at,
         paged.latest_signup_at,
         paged.signup_count,
+        first_magnet.follow_up_enabled,
+        first_magnet.follow_up_emails,
         coalesce(
           case
             when run.id is null then 'none'
@@ -3885,6 +4025,9 @@ async function queryAccountSignups(
         paged.total_count,
         paged.cursor_latest_signup_at
       from paged
+      join public.magnets_lead_magnets first_magnet
+        on first_magnet.id = paged.first_lead_magnet_id
+       and first_magnet.account_id = $1::uuid
       left join public.magnets_follow_up_runs run
         on run.account_id = $1::uuid
        and run.lead_magnet_id = paged.first_lead_magnet_id
@@ -4392,4 +4535,266 @@ export async function bulkRecordSubmissions(
   );
 
   return { inserted: Number(result.rows[0]?.count || 0) };
+}
+
+// Assistant credentials are random opaque values; only hashes reach persistence.
+export async function getAssistantWorkspaceBase(accountId: string) {
+  const account = await query<{ owner_user_id: string }>('select owner_user_id from public.magnets_accounts where id=$1', [accountId]);
+  return account.rows[0] ? getDashboardBasePayload(account.rows[0].owner_user_id) : null;
+}
+
+export async function registerAssistantClient(id: string, name: string, redirectUris: string[]) {
+  await query('insert into public.magnets_assistant_clients (id,name,redirect_uris) values ($1,$2,$3::jsonb)', [id,name,JSON.stringify(redirectUris)]);
+}
+export async function getAssistantClient(id: string) {
+  const result = await query<{ id: string; name: string; redirect_uris: string[] }>('select id,name,redirect_uris from public.magnets_assistant_clients where id=$1',[id]);
+  return result.rows[0] || null;
+}
+export async function createAssistantGrant(input: { accountId: string; clientId: string; resource: string; redirectUri: string; challenge: string; codeHash: string }) {
+  await query(`insert into public.magnets_assistant_grants (account_id,client_id,resource,redirect_uri,challenge,code_hash,code_expires_at) values ($1,$2,$3,$4,$5,$6,now()+interval '5 minutes')`, [input.accountId,input.clientId,input.resource,input.redirectUri,input.challenge,input.codeHash]);
+}
+export async function exchangeAssistantGrant(input: { kind: 'code'|'refresh'; hash: string; clientId: string; resource: string; redirectUri?: string; challenge?: string; accessHash: string; refreshHash: string }) {
+  // Single-use code / refresh exchange is atomic, including simultaneous requests.
+  const result = await query<{ id: string }>(`update public.magnets_assistant_grants set code_hash=null,access_hash=$1,refresh_hash=$2,access_expires_at=now()+interval '1 hour',refresh_expires_at=now()+interval '30 days' where client_id=$3 and resource=$4 and revoked_at is null and ${input.kind === 'code' ? "code_hash=$5 and code_expires_at>now() and redirect_uri=$6 and challenge=$7" : "refresh_hash=$5 and refresh_expires_at>now()"} returning id`, input.kind === 'code' ? [input.accessHash,input.refreshHash,input.clientId,input.resource,input.hash,input.redirectUri,input.challenge] : [input.accessHash,input.refreshHash,input.clientId,input.resource,input.hash]);
+  return Boolean(result.rows[0]);
+}
+export async function authenticateAssistantToken(hash: string, resource: string) {
+  const result = await query<{ account_id: string; id: string }>(`select account_id,id from public.magnets_assistant_grants where access_hash=$1 and resource=$2 and access_expires_at>now() and revoked_at is null`,[hash,resource]);
+  return result.rows[0] || null;
+}
+export async function listAssistantGrants(accountId: string) {
+  const result = await query<{ id: string; name: string; created_at: string; redirect_uri: string; resource: string }>(`select g.id,c.name,g.created_at,g.redirect_uri,g.resource from public.magnets_assistant_grants g join public.magnets_assistant_clients c on c.id=g.client_id where g.account_id=$1 and g.revoked_at is null and g.refresh_expires_at>now() order by g.created_at desc`,[accountId]);
+  return result.rows.map(({ redirect_uri, resource, ...connection }) => ({ ...connection, access: resource.endsWith("/mcp/workspace") ? "workspace" as const : "campaigns" as const, provider: assistantProvider(connection.name, redirect_uri) }));
+}
+export async function revokeAssistantGrant(accountId: string, id: string) {
+  await query('update public.magnets_assistant_grants set revoked_at=now(),access_hash=null,refresh_hash=null,code_hash=null where account_id=$1 and id=$2',[accountId,id]);
+}
+
+export type CampaignRecord = { has_cover?: boolean; slug?: string; id: string; account_id: string; lead_magnet_id: string | null; request_id: string; brief: string; content: import('./campaign-schema').CampaignPackage; public_token: string; cover_data: string; revision: number; published_at: string | null; created_at: string; updated_at: string };
+function currentCampaignContent<T extends CampaignRecord>(row: T): T {
+  return { ...row, content: withoutLegacyLaunchPost(row.content) };
+}
+export async function saveCampaignPackage(accountId: string, requestId: string, brief: string, content: import('./campaign-schema').CampaignPackage, origin: string, options: { followUpsRequested?: boolean } = {}) {
+  content = withoutLegacyLaunchPost(content);
+  // The request key makes network retries safe. Repeated keys return the original
+  // campaign, never overwrite a newer editor revision or create a second page.
+  return withTransaction(async (client) => {
+    await client.query('select id from public.magnets_accounts where id=$1 for update',[accountId]);
+    const existing = await client.query<CampaignRecord>('select * from public.magnets_campaigns where account_id=$1 and request_id=$2',[accountId,requestId]);
+    if (existing.rows[0]) return currentCampaignContent(existing.rows[0]);
+    if (content.followUps.length && !options.followUpsRequested) throw new Error('Only add follow-ups when the user explicitly requests them. Set followUpsRequested:true for that request.');
+    const sourceFile = 'hostedResource' in content.resource ? await resolveCampaignHostedResource(accountId, content.resource.hostedResource, client, true) : null;
+    if (sourceFile) content = { ...content, resource: { hostedResource: sourceFile.id } };
+    const count = await client.query<{ count: number }>('select count(*)::int as count from public.magnets_lead_magnets where account_id=$1',[accountId]);
+    if (count.rows[0].count >= MAX_LEAD_MAGNETS_PER_ACCOUNT) throw new LeadMagnetLimitError();
+    await enforceLeadMagnetCreationLimit(client, accountId);
+    const slug = await uniqueLeadMagnetSlug(accountId, suggestLeadMagnetSlug(content.title),client);
+    const magnet = await client.query<LeadMagnetRow>(`insert into public.magnets_lead_magnets (account_id,slug,title,published) values ($1,$2,$3,false) returning *`,[accountId,slug,content.title]);
+    await recordLeadMagnetCreation(client, accountId, magnet.rows[0].id);
+    const campaign = await client.query<CampaignRecord>('insert into public.magnets_campaigns (account_id,lead_magnet_id,request_id,brief,content) values ($1,$2,$3,$4,$5::jsonb) returning *',[accountId,magnet.rows[0].id,requestId,brief,JSON.stringify(content)]);
+    const row = campaign.rows[0];
+    const resourceUrl = sourceFile ? `${origin}${sourceFile.publicUrl}` : `${origin}/campaign-resources/${row.public_token}`;
+    await updateLeadMagnetWithRunner(client,accountId,magnet.rows[0].id,{
+      ...mapLeadMagnet(magnet.rows[0]),
+      ...content.page,
+      downloadLink: resourceUrl,
+      imageUrl: '',
+      emailSubject: cleanEmailHeaderText(content.delivery.subject),
+      emailPreview: cleanEmailHeaderText(content.delivery.preview),
+      emailBody: campaignDeliveryBody(content, resourceUrl),
+      followUpEnabled: content.followUps.length > 0,
+      followUpStopOnBooking: false,
+      followUpEmails: content.followUps.map((email,index)=>({id:`campaign-${index+1}`,subject:cleanEmailHeaderText(email.subject),preview:cleanEmailHeaderText(email.preview),body:email.body,delayMinutes:[1440,4320,7200][index],delayHours:[24,72,120][index],resendTemplateId:''})),
+    });
+    return row;
+  });
+}
+// Read the current page copy too: the normal editor may have changed it since creation.
+async function readCampaignForEditing(runner: QueryRunner, accountId: string, id: string, lock = false) {
+  const result = await runner.query<CampaignRecord & { magnet: LeadMagnetRow; edit_stamp: string }>(`
+    select c.*, row_to_json(m) as magnet, m.updated_at::text as edit_stamp
+    from public.magnets_campaigns c join public.magnets_lead_magnets m
+      on m.id=c.lead_magnet_id and m.account_id=c.account_id
+    where c.account_id=$1 and c.id=$2 ${lock ? 'for update of c,m' : ''}`, [accountId,id]);
+  if (!result.rows[0]) return null;
+  const row = currentCampaignContent(result.rows[0]);
+  const magnet = (await withoutPlaceholderCovers([mapLeadMagnet(row.magnet)], runner))[0];
+  const content = { ...row.content, title: magnet.title,
+    page: { subtitle: magnet.subtitle, description: magnet.description, bullets: magnet.bullets,
+      bulletsHeading: magnet.bulletsHeading, ctaText: magnet.ctaText, formHeading: magnet.formHeading, formSubtext: magnet.formSubtext },
+    delivery: { subject: magnet.emailSubject, preview: magnet.emailPreview, body: magnet.emailBody },
+    followUps: magnet.followUpEmails.map(email => ({ subject: email.subject, preview: email.preview, body: email.body })),
+  };
+  const editVersion = createHash('sha256').update(`${row.revision}:${row.edit_stamp}`).digest('hex');
+  return { campaign: row, magnet, content, editVersion };
+}
+export async function getCampaignForEditing(accountId: string, id: string) {
+  return readCampaignForEditing({ query }, accountId, id);
+}
+
+export async function updateCampaignCopy(accountId: string, id: string, expectedVersion: string,
+  changes: import('./campaign-schema').CampaignChanges, options: { confirmLiveEdit?: boolean; followUpsRequested?: boolean } = {}) {
+  const campaign = await getCampaign(accountId, id);
+  if (!campaign?.lead_magnet_id) throw new Error('Campaign not found.');
+  return withLeadMagnetMutationLock(accountId, campaign.lead_magnet_id, () => withTransaction(async client => {
+    const current = await readCampaignForEditing(client, accountId, id, true);
+    if (!current) throw new Error('Campaign not found.');
+    if (current.editVersion !== expectedVersion) throw new Error('The campaign changed. Call get_campaign again and reapply only your requested changes.');
+    if (current.magnet.published && !options.confirmLiveEdit) throw new Error('This page is live. Explain that edits appear immediately and obtain permission before setting confirmLiveEdit:true.');
+    if (changes.resource && ('hostedResource' in current.content.resource || 'hostedResource' in changes.resource)) throw new Error('The original file is preserved. Replace files through the page editor; copy edits cannot swap the download.');
+    if (changes.followUps !== undefined) {
+      if (current.magnet.published || current.campaign.published_at || current.magnet.resendFollowUpAutomationId)
+        throw new Error('Edit existing email sequences in the page editor so active recipients are preserved.');
+      if (changes.followUps.length && !options.followUpsRequested) throw new Error('Only add follow-ups when the user explicitly requests them. Set followUpsRequested:true for that request.');
+    }
+    const content = { ...current.content, ...changes,
+      page: { ...current.content.page, ...changes.page },
+      delivery: { ...current.content.delivery, ...changes.delivery },
+    };
+    // Only explicitly requested copy columns change. Routing, images, A/B state,
+    // publication, sender settings and active automation state remain authoritative.
+    const columns: string[] = []; const values: unknown[] = [accountId, current.magnet.id];
+    const set = (column: string, value: unknown, json = false) => {
+      values.push(json ? JSON.stringify(value) : value); columns.push(`${column}=$${values.length}${json ? '::jsonb' : ''}`);
+    };
+    if (changes.title !== undefined) set('title', changes.title);
+    const pageColumns = { subtitle:'subtitle', description:'description', bullets:'bullets', bulletsHeading:'bullets_heading', ctaText:'cta_text', formHeading:'form_heading', formSubtext:'form_subtext' } as const;
+    for (const key of Object.keys(pageColumns) as (keyof typeof pageColumns)[]) {
+      if (changes.page?.[key] !== undefined) set(pageColumns[key], changes.page[key], key === 'bullets');
+    }
+    if (changes.delivery?.subject !== undefined) set('email_subject', content.delivery.subject = cleanEmailHeaderText(changes.delivery.subject));
+    if (changes.delivery?.preview !== undefined) set('email_preview', content.delivery.preview = cleanEmailHeaderText(changes.delivery.preview));
+    if (changes.delivery?.body !== undefined) set('email_body', content.delivery.body = campaignDeliveryBody(content, current.magnet.downloadLink));
+    if (changes.followUps !== undefined) {
+      set('follow_up_enabled', changes.followUps.length > 0);
+      set('follow_up_emails', changes.followUps.map((email,index)=>({id:`campaign-${index+1}`,subject:cleanEmailHeaderText(email.subject),preview:cleanEmailHeaderText(email.preview),body:email.body,delayMinutes:[1440,4320,7200][index],delayHours:[24,72,120][index],resendTemplateId:''})), true);
+    }
+    if (columns.length) {
+      await storeLeadMagnetVersion(client, accountId, current.magnet.id, current.magnet, 'manual');
+      const updated = await client.query<LeadMagnetRow>(`update public.magnets_lead_magnets set ${columns.join(',')},updated_at=now() where account_id=$1 and id=$2 returning *`, values);
+      await storeLeadMagnetVersion(client, accountId, current.magnet.id, mapLeadMagnet(updated.rows[0]), 'manual');
+    }
+    await client.query('update public.magnets_campaigns set content=$3::jsonb,revision=revision+1,updated_at=now() where account_id=$1 and id=$2', [accountId,id,JSON.stringify(content)]);
+    return (await readCampaignForEditing(client, accountId, id))!;
+  }));
+}
+
+export async function listCampaignPageLinks(accountId: string) {
+  const result = await query<{ id: string; leadMagnetId: string; revision: number; usesCampaignCover: boolean; hasCover: boolean }>(`
+    select c.id,c.lead_magnet_id as "leadMagnetId",c.revision,
+      m.image_url like ('%/campaign-covers/' || c.public_token::text) as "usesCampaignCover", (coalesce(c.cover_data,'')<>'') as "hasCover"
+    from public.magnets_campaigns c join public.magnets_lead_magnets m
+      on m.id=c.lead_magnet_id and m.account_id=c.account_id where c.account_id=$1`, [accountId]);
+  return result.rows;
+}
+
+/** Generated resources share the library without duplicating files or changing upload quotas. */
+export async function listGeneratedHostedResources(accountId: string) {
+  const result = await query<{
+    id: string; title: string; leadMagnetId: string; published: boolean; revision: number;
+    format: string; username: string; slug: string; uploadedFile: boolean; downloadUrl: string; hasCover: boolean;
+  }>(`select c.id,m.title,c.lead_magnet_id as "leadMagnetId",m.published,c.revision,a.username,m.slug,
+      c.content->>'format' as format, (c.content->'resource' ? 'hostedResource') as "uploadedFile", m.download_link as "downloadUrl", (coalesce(c.cover_data,'')<>'') as "hasCover"
+    from public.magnets_campaigns c join public.magnets_lead_magnets m
+      on m.id=c.lead_magnet_id and m.account_id=c.account_id
+    join public.magnets_accounts a on a.id=c.account_id
+    where c.account_id=$1 order by c.updated_at desc,c.id`, [accountId]);
+  return result.rows;
+}
+
+export async function listCampaigns(accountId: string) {
+  const result = await query<CampaignRecord>("select id,account_id,lead_magnet_id,(select m.slug from public.magnets_lead_magnets m where m.id=lead_magnet_id) as slug,request_id,brief,content,public_token,'' as cover_data,(coalesce(cover_data,'')<>'') as has_cover,revision,case when exists(select 1 from public.magnets_lead_magnets m where m.id=lead_magnet_id and m.published=true) then coalesce(published_at,(select m.updated_at from public.magnets_lead_magnets m where m.id=lead_magnet_id)) else null end as published_at,created_at,updated_at from public.magnets_campaigns where account_id=$1 order by created_at desc limit 50",[accountId]);
+  return result.rows.map(currentCampaignContent);
+}
+export async function getCampaign(accountId: string, id: string) {
+  const result = await query<CampaignRecord>('select * from public.magnets_campaigns where account_id=$1 and id=$2',[accountId,id]);
+  return result.rows[0] ? currentCampaignContent(result.rows[0]) : null;
+}
+export async function getPublicCampaign(token: string) {
+  const result = await query<CampaignRecord>(`select c.* from public.magnets_campaigns c join public.magnets_lead_magnets m on m.id=c.lead_magnet_id and m.account_id=c.account_id where c.public_token=$1 and m.published=true`,[token]);
+  return result.rows[0] ? currentCampaignContent(result.rows[0]) : null;
+}
+export async function saveCampaignCover(accountId: string, id: string, coverData: string, origin?: string, expectedBrandVersion?: string, confirmLiveEdit = false) {
+  const campaign = await getCampaign(accountId, id);
+  if (!campaign?.lead_magnet_id) return false;
+  return withLeadMagnetMutationLock(accountId, campaign.lead_magnet_id, () => withTransaction(async (client) => {
+    const locked = await client.query<{ id: string; published: boolean }>(
+      'select id,published from public.magnets_lead_magnets where id=$1 and account_id=$2 for update',
+      [campaign.lead_magnet_id, accountId]);
+    if (!locked.rows.length) return false;
+    if (locked.rows[0].published && !confirmLiveEdit) throw new Error('This page is live. Obtain permission to update its image, then set confirmLiveEdit:true.');
+    if (expectedBrandVersion) {
+      // Keep the saved brand stable through this attachment transaction. Older
+      // manual-upload callers do not supply a generation-time brand version.
+      const selected = await client.query<{ logo_text: string; logo_url: string; brand: BrandSettings | string | null }>(
+        'select logo_text, logo_url, brand from public.magnets_accounts where id=$1 for share', [accountId]);
+      const row = selected.rows[0];
+      const colours = parseBrand(row?.brand);
+      const currentBrand = row ? { logoText: row.logo_text || '', logoUrl: row.logo_url || '', primary: colours.primary, accent: colours.accent, pageTheme: colours.pageTheme } : null;
+      if (!currentBrand || creationBrandVersion(currentBrand) !== expectedBrandVersion) {
+        throw new Error('Your saved brand changed. Call get_campaign again and regenerate the image with its current imageGeneration brief before attaching it.');
+      }
+    }
+    const result = await client.query(`update public.magnets_campaigns set cover_data=$3,revision=revision+1,updated_at=now()
+      where account_id=$1 and id=$2 returning id`, [accountId,id,coverData]);
+    if (!result.rows.length) return false;
+    if (origin) await client.query(`update public.magnets_lead_magnets set image_url=$3,updated_at=now()
+      where id=$1 and account_id=$2`, [campaign.lead_magnet_id, accountId, `${origin}/campaign-covers/${campaign.public_token}`]);
+    return true;
+  }));
+}
+export async function markCampaignPublished(accountId: string,id: string) {
+  await query('update public.magnets_campaigns set published_at=coalesce(published_at,now()),updated_at=now() where account_id=$1 and id=$2',[accountId,id]);
+}
+
+export async function saveCreationRequest(accountId: string, brief: string, format: string) {
+  // Saving the same brief again preserves the idempotency key used by the assistant.
+  const result = await query<{ request_id: string; brief: string; format: string }>(`
+    insert into public.magnets_creation_briefs (account_id, brief, format)
+    values ($1, $2, $3)
+    on conflict (account_id) do update set
+      request_id = case when magnets_creation_briefs.brief = excluded.brief
+        and magnets_creation_briefs.format = excluded.format then magnets_creation_briefs.request_id else gen_random_uuid() end,
+      brief = excluded.brief, format = excluded.format, updated_at = now()
+    returning request_id, brief, format
+  `, [accountId, brief, format]);
+  return result.rows[0];
+}
+
+export async function getCreationRequest(accountId: string) {
+  const result = await query<{ request_id: string; brief: string; format: string }>(
+    'select request_id, brief, format from public.magnets_creation_briefs where account_id = $1', [accountId]);
+  return result.rows[0] || null;
+}
+
+export async function getCreationBrand(accountId: string): Promise<import('./types').CreationBrand | null> {
+  const result = await query<{ logo_text: string; logo_url: string; brand: BrandSettings | string | null }>(
+    'select logo_text, logo_url, brand from public.magnets_accounts where id = $1', [accountId]);
+  const row = result.rows[0];
+  if (!row) return null;
+  const brand = parseBrand(row.brand);
+  return { logoText: row.logo_text || '', logoUrl: row.logo_url || '', primary: brand.primary,
+    accent: brand.accent, pageTheme: brand.pageTheme };
+}
+
+export function creationBrandVersion(brand: import('./types').CreationBrand) {
+  return createHash('sha256').update(JSON.stringify(brand)).digest('hex');
+}
+export async function getBrandImportVersion(accountId: string) {
+  const brand = await getCreationBrand(accountId);
+  return brand ? creationBrandVersion(brand) : null;
+}
+export async function applyImportedBrand(accountId: string, version: string, changes: { name?: string; logo?: string; primary?: string; accent?: string }) {
+  return withTransaction(async client => {
+    const result = await client.query<{ logo_text: string; logo_url: string; brand: BrandSettings | string | null }>('select logo_text,logo_url,brand from public.magnets_accounts where id=$1 for update',[accountId]);
+    const row=result.rows[0];if(!row)throw new Error('Account not found.');
+    const current=parseBrand(row.brand);
+    const snapshot={logoText:row.logo_text||'',logoUrl:row.logo_url||'',primary:current.primary,accent:current.accent,pageTheme:current.pageTheme};
+    if(creationBrandVersion(snapshot)!==version)throw new Error('Brand settings changed. Import the website again to review the latest settings.');
+    const colours={...(changes.primary ? {primary:changes.primary}:{}),...(changes.accent ? {accent:changes.accent}:{})};
+    // Appearance only. Never pass imported website values through domain/sender reconciliation.
+    await client.query(`update public.magnets_accounts set logo_text=coalesce($2,logo_text),logo_url=coalesce($3,logo_url),
+      brand=coalesce(brand,'{}'::jsonb)||$4::jsonb,updated_at=now() where id=$1`,[accountId,changes.name??null,changes.logo??null,JSON.stringify(colours)]);
+    return {...snapshot,logoText:changes.name??snapshot.logoText,logoUrl:changes.logo??snapshot.logoUrl,...colours};
+  });
 }

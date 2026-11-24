@@ -1,3 +1,4 @@
+import { assistantWorkspaceContext, workspaceAccountVersion } from '@/lib/assistant-workspace-context';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
@@ -145,6 +146,8 @@ const schema = z.object({
     // Older dashboard tabs can submit the previous brand shape while a new
     // deployment is rolling out. Treat the missing appearance choice as light.
     pageTheme: z.enum(['light', 'dark']).default('light'),
+    // Optional so an older open dashboard tab preserves the saved size.
+    logoSize: z.enum(['small', 'medium', 'large']).optional(),
     // Optional during rolling deploys so an older open dashboard tab cannot
     // erase legal links that were saved by the newer UI.
     privacyPolicyUrl: optionalLegalUrlSchema.optional(),
@@ -297,6 +300,8 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
 
+      const assistant = assistantWorkspaceContext.getStore();
+      if (assistant && assistant.expectedAccountVersion !== workspaceAccountVersion(storedAccount)) return NextResponse.json({ error: 'Workspace settings changed. Read them again before editing.', code: 'version_conflict' }, { status: 409 });
       const previousHost = buildHost(storedAccount.subdomain, storedAccount.domain);
       const previousAttachedHost = storedAccount.domainAttachedHost;
       const shouldDetach = Boolean(

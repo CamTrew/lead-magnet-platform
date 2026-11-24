@@ -11,6 +11,7 @@
  */
 
 const SECRET_KEY_PATTERNS = [
+  /mag_[A-Za-z0-9_-]{30,}/g,
   /re_[A-Za-z0-9_-]{8,}/g, // Resend
   /sk_[A-Za-z0-9_-]{8,}/g, // generic "secret"-style API keys
   /Bearer\s+[A-Za-z0-9._-]{8,}/gi,
@@ -19,6 +20,10 @@ const SECRET_KEY_PATTERNS = [
 ];
 
 const FORBIDDEN_FIELDS = new Set([
+  'code',
+  'code_verifier',
+  'access_token',
+  'refresh_token',
   'password',
   'passwordHash',
   'password_hash',

@@ -17,7 +17,7 @@ export function useModalAccessibility(onClose: () => void, closeDisabled = false
     document.body.style.overflow = 'hidden';
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape' || closeDisabledRef.current) return;
+      if (event.defaultPrevented || event.key !== 'Escape' || closeDisabledRef.current) return;
       event.preventDefault();
       onCloseRef.current();
     }

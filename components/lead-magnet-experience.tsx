@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { ArrowRight, CheckCircle2, Loader2, Play, Printer } from 'lucide-react';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   isSafePostSignupDestination,
   postSignupVideoAutoplayUrl,
@@ -25,6 +26,7 @@ interface PostSignupBrand {
   homeHref: string;
   logoText: string;
   logoUrl: string;
+  logoSize: 'small' | 'medium' | 'large';
   privacyPolicyUrl: string;
   termsUrl: string;
 }
@@ -126,12 +128,7 @@ function PostSignupBrandLockup({ brand }: { brand: PostSignupBrand }) {
   if (brand.logoUrl) {
     return (
       <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          alt=""
-          className="h-8 w-auto max-w-[52px] object-contain sm:h-10"
-          src={brand.logoUrl}
-        />
+        <BrandLogo size={brand.logoSize} src={brand.logoUrl} />
         {logoText && (
           <span className="magnet-page-heading min-w-0 max-w-[72vw] truncate text-[32px] font-semibold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
             {logoText}

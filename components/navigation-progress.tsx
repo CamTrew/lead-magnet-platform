@@ -64,7 +64,7 @@ export function NavigationProgress() {
 
   return (
     <div className="fixed inset-x-0 top-0 z-[80] h-0.5 overflow-hidden" aria-hidden="true">
-      <div className="h-full w-1/2 animate-[navigation-progress_1s_ease-in-out_infinite] bg-ink-950" />
+      <div className="navigation-progress-bar h-full w-1/2 animate-[navigation-progress_1s_ease-in-out_infinite] bg-ink-950" />
     </div>
   );
 }

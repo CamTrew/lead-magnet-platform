@@ -83,7 +83,7 @@ try {
     logoText: '',
     brand: {
       primary: '#FE6F34', accent: '#FDC957', success: '#7FD4DD', highlightIntensity: 100,
-      pageTheme: 'light', privacyPolicyUrl: '', termsUrl: '',
+      pageTheme: 'light', logoSize: 'small', privacyPolicyUrl: '', termsUrl: '',
     },
     resendFromEmail: '', resendApiKey: '', resendConfigured: true, resendManagedByPlatform: true,
     beehiivApiKey: '', beehiivPublicationId: '', substackPublication: '',

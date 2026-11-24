@@ -15,7 +15,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import { ConfirmDialog } from '@/components/dashboard/confirm-dialog';
 import { AceternityButton, AceternityCard } from '@/components/ui/aceternity';
@@ -148,9 +148,13 @@ async function responseError(response: Response, fallback: string) {
 export function HostedResourcesClient({
   accountId,
   initialResources,
+  generatedResources,
+  generatedCount = 0,
 }: {
   accountId: string;
   initialResources: HostedResource[];
+  generatedResources?: ReactNode;
+  generatedCount?: number;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [resources, setResources] = useState(initialResources);
@@ -290,10 +294,10 @@ export function HostedResourcesClient({
     <>
       <PageHeader
         helpTopic="resources"
-        title="Hosted resource"
-        subtitle="Upload files once, then copy their links into any lead magnet."
+        title="Hosted resources"
+        subtitle="Your generated resources and uploaded files, together."
         actions={(
-          <AceternityButton
+          <AceternityButton data-dashboard-tour="resource-upload"
             disabled={isUploading || storageLimitReached || resources.length >= MAX_HOSTED_RESOURCES_PER_ACCOUNT}
             onClick={() => inputRef.current?.click()}
             type="button"
@@ -316,6 +320,8 @@ export function HostedResourcesClient({
           }}
           type="file"
         />
+
+        {generatedResources}
 
         <AceternityCard
           className={cn(
@@ -392,7 +398,7 @@ export function HostedResourcesClient({
         {resources.length > 0 ? (
           <div>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-ink-950">Your resources</h2>
+              <h2 data-dashboard-tour="uploaded-resources" className="text-sm font-semibold text-ink-950">Uploaded files</h2>
               <span className="text-xs text-ink-500">
                 {resources.length} of {MAX_HOSTED_RESOURCES_PER_ACCOUNT} files · {formatHostedResourceBytes(usedStorageBytes)} of {formatHostedResourceBytes(MAX_HOSTED_RESOURCE_STORAGE_BYTES)}
               </span>
@@ -466,11 +472,11 @@ export function HostedResourcesClient({
               })}
             </div>
           </div>
-        ) : pendingUploads.length === 0 ? (
+        ) : pendingUploads.length === 0 && generatedCount === 0 ? (
           <div className="rounded-lg border border-ink-200 bg-white px-6 py-12 text-center">
             <FileText className="mx-auto h-6 w-6 text-ink-400" />
             <h2 className="mt-3 text-sm font-semibold text-ink-950">No hosted resources yet</h2>
-            <p className="mt-1 text-sm text-ink-500">Upload your first file to get a reusable download link.</p>
+            <p className="mt-1 text-sm text-ink-500">Create a lead magnet with your assistant or upload a file to start your library.</p>
           </div>
         ) : null}
       </div>

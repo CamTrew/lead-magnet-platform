@@ -1,6 +1,7 @@
-/* eslint-disable @next/next/no-img-element */
+import styles from './lead-magnet-page-view.module.css';
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
+import { BrandLogo } from '@/components/brand-logo';
 import { LeadMagnetExperience } from '@/components/lead-magnet-experience';
 import { LeadMagnetAnalyticsTracker } from '@/components/lead-magnet-analytics-tracker';
 import { LeadMagnetForm } from '@/components/lead-magnet-form';
@@ -104,6 +105,7 @@ export function LeadMagnetPageView({
     backgroundSize: 'auto, auto, auto, 72px 72px, 72px 72px',
     colorScheme: isDark ? 'dark' : 'light',
   };
+  const hasMedia = Boolean(magnet.imageUrl || magnet.abTestVariants.some(variant => variant.imageUrl));
   const imageUrl = magnet.imageUrl
     ? leadMagnetDisplayImageUrl({
         id: magnet.id,
@@ -124,7 +126,7 @@ export function LeadMagnetPageView({
 
   return (
     <div
-      className={`magnet-page relative flex min-h-screen flex-col ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`}
+      className={`${styles.page} magnet-page relative flex min-h-screen flex-col ${isDark ? 'magnet-page--dark' : 'bg-white text-zinc-900'}`}
       style={brandStyle}
     >
       <LeadMagnetAnalyticsTracker
@@ -149,13 +151,14 @@ export function LeadMagnetPageView({
           homeHref,
           logoText: account.logoText,
           logoUrl: account.logoUrl,
+          logoSize: account.brand.logoSize,
           privacyPolicyUrl,
           termsUrl,
         }}
         magnet={magnet}
       >
         <header className="relative z-10">
-        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-4 pb-7 pt-6 sm:px-6 sm:pb-8 sm:pt-7 lg:px-8">
+        <div className={`${styles.header} mx-auto flex max-w-[1280px] items-center justify-center px-4 sm:px-6 lg:px-8`}>
           <Link href={homeHref} className="inline-flex min-h-10 max-w-full items-center justify-center gap-2 transition-transform hover:scale-[1.01]">
             <BrandLockup account={account} displayName={displayName} />
           </Link>
@@ -163,88 +166,89 @@ export function LeadMagnetPageView({
         </header>
 
         <main className="relative z-10 flex-1">
-        <div className="mx-auto max-w-[1280px] px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20">
+        <div className={`${styles.main} mx-auto ${hasMedia ? "max-w-[1280px]" : "max-w-[1160px]"} px-4 pb-12 sm:px-6 sm:pb-16 lg:px-8 lg:pb-20`}>
           <div
-            className="magnet-page-shell relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-white/95 p-5 backdrop-blur-sm sm:rounded-[24px] sm:p-9 lg:p-14"
+            className={`${styles.shell} magnet-page-shell relative overflow-hidden rounded-[20px] border border-gray-200/70 bg-white/95 p-5 backdrop-blur-sm sm:rounded-[24px] sm:p-9 ${hasMedia ? "lg:p-14" : "lg:p-10"}`}
             style={{
               boxShadow: `0 36px 110px -72px rgb(15 23 42 / 0.72), 0 0 0 1px ${tone(0.08)}`,
             }}
           >
-            <div className="lg:grid lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:items-start lg:gap-x-14">
-              <section className="min-w-0 lg:col-start-1 lg:row-start-1 lg:pt-1">
-                <LeadMagnetAbText
-                  className="magnet-page-heading mb-5 max-w-2xl break-words text-[2.15rem] font-semibold leading-[1.08] text-gray-950 sm:mb-6 sm:text-5xl lg:text-[58px] lg:leading-[1.05]"
-                  control={magnet.title}
-                  field="title"
-                  magnet={magnet}
-                  tag="h1"
-                />
-                <LeadMagnetAbText
-                  className="magnet-page-muted mb-10 max-w-2xl text-lg font-medium leading-relaxed text-gray-600"
-                  control={magnet.subtitle}
-                  field="subtitle"
-                  magnet={magnet}
-                />
-              </section>
+            <div className={`${styles.grid} lg:grid lg:items-start ${hasMedia ? "lg:grid-cols-[minmax(0,520px)_minmax(360px,520px)] lg:gap-x-14" : "lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] lg:gap-x-10"}`}>
+              <div className={styles.copy}>
+                <section className="min-w-0 lg:pt-1">
+                  <LeadMagnetAbText
+                    className={`${styles.title} magnet-page-heading mb-5 max-w-2xl break-words text-[2.15rem] font-semibold leading-[1.08] text-gray-950 sm:mb-6 sm:text-5xl lg:text-[58px] lg:leading-[1.05]`}
+                    control={magnet.title}
+                    field="title"
+                    magnet={magnet}
+                    tag="h1"
+                  />
+                  <LeadMagnetAbText
+                    className={`${styles.subtitle} magnet-page-muted ${hasMedia ? "mb-10" : "mb-6"} max-w-2xl text-lg font-medium leading-relaxed text-gray-600`}
+                    control={magnet.subtitle}
+                    field="subtitle"
+                    magnet={magnet}
+                  />
+                </section>
 
-              <aside className="mb-10 min-w-0 lg:sticky lg:top-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mb-0">
+                <section className={`${styles.details} min-w-0`}>
+                  {magnet.description && (
+                    <div className={`${styles.description} magnet-page-muted mb-11 max-w-2xl space-y-5 text-[15px] leading-relaxed text-gray-600`}>
+                      {magnet.description
+                        .split('\n\n')
+                        .filter(Boolean)
+                        .map((paragraph) => (
+                          <p key={paragraph} className="leading-7">{paragraph}</p>
+                        ))}
+                    </div>
+                  )}
+
+                  {magnet.bullets.length > 0 && (
+                    <div>
+                      {magnet.bulletsHeading && (
+                        <p className={`${styles.bulletsHeading} magnet-page-copy mb-6 text-base font-semibold text-gray-700`}>
+                          {magnet.bulletsHeading}
+                        </p>
+                      )}
+                      <ul className={`${styles.bullets} max-w-2xl space-y-4`}>
+                        {magnet.bullets.map((bullet) => (
+                          <li key={bullet} className="flex items-start gap-3">
+                            <span
+                              aria-hidden
+                              className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-white"
+                              style={{
+                                background: `linear-gradient(135deg, ${brandPrimary}, ${alpha(brandPrimary, 0.85)})`,
+                                boxShadow: `0 6px 16px -6px ${tone(0.5)}`,
+                              }}
+                            >
+                              <svg viewBox="0 0 12 12" className="h-3 w-3">
+                                <path
+                                  d="M2.5 6.2l2.4 2.4 4.6-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.4"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="magnet-page-copy text-[15px] leading-7 text-gray-700">{bullet}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </section>
+              </div>
+              <aside className={`${styles.aside} mb-10 min-w-0 lg:sticky lg:top-10 lg:mb-0`}>
                 <MediaAndCapture account={account} magnet={magnet} />
               </aside>
-
-              <section className="min-w-0 lg:col-start-1 lg:row-start-2">
-                {magnet.description && (
-                  <div className="magnet-page-muted mb-11 max-w-2xl space-y-5 text-[15px] leading-relaxed text-gray-600">
-                    {magnet.description
-                      .split('\n\n')
-                      .filter(Boolean)
-                      .map((paragraph) => (
-                        <p key={paragraph} className="leading-7">{paragraph}</p>
-                      ))}
-                  </div>
-                )}
-
-                {magnet.bullets.length > 0 && (
-                  <div>
-                    {magnet.bulletsHeading && (
-                      <p className="magnet-page-copy mb-6 text-base font-semibold text-gray-700">
-                        {magnet.bulletsHeading}
-                      </p>
-                    )}
-                    <ul className="max-w-2xl space-y-4">
-                      {magnet.bullets.map((bullet) => (
-                        <li key={bullet} className="flex items-start gap-3">
-                          <span
-                            aria-hidden
-                            className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-white"
-                            style={{
-                              background: `linear-gradient(135deg, ${brandPrimary}, ${alpha(brandPrimary, 0.85)})`,
-                              boxShadow: `0 6px 16px -6px ${tone(0.5)}`,
-                            }}
-                          >
-                            <svg viewBox="0 0 12 12" className="h-3 w-3">
-                              <path
-                                d="M2.5 6.2l2.4 2.4 4.6-5"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.4"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </span>
-                          <span className="magnet-page-copy text-[15px] leading-7 text-gray-700">{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </section>
             </div>
           </div>
         </div>
         </main>
 
-        <footer className="magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11">
+        <footer className={`${styles.footer} magnet-page-footer relative z-10 border-t border-gray-200/60 bg-white/55 py-11`}>
         <div className="magnet-page-muted mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <span>All rights reserved {new Date().getFullYear()}</span>
           {privacyPolicyUrl && (
@@ -316,7 +320,7 @@ function BrandLockup({
   if (account.logoUrl) {
     return (
       <>
-        <img src={account.logoUrl} alt="" className="h-8 w-auto max-w-[52px] object-contain sm:h-10" />
+        <BrandLogo size={account.brand.logoSize} src={account.logoUrl} />
         {logoText && (
           <span className="magnet-page-heading min-w-0 max-w-[72vw] truncate text-[32px] font-semibold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
             {logoText}
@@ -341,7 +345,7 @@ function MediaAndCapture({
   magnet: LeadMagnet;
 }) {
   return (
-    <div className="space-y-8">
+    <div className={styles.media}>
       {(magnet.imageUrl || magnet.abTestVariants.some((variant) => variant.imageUrl)) && <MagnetImage magnet={magnet} />}
       <CaptureCard account={account} magnet={magnet} />
     </div>
@@ -372,7 +376,7 @@ function CaptureCard({
 
   return (
     <div
-      className="magnet-capture rounded-[22px] border bg-white p-6 backdrop-blur-sm sm:p-8"
+      className={`${styles.capture} magnet-capture rounded-[22px] border bg-white p-6 backdrop-blur-sm sm:p-8`}
       style={{
         borderColor: tone(0.28),
         backgroundImage: [

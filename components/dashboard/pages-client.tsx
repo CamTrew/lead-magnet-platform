@@ -1,4 +1,5 @@
 'use client';
+import { suggestLeadMagnetSlug } from '@/lib/lead-magnet-slug';
 
 import type { FormEvent } from 'react';
 import { useEffect, useState, useTransition } from 'react';
@@ -28,7 +29,7 @@ import type {
   LeadMagnetAnalytics,
   LeadMagnetSummary,
 } from '@/lib/types';
-import { MAX_LEAD_MAGNETS_PER_ACCOUNT } from '@/lib/limits';
+import { MAX_LEAD_MAGNETS_PER_ACCOUNT, MAX_LEAD_MAGNET_CREATIONS_PER_WINDOW } from '@/lib/limits';
 import { cn } from '@/lib/utils';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -63,11 +64,7 @@ function formatDate(value: string) {
 }
 
 function slugifyTitle(input: string) {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
+  return input.trim() ? suggestLeadMagnetSlug(input) : '';
 }
 
 /**
@@ -129,7 +126,7 @@ function CreatePageModal({
           <div>
             <h2 className="text-lg font-semibold text-ink-950">Create a magnet</h2>
             <p className="mt-1 text-sm leading-6 text-ink-600">
-              Name the page and choose its URL.
+              Name the page and choose its URL. You can create {MAX_LEAD_MAGNET_CREATIONS_PER_WINDOW} lead magnets every 24 hours, including those made in ChatGPT or Claude.
             </p>
           </div>
           <button
@@ -368,15 +365,28 @@ export function PagesClient({
   initialData,
   initialLeadMagnets,
   openCreateInitially = false,
+  assistantCreationEnabled = false,
+  campaignLinks = [],
 }: {
   initialData: DashboardBasePayload;
   initialLeadMagnets: LeadMagnetSummary[];
   openCreateInitially?: boolean;
+  assistantCreationEnabled?: boolean;
+  campaignLinks?: { id: string; leadMagnetId: string; revision: number; usesCampaignCover: boolean; hasCover: boolean }[];
 }) {
   const router = useRouter();
   const account = initialData.account;
   const [isPending, startTransition] = useTransition();
   const [leadMagnets, setLeadMagnets] = useState<LeadMagnetSummary[]>(initialLeadMagnets);
+  useEffect(() => { setLeadMagnets(initialLeadMagnets); }, [initialLeadMagnets]);
+  useEffect(() => {
+    if (!assistantCreationEnabled) return;
+    // The assistant saves in another tab. Refresh the library when the user returns.
+    const refresh = () => { if (!document.hidden) router.refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [assistantCreationEnabled, router]);
   const [createOpen, setCreateOpen] = useState(
     openCreateInitially && initialLeadMagnets.length < MAX_LEAD_MAGNETS_PER_ACCOUNT
   );
@@ -501,7 +511,12 @@ export function PagesClient({
 
   return (
     <>
-      <PageHeader helpTopic="start" title="Lead magnets" subtitle="Create, publish, and manage your lead magnets" />
+      <PageHeader helpTopic="start" title="Lead magnets" subtitle="Create, publish, and manage your lead magnets." actions={
+        <AceternityButton data-dashboard-tour="manual" variant="secondary" disabled={pageLimitReached || isCreateBusy || isOpening} onClick={openCreateDialog}>
+          {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus size={16} />}
+          {assistantCreationEnabled ? 'Create manually' : actionLabel}
+        </AceternityButton>
+      } />
       {createOpen && (
         <CreatePageModal
           error={createError}
@@ -523,42 +538,7 @@ export function PagesClient({
       <div className="mx-auto max-w-7xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
 
-        <section className="dashboard-hero-panel overflow-hidden rounded-2xl border border-ink-200 bg-[radial-gradient(circle_at_8%_0%,rgba(254,111,52,0.12),transparent_28%),linear-gradient(135deg,#fff,#faf9f7)] px-5 py-6 shadow-[0_18px_60px_-48px_rgba(17,17,17,0.45)] sm:px-7 sm:py-7">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-orange/20 bg-brand-orange/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-700">
-                <Sparkles className="h-3 w-3 text-brand-orange" />
-                Conversion workspace
-              </span>
-              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-3xl">Your lead magnet library</h2>
-              <p className="mt-2 text-sm leading-6 text-ink-600 sm:text-base">
-                Create the signup page, delivery email, follow-up emails, and post-signup page.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <div className="dashboard-glass-stat rounded-xl border border-white bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Published</p>
-                <p className="mt-0.5 text-xl font-semibold text-ink-950">{publishedCount}</p>
-              </div>
-              <div className="dashboard-glass-stat rounded-xl border border-white bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Total</p>
-                <p className="mt-0.5 text-xl font-semibold text-ink-950">{leadMagnets.length}</p>
-              </div>
-              <AceternityButton
-                className="col-span-2 min-h-11 rounded-xl px-5 sm:col-auto"
-                disabled={pageLimitReached || isCreateBusy || isOpening}
-                onClick={openCreateDialog}
-              >
-                {isCreating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                {actionLabel}
-              </AceternityButton>
-            </div>
-          </div>
-        </section>
+        <p data-dashboard-tour="library" className="text-sm text-ink-500">{publishedCount} published · {leadMagnets.length} total</p>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <label className="relative block w-full sm:max-w-sm">
@@ -577,15 +557,15 @@ export function PagesClient({
         {leadMagnets.length === 0 && !isCreating ? (
           <AceternityCard className="flex min-h-72 flex-col items-center justify-center rounded-2xl border-dashed px-6 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-orange/10 text-brand-orange"><Sparkles className="h-5 w-5" /></div>
-            <p className="mt-4 font-semibold text-ink-950">Create your first lead magnet</p>
-            <p className="mt-1 max-w-sm text-sm leading-6 text-ink-500">Build the landing page, resource email, and follow-up sequence in one guided flow.</p>
+            <p className="mt-4 font-semibold text-ink-950">{assistantCreationEnabled ? 'Your first lead magnet will appear here' : 'Create your first lead magnet'}</p>
+            <p className="mt-1 max-w-sm text-sm leading-6 text-ink-500">{assistantCreationEnabled ? 'Start from Home to create with your assistant. Your saved drafts appear here, ready to edit and publish.' : 'Build the landing page and resource email in one guided flow.'}</p>
                       <AceternityButton
               className="mt-5 rounded-xl"
                         disabled={pageLimitReached || isCreateBusy || isOpening}
                         onClick={openCreateDialog}
                       >
                         <Plus className="h-4 w-4" />
-              Create lead magnet
+              {assistantCreationEnabled ? 'Or create manually' : 'Create lead magnet'}
                       </AceternityButton>
           </AceternityCard>
         ) : filteredLeadMagnets.length === 0 ? (
@@ -597,15 +577,17 @@ export function PagesClient({
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filteredLeadMagnets.map((leadMagnet) => {
                   const url = leadMagnetUrl(account, leadMagnet);
+                  const campaign = campaignLinks.find(item => item.leadMagnetId === leadMagnet.id);
+                  const thumbnailUrl = campaign?.usesCampaignCover ? (campaign.hasCover ? `/api/campaigns/${campaign.id}/resource?cover=1&revision=${campaign.revision}` : '') : leadMagnet.imageUrl;
 
                   return (
                 <article
                       key={leadMagnet.id}
                   className="group/card overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-[0_1px_2px_rgba(17,17,17,0.03)] transition duration-200 hover:-translate-y-0.5 hover:border-ink-300 hover:shadow-[0_22px_55px_-38px_rgba(17,17,17,0.45)]"
                     >
-                  <div className="relative overflow-hidden border-b border-ink-100">
-                          <PageThumbnail imageUrl={leadMagnet.imageUrl} title={leadMagnet.title} />
-                    <span className={cn('absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur', leadMagnet.published ? 'border-emerald-200/80 bg-emerald-50/95 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-950/90 dark:text-emerald-300' : 'border-white/80 bg-white/90 text-ink-600 dark:border-ink-700 dark:bg-ink-900/95 dark:text-ink-300')}>
+                  <div className={thumbnailUrl ? "relative overflow-hidden border-b border-ink-100" : "relative px-5 pt-5"}>
+                          {thumbnailUrl && <PageThumbnail key={thumbnailUrl} imageUrl={thumbnailUrl} title={leadMagnet.title} />}
+                    <span className={cn(thumbnailUrl ? 'absolute left-3 top-3' : '', 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur', leadMagnet.published ? 'border-emerald-200/80 bg-emerald-50/95 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-950/90 dark:text-emerald-300' : 'border-white/80 bg-white/90 text-ink-600 dark:border-ink-700 dark:bg-ink-900/95 dark:text-ink-300')}>
                       <span className={cn('h-1.5 w-1.5 rounded-full', leadMagnet.published ? 'bg-emerald-500' : 'bg-ink-400')} />
                       {leadMagnet.published ? 'Published' : 'Draft'}
                     </span>
@@ -621,7 +603,7 @@ export function PagesClient({
                         <p className="truncate font-mono text-[11px] text-ink-500" title={url}>/{leadMagnet.slug}</p>
                         <p className="mt-1 text-[11px] text-ink-400">Updated {formatDate(leadMagnet.updatedAt)}</p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
+                      <div data-dashboard-tour="magnet-actions" className="flex shrink-0 items-center gap-1.5">
                         <button
                           aria-label={`View analytics for ${leadMagnet.title}`}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 transition hover:border-ink-300 hover:bg-ink-50 hover:text-ink-950"

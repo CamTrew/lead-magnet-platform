@@ -98,17 +98,23 @@ export function LeadMagnetForm({
     <form onSubmit={handleSubmit} className="magnet-form space-y-4">
       <input
         type="text"
+        name="name"
+        aria-label="Name"
+        autoComplete="name"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
+        className="magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
         placeholder="Name"
         required
       />
       <input
         type="email"
+        name="email"
+        aria-label="Email"
+        autoComplete="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
+        className="magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
         placeholder="Email"
         required
       />

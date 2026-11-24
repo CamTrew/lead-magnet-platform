@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { SAVED_LEAD_MAGNET_PROMPT } from '@/lib/assistant-provider';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -51,6 +52,10 @@ export type HelpTopic =
   | 'how'
   | 'ideas'
   | 'start'
+  | 'connect'
+  | 'chat'
+  | 'troubleshoot'
+  | 'manual'
   | 'editor'
   | 'resources'
   | 'brand'
@@ -84,37 +89,46 @@ const topicGroups: Array<{
   }>;
 }> = [
   {
-    label: 'Learn',
+    label: 'Start with your assistant',
     topics: [
-      { id: 'what', label: 'What is a lead magnet?', icon: BookOpen, keywords: 'definition basics' },
-      { id: 'why', label: 'Why use a lead magnet?', icon: Gift, keywords: 'benefits leads subscribers' },
-      { id: 'how', label: 'How do they work?', icon: ListChecks, keywords: 'signup delivery follow up' },
-      { id: 'ideas', label: 'What works best', icon: Lightbulb, keywords: 'ideas checklist template guide quiz calculator' },
+      { id: 'start', label: 'From your idea to a live page', icon: Compass, keywords: 'first create chatgpt claude onboarding publish saved idea' },
+      { id: 'connect', label: 'Connect ChatGPT or Claude', icon: MessageSquare, keywords: 'mcp plugin connector oauth setup reconnect mobile' },
+      { id: 'chat', label: 'Create and edit in chat', icon: Sparkles, keywords: 'prompt update file pdf image upload follow up email resource' },
+      { id: 'troubleshoot', label: 'Stuck? Find your next step', icon: Lightbulb, keywords: 'missing connection failed draft publish not showing limit mobile' },
     ],
   },
   {
-    label: 'Build',
+    label: 'Your content',
     topics: [
-      { id: 'start', label: 'Create your first lead magnet', icon: Compass, keywords: 'build publish page' },
+      { id: 'manual', label: 'Create manually instead', icon: PanelTop, keywords: 'without assistant own resource new page upload' },
       { id: 'editor', label: 'Edit and publish a magnet', icon: PanelTop, keywords: 'editor autosave preview publish qr copilot delete' },
       { id: 'resources', label: 'Hosted resources', icon: FolderOpen, keywords: 'upload file pdf download link private' },
-      { id: 'brand', label: 'Brand colours and logo', icon: Palette, keywords: 'color colour theme appearance business name' },
+      { id: 'brand', label: 'Brand colours and logo', icon: Palette, keywords: 'color colour theme appearance business name website import logo' },
       { id: 'delivery', label: 'Delivery emails', icon: Send, keywords: 'resource email subject body preview immediate link' },
       { id: 'sequence', label: 'Follow-up sequences', icon: Workflow, keywords: 'nurture delay emails automation stop booking' },
       { id: 'after', label: 'After-signup experience', icon: CalendarCheck, keywords: 'confirmation redirect page video quiz call to action' },
     ],
   },
   {
-    label: 'Set up',
+    label: 'Your audience and results',
     topics: [
-      { id: 'workspace', label: 'Workspace setup', icon: Settings, keywords: 'url setup address connections account' },
+      { id: 'signups', label: 'Manage signups', icon: Users, keywords: 'leads csv import export sequence' },
+      { id: 'analytics', label: 'Analytics and A/B tests', icon: BarChart3, keywords: 'visits conversion engagement results variants winner' },
+      { id: 'account', label: 'Account settings', icon: Settings, keywords: 'name email password delete account security' },
+      { id: 'video', label: 'Video walkthrough', icon: PlayCircle, keywords: 'watch tutorial demo' },
+    ],
+  },
+  {
+    label: 'Optional setup',
+    topics: [
+      { id: 'workspace', label: 'Customise', icon: Settings, keywords: 'url setup address connections account' },
       { id: 'domain', label: 'Custom domains', icon: Globe2, keywords: 'dns cname txt url subdomain' },
       { id: 'email', label: 'Send from my email', icon: Mail, keywords: 'sender resend domain dkim spf dns from address' },
       { id: 'legal', label: 'Legal links', icon: BookOpen, keywords: 'privacy policy terms footer compliance url' },
     ],
   },
   {
-    label: 'Connections',
+    label: 'Optional integrations',
     topics: [
       { id: 'newsletter', label: 'Beehiiv and Substack', icon: Newspaper, keywords: 'newsletter audience sync publication' },
       { id: 'kit', label: 'Connect Kit', icon: Mail, keywords: 'convertkit newsletter subscribers oauth tag' },
@@ -125,12 +139,12 @@ const topicGroups: Array<{
     ],
   },
   {
-    label: 'Manage',
+    label: 'The basics',
     topics: [
-      { id: 'signups', label: 'Manage signups', icon: Users, keywords: 'leads csv import export sequence' },
-      { id: 'analytics', label: 'Analytics and A/B tests', icon: BarChart3, keywords: 'visits conversion engagement results variants winner' },
-      { id: 'account', label: 'Account settings', icon: Settings, keywords: 'name email password delete account security' },
-      { id: 'video', label: 'Video walkthrough', icon: PlayCircle, keywords: 'watch tutorial demo' },
+      { id: 'what', label: 'What is a lead magnet?', icon: BookOpen, keywords: 'definition basics' },
+      { id: 'why', label: 'Why use a lead magnet?', icon: Gift, keywords: 'benefits leads subscribers' },
+      { id: 'how', label: 'How do they work?', icon: ListChecks, keywords: 'signup delivery follow up' },
+      { id: 'ideas', label: 'What works best', icon: Lightbulb, keywords: 'ideas checklist template guide quiz calculator' },
     ],
   },
 ];
@@ -262,73 +276,88 @@ function Step({
 }
 
 function StartHere({ onClose }: { onClose: () => void }) {
-  return (
-    <div>
-      <div className="help-launch-card rounded-2xl border border-brand-orange/20 bg-[radial-gradient(circle_at_0%_0%,rgba(254,111,52,0.16),transparent_38%),linear-gradient(135deg,#fff,#faf9f7)] p-5 sm:p-6">
-        <span className="help-launch-pill inline-flex items-center gap-1.5 rounded-full border border-brand-orange/20 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-700">
-          <Rocket className="h-3 w-3 text-brand-orange" />
-          Your first launch
-        </span>
-        <h3 className="mt-4 text-xl font-semibold tracking-[-0.02em] text-ink-950">
-          Build a direct path from interest to your email list
-        </h3>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-600">
-          Magnets builds the signup, delivery, and follow-up journey. You create the actual resource
-          people receive, then add its download or access link to the Delivery email.
-        </p>
-      </div>
+  return <div>
+    <ArticleHeading eyebrow="The recommended way" icon={Rocket} title="Create in chat. Manage it in Magnets." />
+    <p className="mt-5 text-sm leading-6 text-ink-600">Start with an idea. Your connected assistant creates the resource, signup page, delivery email. Magnets hosts the result and collects your signups.</p>
+    <ol className="mt-6 grid gap-5">
+      <Step number={1} title="Save your idea and brand" detail="Describe who it is for and what it helps them do. Choose your Magnets address. Import your website, review the suggested name, logo and colours, then apply the details you want." />
+      <Step number={2} title="Connect your assistant once" detail="Choose ChatGPT or Claude and follow the visual connection guide. Approve access to your Magnets account, then check that the connection is complete." />
+      <Step number={3} title="Ask it to create your saved idea" detail={`In a new ChatGPT chat, type @ and select Magnets. In Claude, enable Magnets for the chat. Send “${SAVED_LEAD_MAGNET_PROMPT}” and press Enter. This asks for a new document, so your assistant skips the existing-resource question. Prefer an existing file? Ask it to use that file instead. Choose delivery only or follow-up emails too before publishing.`} />
+      <Step number={4} title="Open your finished lead magnet" detail="The assistant saves everything in Magnets and publishes the completed page automatically. If publishing is blocked, it stays a draft and the assistant explains what needs fixing. Follow its live-page or edit link." />
+      <Step number={5} title="Share it and see who signs up" detail="Share the live signup page, not the resource download link. Open Lead magnets to edit, Hosted resources for the download, and Signups to see your audience or export a CSV." />
+    </ol>
+    <p className="mt-6 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">Already set up? Start from Home. Choose “Explain this page” on Home whenever you want a quick tour.</p>
+    <ArticleLink href="/create?new=1" onClose={onClose}>Start with my idea</ArticleLink>
+  </div>;
+}
 
-      <div className="mt-5 rounded-xl border border-brand-orange/20 bg-brand-orange/5 p-4">
-        <p className="text-sm font-semibold text-ink-950">Create the resource before you publish</p>
-        <p className="mt-1 text-sm leading-6 text-ink-600">
-          Make the PDF, template, video, email course, AI tool, or other useful resource yourself.
-          Magnets does not generate the finished resource for you. It gives that resource a page,
-          captures the signup, emails the link, and manages what happens next.
-        </p>
-      </div>
+function ConnectGuide({ onClose }: { onClose: () => void }) {
+  return <div>
+    <ArticleHeading eyebrow="One-time setup" icon={MessageSquare} title="Connect ChatGPT or Claude" />
+    <p className="mt-5 text-sm leading-6 text-ink-600">The connection lets your assistant save and manage work in your Magnets account. You stay in your own ChatGPT or Claude chat to create.</p>
+    <ol className="mt-6 grid gap-5">
+      <Step number={1} title="Open the visual guide" detail="Go to Home and choose ‘Connect ChatGPT or Claude’. Pick your assistant. The guide shows the setup screens and gives you the connection link to copy." />
+      <Step number={2} title="Add Magnets in your assistant" detail="Follow the guide in your assistant’s browser tab. Name the connection Magnets, paste the supplied server URL and use the sign-in option shown. Pasting the URL into an ordinary chat does not connect it." />
+      <Step number={3} title="Approve and check" detail="Sign in to Magnets if asked and approve the connection. Finish any remaining installation step in your assistant. Return to the guide and choose ‘Check connection’." />
+      <Step number={4} title="Select Magnets in a new chat" detail="In ChatGPT, type @ and select Magnets from the menu. In Claude, enable the Magnets connector. Paste your request and press Enter. Merely typing the name does not enable the connection." />
+    </ol>
+    <p className="mt-6 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">Custom connections depend on your assistant’s plan and workspace settings. If the option is missing on your phone, try the assistant’s desktop website. You can still create manually in Magnets. Older creation-only connections need to reconnect through this guide for workspace access.</p>
+    <ArticleLink href="/dashboard/home" onClose={onClose}>Open Home to connect</ArticleLink>
+  </div>;
+}
 
-      <ol className="mt-6 grid gap-5">
-        <Step
-          detail="Pick one small problem and make the PDF, template, video, course, tool, or other resource that solves it."
-          number={1}
-          title="Create the actual resource"
-        />
-        <Step
-          detail="Upload a file under Hosted resources and copy its unique link, or use a public share link from wherever the resource is hosted."
-          number={2}
-          title="Get an accessible link"
-        />
-        <Step
-          detail="Open the Delivery email tab and add a prominent linked button or line of text so subscribers can open or download the resource."
-          number={3}
-          title="Paste the link into the Delivery email"
-        />
-        <Step
-          detail="Finish the Landing page, optional Sequence, and After signup tabs. Preview everything, publish the page, and share its public link."
-          number={4}
-          title="Complete and publish the journey"
-        />
-      </ol>
-
-      <div className="mt-7 flex flex-col gap-2 border-t border-ink-200 pt-5 sm:flex-row">
-        <Link
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-ink-950 px-4 text-sm font-semibold text-white transition hover:bg-ink-800"
-          href="/dashboard/pages?new=1"
-          onClick={onClose}
-        >
-          Create a lead magnet
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-        <Link
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-ink-200 bg-white px-4 text-sm font-semibold text-ink-800 transition hover:bg-ink-50"
-          href="/dashboard?setup=custom-domain"
-          onClick={onClose}
-        >
-          Set up a custom domain
-        </Link>
-      </div>
+function ChatGuide({ onClose }: { onClose: () => void }) {
+  return <div>
+    <ArticleHeading eyebrow="Tell it what you need" icon={Sparkles} title="Create and edit in chat" />
+    <p className="mt-5 text-sm leading-6 text-ink-600">Enable Magnets in your connected assistant, make your request and approve the requested tool actions. Wait for it to confirm the work was saved.</p>
+    <div className="mt-6 grid gap-3">
+      {[
+        ['Create', SAVED_LEAD_MAGNET_PROMPT, 'Or describe a new idea, its audience and the result it should help them get.'],
+        ['Edit', 'Find my pricing checklist and shorten the headline.', 'Identify the lead magnet by name or link. Changes to a published page go live, so confirm when you want to update it.'],
+        ['Use your file', 'Use this PDF as the download, unchanged.', 'Attach the file and explain whether it is the actual download or just research. If your assistant cannot upload it, use Hosted resources and paste its resource link into the chat.'],
+        ['Choose emails', 'Just the delivery email, please.', 'Follow-ups are optional. The assistant asks before creating them. For custom timing or changes to an existing live sequence, use the Sequence tab in Magnets.'],
+        ['Add artwork', 'Create a graphic for this lead magnet using my saved brand.', 'ChatGPT can use image generation. Claude can design a graphic and have Magnets render and attach it without transferring a file. Ask to see a preview first if you want to check it before it appears on your live page.'],
+        ['See your audience', 'Show me the signups for my pricing checklist.', 'Workspace access lets the assistant retrieve your account’s signups. You can also view and export them from Signups in Magnets.'],
+      ].map(([title, prompt, detail]) => <section key={title} className="rounded-xl border border-ink-200 bg-ink-50 p-4">
+        <h4 className="text-sm font-semibold text-ink-950">{title}</h4>
+        <p className="mt-2 text-base font-medium text-ink-900">“{prompt}”</p>
+        <p className="mt-2 text-sm leading-6 text-ink-600">{detail}</p>
+      </section>)}
     </div>
-  );
+    <p className="mt-6 text-sm leading-6 text-ink-600">Your assistant provides the AI capabilities through your own plan. Its limits still apply. Magnets allows up to 10 new lead magnets per rolling 24 hours, shared across chat and manual creation.</p>
+    <ArticleLink href="/dashboard/pages" onClose={onClose}>Find my lead magnets</ArticleLink>
+  </div>;
+}
+
+function TroubleshootingGuide({ onClose }: { onClose: () => void }) {
+  return <div>
+    <ArticleHeading eyebrow="Get moving again" icon={Lightbulb} title="Find your next step" />
+    <div className="mt-6 grid gap-3">
+      {[
+        ['I copied the connection link. Now what?', 'Open the visual connection guide from Home. Add the link in your assistant’s connection settings, approve access and choose Check connection. Copying alone does not finish setup.'],
+        ['My assistant cannot see Magnets', 'Start a new chat and select Magnets. Check you connected the same account you use here. Reconnect through Home if you have an older creation-only connection.'],
+        ['I cannot find the finished page', 'Open Lead magnets and look for its title. A message in chat is not a saved page until the assistant confirms it saved successfully. Ask it to check the result before creating another copy.'],
+        ['My page is still a draft', 'Read the publishing error and fix the requested setting. Ask the assistant to retry publishing that same lead magnet, or publish it in the editor. A draft link is not a live page.'],
+        ['My file or image did not upload', 'For a Claude graphic, ask it to use the Magnets graphic preview and attachment tools instead of sending encoded image data. If it needs to redraw an existing image, check the new preview first. For a download file, use Hosted resources and paste its resource link into chat. You can also upload an image directly in the lead magnet editor.'],
+        ['I reached the creation limit', 'The limit is 10 new lead magnets in a rolling 24-hour window across chat and the app. Wait until an earlier creation falls outside that window. You can continue managing existing work.'],
+      ].map(([title, detail]) => <section key={title} className="rounded-xl border border-ink-200 bg-ink-50 p-4"><h4 className="text-sm font-semibold text-ink-950">{title}</h4><p className="mt-2 text-sm leading-6 text-ink-600">{detail}</p></section>)}
+    </div>
+    <ArticleLink href="/dashboard/home" onClose={onClose}>Go to Home</ArticleLink>
+  </div>;
+}
+
+function ManualGuide({ onClose }: { onClose: () => void }) {
+  return <div>
+    <ArticleHeading eyebrow="Another way to create" icon={PanelTop} title="Create without an assistant" />
+    <p className="mt-5 text-sm leading-6 text-ink-600">You can use the full editor without connecting ChatGPT or Claude. Existing lead magnets and custom domains keep working.</p>
+    <ol className="mt-6 grid gap-5">
+      <Step number={1} title="Bring your resource" detail="Upload your file in Hosted resources and copy its download link, or use an accessible link to your existing resource." />
+      <Step number={2} title="Choose Create manually" detail="Open Lead magnets and create a page. Add the title, short description and resource link." />
+      <Step number={3} title="Edit the page and email" detail="Complete Landing page and Delivery email. Add optional follow-ups in Sequence and choose what visitors see under After signup." />
+      <Step number={4} title="Preview, publish and share" detail="Check the page and delivery email, publish when ready, then share the live signup-page link. New signups appear in Signups." />
+    </ol>
+    <ArticleLink href="/dashboard/pages?new=1" onClose={onClose}>Create manually</ArticleLink>
+  </div>;
 }
 
 function EditorGuide({ onClose }: { onClose: () => void }) {
@@ -342,7 +371,7 @@ function EditorGuide({ onClose }: { onClose: () => void }) {
       </p>
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
         {[
-          ['Landing page', 'Write the promise, explain the value, add an image, and choose the details the form should collect.'],
+          ['Landing page', 'Write the promise, explain the value, optionally add an image, and choose the details the form should collect.'],
           ['Delivery email', 'Set the subject, preview text, and message that sends the promised resource.'],
           ['Sequence', 'Add optional follow-up emails and choose the delay before each one.'],
           ['After signup', 'Show a confirmation, redirect to another URL, or create a custom next-step page.'],
@@ -356,7 +385,7 @@ function EditorGuide({ onClose }: { onClose: () => void }) {
       <ol className="mt-8 grid gap-6">
         <Step detail="Use Preview to check the real page or email before sharing it." number={1} title="Preview the experience" />
         <Step detail="Use the writing copilot for copy ideas or revisions, then review the changes before applying them." number={2} title="Get help with the copy" />
-        <Step detail="Change the status to Published when the page is ready. Draft pages are not available to visitors." number={3} title="Publish when ready" />
+        <Step detail="Assistant-created pages publish automatically when ready. Manual pages and blocked publications remain drafts until published. Check the status before sharing; draft pages are not available to visitors." number={3} title="Publish when ready" />
         <Step detail="Copy the public link or download its QR code from the page actions, then share it with your audience." number={4} title="Share the page" />
       </ol>
       <p className="mt-7 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800">
@@ -371,9 +400,9 @@ function EditorGuide({ onClose }: { onClose: () => void }) {
 function WorkspaceSetupGuide({ onClose }: { onClose: () => void }) {
   return (
     <div>
-      <ArticleHeading eyebrow="Your account foundations" icon={Settings} title="What belongs in Workspace setup?" />
+      <ArticleHeading eyebrow="Your account foundations" icon={Settings} title="What belongs in Customise?" />
       <p className="mt-5 text-sm leading-6 text-ink-600">
-        Workspace setup controls where your pages live, where emails come from, and which other tools
+        Customise controls where your pages live, where emails come from, and which other tools
         receive new signups. You do not need to connect every option before creating a lead magnet.
       </p>
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -394,7 +423,7 @@ function WorkspaceSetupGuide({ onClose }: { onClose: () => void }) {
         Start with your Magnets URL. Add a custom domain and integrations only when they support the way
         you want to publish, deliver, or follow up.
       </p>
-      <ArticleLink href="/dashboard" onClose={onClose}>Open Workspace setup</ArticleLink>
+      <ArticleLink href="/dashboard?setup=workspace" onClose={onClose}>Open Settings → Customise</ArticleLink>
     </div>
   );
 }
@@ -482,12 +511,12 @@ function HowLeadMagnetsWork() {
         The resource, page, delivery, and follow-up work together as one simple flow.
       </p>
       <ol className="mt-8 grid gap-6">
-        <Step detail="Create the actual PDF, template, video, course, tool, or other resource people will receive." number={1} title="Make the resource" />
-        <Step detail="Give the resource an accessible link and paste that link into the Delivery email in Magnets." number={2} title="Add it to the journey" />
-        <Step detail="Publish the page and share its link in the places your audience already pays attention." number={3} title="Promote the page" />
+        <Step detail="Ask your connected assistant to create the resource, page and delivery email, or bring your own resource and use the manual editor." number={1} title="Make the resource" />
+        <Step detail="Assistant-created resources are linked in the delivery email automatically. For a manual page, add your resource link to the email." number={2} title="Add it to the journey" />
+        <Step detail="Assistant-created pages publish when ready. Publish manual pages in the editor, then share the live signup-page link." number={3} title="Promote the page" />
         <Step detail="A visitor sees the promise and enters their details to request the resource." number={4} title="They sign up" />
         <Step detail="Magnets emails the resource link immediately and records the signup for you." number={5} title="They get the promised value" />
-        <Step detail="Relevant follow-up can help them use the resource, answer the next question, or introduce your offer." number={6} title="Continue the conversation" />
+        <Step detail="Only add follow-up emails if you want them. The delivery email works on its own." number={6} title="Continue the conversation" />
       </ol>
       <p className="mt-7 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">
         Publishing is only the start. Put the link in your website, social profiles, posts, newsletter,
@@ -669,6 +698,14 @@ function HostedResourcesGuide({ onClose }: { onClose: () => void }) {
         Hosted resources give you a stable download link for a PDF, image, ZIP file, or other supported
         resource. The file is private in storage. Only someone with its unique link can download it.
       </p>
+      <div className="mt-5 rounded-xl border border-ink-200 bg-ink-50 p-4">
+        <p className="text-sm font-semibold text-ink-950">Created with ChatGPT or Claude?</p>
+        <p className="mt-1 text-sm leading-6 text-ink-600">
+          Generated resources appear here automatically. Choose Open resource to read it, PDF to download it,
+          or Edit lead magnet to change its signup page and emails. Published lead magnets also have a
+          View live lead magnet link. Draft resources remain private until you publish.
+        </p>
+      </div>
       <ol className="mt-8 grid gap-6">
         <Step detail="Open Hosted resources from the sidebar and choose Upload resource." number={1} title="Upload the file" />
         <Step detail="Give it a clear name. This is the name shown in your resource library." number={2} title="Name the resource" />
@@ -694,11 +731,11 @@ function BrandGuide({ onClose }: { onClose: () => void }) {
         title="How do I update my brand colours?"
       />
       <p className="mt-5 text-sm leading-6 text-ink-600">
-        Brand settings apply to every public lead magnet and to the editor preview.
+        Import your website during onboarding or from Brand, then review the suggested name, logo and colours before applying them. You can correct any suggestion or upload your own logo. Saved brand settings apply to your public pages and editor preview, and are passed to your assistant for new artwork. Changing Brand also affects existing live pages.
       </p>
       <ol className="mt-8 grid gap-6">
-        <Step detail="Open Brand from the dashboard sidebar." number={1} title="Open your brand settings" />
-        <Step detail="Add your business name, upload a logo, and choose the primary colour used across your pages." number={2} title="Set the identity and colour" />
+        <Step detail="Open Settings in the sidebar, then choose Brand." number={1} title="Open your brand settings" />
+        <Step detail="Add your business name, upload a logo, choose its display size, and set the primary colour used across your pages." number={2} title="Set the identity and colour" />
         <Step detail="Choose light or dark page appearance and adjust the highlight intensity." number={3} title="Choose the page style" />
         <Step detail="Check the preview, then choose Save brand." number={4} title="Preview and save" />
       </ol>
@@ -724,7 +761,7 @@ function SenderEmailGuide({ onClose }: { onClose: () => void }) {
         </p>
       </div>
       <ol className="mt-8 grid gap-6">
-        <Step detail="In Workspace setup, add the root domain you own. You do not have to publish your pages on that domain." number={1} title="Add your domain" />
+        <Step detail="In Settings → Customise, add the root domain you own. You do not have to publish your pages on that domain." number={1} title="Add your domain" />
         <Step detail="Open Optional connections, then Your sender domain. Choose a sending subdomain and the address you want people to see." number={2} title="Choose the From address" />
         <Step detail="Add the exact DNS records shown by Magnets wherever your domain's DNS is managed." number={3} title="Add the sending records" />
         <Step detail="Return to Magnets and run the verification check. Use the address only after it shows as verified." number={4} title="Verify the sender" />
@@ -748,11 +785,11 @@ function DeliveryEmailGuide({ onClose }: { onClose: () => void }) {
         resource easy to find and remind the reader why it is useful.
       </p>
       <div className="mt-5 rounded-xl border border-brand-orange/20 bg-brand-orange/5 p-4">
-        <p className="text-sm font-semibold text-ink-950">Bring your own resource link</p>
+        <p className="text-sm font-semibold text-ink-950">Your resource link is included</p>
         <p className="mt-1 text-sm leading-6 text-ink-600">
-          Create the resource yourself, then paste its full download or access link into this email.
-          For files, you can upload the resource under Hosted resources and use the unique link Magnets
-          gives you.
+          When your assistant creates the lead magnet, it includes the resource link in the delivery email.
+          For a manually created page, paste your download or access link here. Hosted resources gives
+          uploaded files a unique link you can use.
         </p>
       </div>
       <ol className="mt-8 grid gap-6">
@@ -778,7 +815,7 @@ function SequenceGuide({ onClose }: { onClose: () => void }) {
     <div>
       <ArticleHeading eyebrow="Continue the conversation" icon={Workflow} title="How do follow-up sequences work?" />
       <p className="mt-5 text-sm leading-6 text-ink-600">
-        A follow-up sequence is an optional set of emails sent after the resource. Use it to help someone
+        Your assistant asks whether you want just the delivery email or follow-ups too. Follow-ups are never required. A sequence is an optional set of emails sent after the resource. Use it to help someone
         apply what they downloaded, answer the next question, and introduce a relevant next step.
       </p>
       <ol className="mt-8 grid gap-6">
@@ -835,7 +872,7 @@ function LegalLinksGuide({ onClose }: { onClose: () => void }) {
         handles their information and the rules that apply to your offer.
       </p>
       <ol className="mt-8 grid gap-6">
-        <Step detail="Open Workspace setup and expand Legal links." number={1} title="Open the legal settings" />
+        <Step detail="Open Settings → Customise and expand Legal links." number={1} title="Open the legal settings" />
         <Step detail="Paste the full public URL for your privacy policy, beginning with https://." number={2} title="Add your privacy policy" />
         <Step detail="Add a full public URL for your terms if you use them." number={3} title="Add your terms" />
         <Step detail="Open a page preview and check both links. They open in a new tab from every public lead magnet footer." number={4} title="Check the public page" />
@@ -863,7 +900,7 @@ function NewsletterGuide({ onClose }: { onClose: () => void }) {
       />
       <p className="mt-5 text-sm leading-6 text-ink-600">
         Send new signups straight to the newsletter you already use, without exporting and importing a
-        list by hand. Open Workspace setup, expand Optional connections, then open Newsletter under
+        list by hand. Open Settings → Customise, expand Optional connections, then open Newsletter under
         Audience sync.
       </p>
       <p className="mt-3 text-sm leading-6 text-ink-600">
@@ -907,7 +944,7 @@ function KitGuide({ onClose }: { onClose: () => void }) {
       <ArticleHeading eyebrow="Audience sync" icon={Mail} title="How do I connect Kit?" />
       <p className="mt-5 text-sm leading-6 text-ink-600">
         Add each new signup to Kit automatically and tag them with the lead magnet they requested. Open
-        Workspace setup, expand Optional connections, then open Kit under Automations.
+        Settings → Customise, expand Optional connections, then open Kit under Automations.
       </p>
       <ol className="mt-8 grid gap-6">
         <Step detail="Choose Connect Kit. Magnets sends you to Kit's secure authorization screen." number={1} title="Start the connection" />
@@ -932,7 +969,7 @@ function SlackGuide({ onClose }: { onClose: () => void }) {
       <ol className="mt-8 grid gap-6">
         <Step detail="Create a Slack app, turn on Incoming Webhooks, then choose Add New Webhook to Workspace." number={1} title="Create an incoming webhook" />
         <Step detail="Choose the channel, authorise the app, and copy the hooks.slack.com URL. Treat this URL like a password." number={2} title="Copy the webhook URL" />
-        <Step detail="In Magnets, open Workspace setup, Optional connections, then Slack. Paste the URL into the webhook field." number={3} title="Paste it into Magnets" />
+        <Step detail="In Magnets, open Settings → Customise, Optional connections, then Slack. Paste the URL into the webhook field." number={3} title="Paste it into Magnets" />
         <Step detail="Choose Send test and confirm the message arrives in the selected channel." number={4} title="Test the connection" />
       </ol>
       <p className="mt-7 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">
@@ -954,7 +991,7 @@ function ZapierGuide({ onClose }: { onClose: () => void }) {
       <ol className="mt-8 grid gap-6">
         <Step detail="Create a Zap and choose Webhooks by Zapier as the trigger." number={1} title="Create the trigger" />
         <Step detail="Choose Catch Hook, open the Test tab, then copy the unique webhook URL." number={2} title="Copy the Catch Hook URL" />
-        <Step detail="Open Workspace setup, Optional connections, then Zapier. Paste the URL into Magnets." number={3} title="Add it to Magnets" />
+        <Step detail="Open Settings → Customise, Optional connections, then Zapier. Paste the URL into Magnets." number={3} title="Add it to Magnets" />
         <Step detail="Choose Send test in Magnets. Return to Zapier, choose Test trigger, then map the sample fields into your next action." number={4} title="Test and map the fields" />
       </ol>
       <ArticleLink href="/dashboard?connection=zapier" onClose={onClose}>Open Zapier connection</ArticleLink>
@@ -972,7 +1009,7 @@ function PipedriveGuide({ onClose }: { onClose: () => void }) {
       <ol className="mt-8 grid gap-6">
         <Step detail="In Pipedrive, open Personal preferences, then API." number={1} title="Find your API token" />
         <Step detail="Copy the token. Treat it like a password and do not share it anywhere else." number={2} title="Copy the token safely" />
-        <Step detail="In Magnets, open Workspace setup, Optional connections, then Pipedrive. Paste the token." number={3} title="Add it to Magnets" />
+        <Step detail="In Magnets, open Settings → Customise, Optional connections, then Pipedrive. Paste the token." number={3} title="Add it to Magnets" />
         <Step detail="Choose Test connection and wait for the connected confirmation." number={4} title="Test the connection" />
       </ol>
       <p className="mt-7 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">
@@ -993,7 +1030,7 @@ function CalendarGuide({ onClose }: { onClose: () => void }) {
         Your sender setup must be ready first.
       </p>
       <ol className="mt-8 grid gap-6">
-        <Step detail="Open Workspace setup, Optional connections, then Calendar." number={1} title="Open Calendar settings" />
+        <Step detail="Open Settings → Customise, Optional connections, then Calendar." number={1} title="Open Calendar settings" />
         <Step detail="For Calendly, create a personal access token under Integrations, API and Webhooks. For Cal.com, create an API key." number={2} title="Add the provider credential" />
         <Step detail="Connect the account. Calendly requires a paid plan that supports webhooks. Magnets configures the booking webhook for you." number={3} title="Finish the connection" />
         <Step detail="In each lead magnet's Sequence tab, turn on the option to stop the sequence when a booking is received." number={4} title="Enable it per lead magnet" />
@@ -1143,11 +1180,7 @@ export function HelpCenterModal({
       ),
     }))
     .filter((group) => group.topics.length > 0);
-  const learnGroup = topicGroups.find((group) => group.label === 'Learn')!;
-  const buildGroup = topicGroups.find((group) => group.label === 'Build')!;
-  const setupGroup = topicGroups.find((group) => group.label === 'Set up')!;
-  const connectionsGroup = topicGroups.find((group) => group.label === 'Connections')!;
-  const manageGroup = topicGroups.find((group) => group.label === 'Manage')!;
+
 
   function openTopic(topic: HelpTopic) {
     contentScrollerRef.current?.scrollTo({ top: 0 });
@@ -1222,7 +1255,7 @@ export function HelpCenterModal({
                 </span>
                 <div>
                   <h2 className="text-base font-semibold text-ink-950" id={titleId}>Help centre</h2>
-                  <p className="text-xs text-ink-500">Learn the basics or find your next step.</p>
+                  <p className="text-xs text-ink-500">Create in chat. Manage everything here.</p>
                 </div>
               </div>
               <button
@@ -1249,12 +1282,24 @@ export function HelpCenterModal({
                     <div className="mx-auto max-w-4xl p-5 sm:p-7 md:p-8">
                       <div className="max-w-2xl">
                         <h3 className="text-xl font-semibold tracking-tight text-ink-950 sm:text-2xl">
-                          What do you need help with?
+                          Your next step, made simple.
                         </h3>
                         <p className="mt-2 text-sm leading-6 text-ink-600">
-                          Choose a topic for a clear answer and the exact steps to follow.
+                          Connect your assistant, create your lead magnet, then share it and see who signs up.
                         </p>
                       </div>
+
+                      {!normalizedQuery && <div className="mt-5 grid gap-2 sm:grid-cols-3" aria-label="Quick start">
+                        {([
+                          ['start', '01', 'Start with an idea', 'See the whole flow', Compass],
+                          ['connect', '02', 'Connect your assistant', 'Follow the visual guide', MessageSquare],
+                          ['chat', '03', 'Create and keep editing', 'Know what to ask in chat', Sparkles],
+                        ] as const).map(([topic, number, title, detail, Icon]) => <button key={topic} type="button" onClick={() => openTopic(topic)} className="group flex items-center gap-3 rounded-xl border border-brand-orange/25 bg-brand-orange/5 p-4 text-left transition hover:-translate-y-0.5 hover:bg-brand-orange/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange motion-reduce:transform-none sm:block">
+                          <span className="flex shrink-0 items-center justify-between gap-2 text-brand-orange"><Icon className="h-5 w-5" /><span className="text-xs font-semibold">{number}</span></span>
+                          <span className="block min-w-0 sm:mt-3"><span className="block text-sm font-semibold text-ink-950">{title}</span>
+                          <span className="mt-1 block text-xs leading-5 text-ink-600">{detail}</span></span>
+                        </button>)}
+                      </div>}
 
                       <label className="relative mt-6 block">
                         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
@@ -1263,7 +1308,7 @@ export function HelpCenterModal({
                           autoComplete="off"
                           className="h-12 w-full rounded-xl border border-ink-200 bg-white pl-11 pr-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
                           onChange={(event) => setSearchQuery(event.target.value)}
-                          placeholder="Search topics, integrations, or setup"
+                          placeholder="Search connection, editing, emails…"
                           type="search"
                           value={searchQuery}
                         />
@@ -1271,51 +1316,11 @@ export function HelpCenterModal({
 
                       {visibleTopicGroups.length > 0 ? (
                         <nav aria-label="Help topics" className="mt-7">
-                          {!normalizedQuery ? (
-                            <>
-                              <div className="grid items-start gap-4 lg:grid-cols-2">
-                                <TopicGroupSection
-                                  className="lg:col-start-1 lg:row-start-1"
-                                  group={learnGroup}
-                                  onTopicClick={openTopic}
-                                />
-                                <TopicGroupSection
-                                  className="lg:col-start-2 lg:row-span-2 lg:row-start-1"
-                                  group={buildGroup}
-                                  onTopicClick={openTopic}
-                                />
-                                <TopicGroupSection
-                                  className="lg:col-start-1 lg:row-start-2"
-                                  group={setupGroup}
-                                  onTopicClick={openTopic}
-                                />
-                              </div>
-                              <TopicGroupSection
-                                className="mt-4"
-                                group={connectionsGroup}
-                                onTopicClick={openTopic}
-                                twoColumns
-                              />
-                              <TopicGroupSection
-                                className="mt-4"
-                                group={manageGroup}
-                                onTopicClick={openTopic}
-                                twoColumns
-                              />
-                            </>
-                          ) : (
-                            <div className="grid items-start gap-4 lg:grid-cols-2">
-                              {visibleTopicGroups.map((group) => (
-                                <TopicGroupSection
-                                  className={cn(group.label === 'Connections' && 'lg:col-span-2')}
-                                  group={group}
-                                  key={group.label}
-                                  onTopicClick={openTopic}
-                                  twoColumns={group.label === 'Connections'}
-                                />
-                              ))}
-                            </div>
-                          )}
+                          <div className="grid items-start gap-4 sm:grid-cols-2">
+                            {visibleTopicGroups.map((group) => (
+                              <TopicGroupSection group={group} key={group.label} onTopicClick={openTopic} />
+                            ))}
+                          </div>
                         </nav>
                       ) : (
                         <div className="mt-7 rounded-2xl border border-dashed border-ink-300 bg-ink-50 px-5 py-10 text-center">
@@ -1358,6 +1363,10 @@ export function HelpCenterModal({
                       {activeTopic === 'why' && <WhyUseALeadMagnet />}
                       {activeTopic === 'how' && <HowLeadMagnetsWork />}
                       {activeTopic === 'ideas' && <BestIdeas />}
+                      {activeTopic === 'connect' && <ConnectGuide onClose={onClose} />}
+                      {activeTopic === 'chat' && <ChatGuide onClose={onClose} />}
+                      {activeTopic === 'troubleshoot' && <TroubleshootingGuide onClose={onClose} />}
+                      {activeTopic === 'manual' && <ManualGuide onClose={onClose} />}
                       {activeTopic === 'start' && <StartHere onClose={onClose} />}
                       {activeTopic === 'editor' && <EditorGuide onClose={onClose} />}
                       {activeTopic === 'resources' && <HostedResourcesGuide onClose={onClose} />}

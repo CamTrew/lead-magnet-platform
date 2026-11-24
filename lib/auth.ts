@@ -1,10 +1,11 @@
+import { assistantWorkspaceContext } from './assistant-workspace-context';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   consumeEmailVerificationToken,
-  createEmailVerificationToken,
+  createEmailVerificationCodeToken,
   createPasswordResetToken,
   createDatabaseSession,
   createUserWithPassword,
@@ -14,6 +15,7 @@ import {
   getDashboardPayloadBySessionToken,
   resetPasswordFromToken,
 } from './platform-store';
+import { assertVerificationCodeConfiguration, generateVerificationCode, hashVerificationCode, verificationCodeHashes, VERIFICATION_CODE_TTL_MS } from './email-verification-code';
 import { hashPassword, verifyPassword } from './passwords';
 
 export const sessionCookieName = 'magnets_session';
@@ -77,6 +79,8 @@ export async function createLoginSession(email: string, password: string) {
 }
 
 export async function createRegistration(email: string, password: string, name?: string) {
+  // Fail before persisting an account if its verification cannot be issued.
+  assertVerificationCodeConfiguration();
   const result = await createUserWithPassword(email, await hashPassword(password), name);
 
   if (!result) {
@@ -84,26 +88,30 @@ export async function createRegistration(email: string, password: string, name?:
   }
 
   if (result.existingPasswordHash) {
+    // A retry after interrupted verification can resume only with the original
+    // password. Never overwrite credentials or reopen a verified account.
+    if (await verifyPassword(password, result.existingPasswordHash)) {
+      const existing = await findUserWithPasswordByEmail(email);
+      if (existing && !existing.emailVerified) return existing.user;
+    }
     throw new AuthActionError('An account already exists for that email. Sign in instead.', 409);
   }
 
   return result.user;
 }
 
-const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
-
 function hashEmailVerificationToken(token: string) {
   return `sha256:${createHash('sha256').update(token).digest('hex')}`;
 }
 
 async function issueEmailVerification(userId: string, email: string) {
-  const token = randomBytes(32).toString('base64url');
-  await createEmailVerificationToken(
+  const code = generateVerificationCode();
+  await createEmailVerificationCodeToken(
     userId,
-    hashEmailVerificationToken(token),
-    new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS)
+    hashVerificationCode(email, code),
+    new Date(Date.now() + VERIFICATION_CODE_TTL_MS)
   );
-  return { email, token };
+  return { email, code };
 }
 
 export async function createEmailVerificationForUser(userId: string, email: string) {
@@ -127,6 +135,22 @@ export async function completeEmailVerification(token: string) {
     );
   }
 
+  await createSessionForUser(userId);
+}
+
+export async function completeEmailVerificationCode(email: string, code: string) {
+  let userId: string | null = null;
+  for (const hash of verificationCodeHashes(email, code)) {
+    userId = await consumeEmailVerificationToken(hash);
+    if (userId) break;
+  }
+  if (!userId) {
+    throw new AuthActionError(
+      'That code is incorrect or has expired. Try again or request a new code.',
+      400,
+      'invalid_email_verification'
+    );
+  }
   await createSessionForUser(userId);
 }
 
@@ -177,6 +201,8 @@ export async function clearSession() {
 }
 
 export const getCurrentDashboardPayload = cache(async () => {
+  // Full payload access is deliberately unavailable to internal MCP adapters.
+  if (assistantWorkspaceContext.getStore()) throw new Error('Use the account-scoped dashboard base in assistant tools.');
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (!token) return null;
@@ -184,13 +210,17 @@ export const getCurrentDashboardPayload = cache(async () => {
   return getDashboardPayloadBySessionToken(token);
 });
 
-export const getCurrentDashboardBase = cache(async () => {
+const getCookieDashboardBase = cache(async () => {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (!token) return null;
 
   return getDashboardBasePayloadBySessionToken(token);
 });
+
+export async function getCurrentDashboardBase() {
+  return assistantWorkspaceContext.getStore()?.payload ?? getCookieDashboardBase();
+}
 
 export async function requireDashboardBase() {
   const payload = await getCurrentDashboardBase();

@@ -1,0 +1,76 @@
+.banner,.dialog{--text:#f6f2e9;--muted:#bcb5a7;--line:#3d3d3d;color:var(--text);font-family:var(--font-geist-sans),sans-serif;background:#191919;border:1px solid var(--line)}
+.banner{display:grid;grid-template-columns:1.3fr 1fr;align-items:center;overflow:hidden;border-radius:22px;padding:36px 40px;background:radial-gradient(ellipse at 90% 100%,#ffffff04,transparent 65%),#191919}
+.eyebrow{display:flex;align-items:center;gap:8px;color:#eea371;font-size:11px;letter-spacing:1.5px;font-weight:600;line-height:1.6}
+.banner h2{font-size:clamp(26px,2.5vw,37px);font-weight:600;line-height:1.15;letter-spacing:-1.3px;margin:18px 0 14px}.banner h2 span{color:#fda56e}
+.banner p{color:var(--muted);max-width:480px;font-size:16px;line-height:1.65;margin:0}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.primary,.secondary,.back,.textLink{display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:15px;line-height:1.4;text-decoration:none}
+.primary{background:linear-gradient(110deg,#f8bd7e,#ff8b4a);border:1px solid #ffb073;border-radius:10px;color:#1a1a1a;padding:13px 18px;font-weight:600;min-height:48px;transition:transform .2s,filter .2s}.primary:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.secondary{border:1px solid #474747;border-radius:10px;padding:12px 16px;color:var(--text);background:#ffffff04;min-height:48px}.secondary:hover{background:#ffffff0b}
+.scene{position:relative;height:290px;isolation:isolate;display:flex;align-items:center;justify-content:center;perspective:900px;overflow:hidden}.compact{min-width:0;height:270px}
+.halo{position:absolute;width:220px;height:180px;border-radius:50%;background:#f886331c;filter:blur(36px);animation:breathe 5s ease-in-out infinite;z-index:-1}.orbit{position:absolute;width:300px;height:240px;border:1px solid #de9a4820;border-radius:50%;transform:rotate(-24deg);z-index:-1}.orbit:after{content:'';position:absolute;inset:22px -25px;border:1px dashed #de9a4820;border-radius:50%;transform:rotate(45deg)}
+.chatCard,.savedCard,.ideaCard,.libraryCard,.audienceCard{border:1px solid #66533b;background:linear-gradient(140deg,#333333,#222222);border-radius:14px;box-shadow:0 18px 35px #0003;animation:float 6s ease-in-out infinite}
+.chatCard{position:absolute;left:8%;top:32px;width:230px;padding:20px;transform:rotate(-6deg);font-size:13px}.chatCard>svg{color:#f5af77}.chatCard>span{display:block;margin:8px 0 15px;color:var(--muted)}.chatCard>div{font-size:15px;padding:12px;background:#111111;border-radius:8px;line-height:1.5}.chatCard small{display:block;margin-top:14px;color:#c8bdac;font-size:11px}
+.savedCard{position:absolute;right:2%;bottom:22px;width:137px;padding:21px 16px;background:linear-gradient(140deg,#ffb473,#ef783c);color:#242424;animation-delay:-3s;transform:rotate(8deg)}.savedCard strong{display:block;font-size:20px;margin:6px 0 12px;letter-spacing:-1px}.savedCard>span{font-size:11px;display:flex;align-items:center;gap:5px}.connector{position:absolute;display:flex;gap:9px;left:55%;top:54%;transform:rotate(38deg)}.connector i{width:4px;height:4px;background:#ffad70;border-radius:50%;animation:travel 2.4s infinite}.connector i:nth-child(2){animation-delay:.3s}.connector i:nth-child(3){animation-delay:.6s}
+.cursor{display:inline-block;width:2px;height:15px;background:#ff9d66;margin-left:3px;vertical-align:middle;animation:blink 1.4s steps(2) infinite}.dots{animation:blink 1.8s infinite}
+.dialog{padding:30px;width:min(900px,calc(100% - 32px));max-height:calc(100dvh - 32px);border-radius:22px;overflow-y:auto;margin:auto;box-shadow:0 40px 120px #0007}.dialog::backdrop{background:#080808b8;backdrop-filter:blur(9px)}.close{position:absolute;right:15px;top:15px;display:grid;place-items:center;width:40px;height:40px;color:var(--muted);border-radius:8px}.close:hover{background:#ffffff0a;color:white}.dialog>.eyebrow{padding-right:25px;font-size:10px}
+.steps{display:flex;gap:8px;margin-top:25px;border-bottom:1px solid var(--line);padding-bottom:18px}.steps button{flex:1;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);text-align:left;min-height:38px}.steps button>span{width:24px;height:24px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;flex-shrink:0;font-size:11px}.steps button[aria-current]{color:#ffad70}.steps button[aria-current]>span{background:#ffad701a;border-color:#ffad7070}
+.stepContent{display:grid;grid-template-columns:1fr 1.15fr;gap:30px;align-items:center;padding:16px 0;animation:enter .35s ease-out}.explanation h2{font-size:30px;font-weight:600;line-height:1.15;letter-spacing:-1px;margin:0 0 18px}.explanation p{font-size:16px;line-height:1.7;color:var(--muted);margin-bottom:16px}.explanation .detail{font-size:14px;color:#b3a894}.textLink{justify-content:flex-start;color:#ffc294;font-size:14px}.navigation{display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--line);padding-top:20px}.navigation>span{font-size:12px;color:var(--muted)}.back{color:var(--muted);padding:10px 0}.back:disabled{opacity:.3;cursor:default}
+.ideaCard,.libraryCard,.audienceCard{width:235px;padding:25px;transform:rotate(-4deg)}.ideaCard>svg,.audienceCard>svg{color:#ffac70}.ideaCard>span,.libraryCard>span{display:block;font-size:9px;letter-spacing:1.5px;color:var(--muted);margin:14px 0}.ideaCard>strong,.libraryCard>strong,.audienceCard>strong{display:block;font-size:23px;line-height:1.3;letter-spacing:-.6px}.libraryCard>div{display:flex;gap:22px;color:#ffb37a;margin:24px 0}.libraryCard>b{font-weight:400;font-size:12px;color:var(--muted)}.audienceCard>strong{margin:10px 0 20px}.audienceCard>div{display:flex;align-items:center;gap:7px;font-size:12px;padding:11px 0;border-top:1px solid var(--line)}.audienceCard>div>svg{margin-left:auto;color:#bdd9ac}.audienceCard i{width:6px;height:6px;background:#ffb27d;border-radius:50%;animation:breathe 3s infinite}.audienceCard small{display:block;font-size:11px;color:var(--muted);margin-top:12px}
+.banner :is(a,button):focus-visible,.dialog :is(a,button):focus-visible{outline:2px solid #ffc294;outline-offset:4px}.explanation h2:focus{outline:none}
+@keyframes float{0%,100%{translate:0 0}50%{translate:0 -10px}}@keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}@keyframes blink{0%,40%{opacity:1}60%,100%{opacity:.25}}@keyframes travel{0%,100%{opacity:.1;scale:.7}50%{opacity:1;scale:1.2}}@keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media(max-width:1100px){.banner{padding:28px;grid-template-columns:1.3fr 1fr}.compact .chatCard{left:0;width:200px}.compact .savedCard{right:0;width:115px}.actions{gap:9px}.banner .primary,.banner .secondary{font-size:14px;padding:12px}}
+@media(max-width:700px){.banner{grid-template-columns:1fr;padding:25px}.banner h2{font-size:30px}.compact{height:205px;max-width:350px;width:100%;margin:8px auto 0}.compact .chatCard{top:20px;width:215px;padding:14px}.compact .chatCard>span{margin:4px 0 10px}.compact .savedCard{bottom:0;right:8px;padding:16px;width:115px}.actions{flex-direction:column;align-items:stretch}.dialog{padding:22px 20px}.steps{gap:4px}.steps button{flex-direction:column;gap:6px;text-align:center;font-size:10px}.stepContent{grid-template-columns:1fr;gap:4px;padding:0 0 18px}.stepContent .scene{height:205px;max-width:330px;width:100%;margin:auto}.stepContent .chatCard{top:12px;left:0;width:210px;padding:14px}.stepContent .savedCard{bottom:0;width:115px;padding:15px}.ideaCard,.libraryCard,.audienceCard{scale:.8}.explanation h2{font-size:26px;margin-bottom:12px}.explanation p{font-size:15px;line-height:1.6}.navigation{gap:10px}.navigation .primary{font-size:13px;padding:10px}.navigation>span{white-space:nowrap}}
+@media(prefers-reduced-motion:reduce){.banner *,.dialog *{animation:none!important;transition:none!important}}
+/* Native top-layer dialog must ignore the library's space-y stack margins. */
+.dialog{margin:auto!important}
+
+.workflow{display:flex;align-items:center;flex-wrap:wrap;gap:9px 12px;margin-top:22px;color:#ccac8e;font-size:12px;line-height:1.6}.workflow span{display:inline-flex;align-items:center;gap:6px}.banner p strong{font-weight:500;color:#f1ddc7}@media(max-width:600px){.workflow>svg{display:none}.workflow{gap:9px 18px}}
+
+.guideBar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:14px 18px;border:1px solid #3a3a3a;border-radius:14px;background:#181818;color:#ead7c1}.guideBar>span{font-size:14px;line-height:1.6;color:#c8b69c;margin-right:auto}.guideBar>a{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;min-height:44px;border-radius:8px;color:#edc19a;font-size:14px}.guideBar>a:hover{background:#ffffff09}.guideBar>a:focus-visible{outline:2px solid #ffb77d;outline-offset:3px}.connectionNotice{font-size:15px;line-height:1.7;color:#c8b69c;border-left:2px solid #e4a36e;padding:4px 15px}@media(max-width:650px){.guideBar{gap:6px;padding:14px}.guideBar>span{width:100%;margin-bottom:4px}.guideBar>a{padding:8px}}
+/* Shrink tracks within the available dashboard width, not their text's intrinsic width. */
+.banner{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);width:100%;min-width:0}.bannerCopy{min-width:0}.primary,.secondary{max-width:100%;overflow-wrap:anywhere}.stepContent{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+@media(max-width:900px){.banner{grid-template-columns:minmax(0,1fr)}.compact{width:100%;max-width:360px;margin:8px auto 0;height:220px}}
+@media(max-width:700px){.stepContent{grid-template-columns:minmax(0,1fr)}}
+
+/* Keep the primary action ahead of supporting detail on narrow and short screens. */
+@container(max-width:850px) {
+  .banner { grid-template-columns:minmax(0,1fr); }
+  .compact { width:100%; max-width:360px; margin:8px auto 0; height:220px; }
+}
+@media(max-width:600px) {
+  .banner { padding:20px; }
+  .banner h2 { font-size:28px; margin:12px 0; }
+  .banner p { line-height:1.5; }
+  .actions { margin-top:18px; }
+  .workflow { margin-top:16px; }
+}
+@media(max-width:600px) and (max-height:650px) {
+  .banner { padding:16px; }
+  .bannerCopy>.eyebrow { display:none; }
+  .banner h2 { font-size:26px; margin-top:0; }
+  .banner p { font-size:15px; }
+  .actions { margin-top:14px; }
+}
+
+.bannerCopy > .eyebrow { margin-bottom:12px; }
+
+/* These panels also appear outside the dark creation flow. */
+.banner,.dialog { --text:var(--studio-text); --muted:var(--studio-muted); --line:var(--studio-line); background:var(--studio-panel); }
+.banner { background:radial-gradient(ellipse at 90% 100%,#ffffff04,transparent 65%),var(--studio-panel); box-shadow:var(--studio-shadow); }
+.dialog { box-shadow:var(--studio-dialog-shadow); }
+.eyebrow,.banner h2 span,.textLink,.steps button[aria-current],.workflow { color:var(--studio-accent); }
+.banner p strong { color:var(--studio-text); }
+.secondary { background:var(--studio-soft); border-color:var(--studio-line); }
+.secondary:hover,.close:hover { background:var(--studio-inset); color:var(--studio-text); }
+.chatCard,.ideaCard,.libraryCard,.audienceCard { color:var(--studio-text); background:var(--studio-scene); border-color:var(--studio-line-strong); box-shadow:var(--studio-shadow); }
+.chatCard>div { background:var(--studio-inset); }
+.chatCard small,.explanation .detail { color:var(--studio-muted); }
+.chatCard>svg,.ideaCard>svg,.audienceCard>svg,.libraryCard>div { color:var(--studio-accent); }
+.audienceCard>div>svg { color:var(--studio-success); }
+.steps button[aria-current]>span { background:var(--studio-accent-soft); border-color:var(--studio-line-strong); }
+.guideBar { background:var(--studio-panel); color:var(--studio-text); border-color:var(--studio-line); }
+.guideBar>span,.connectionNotice { color:var(--studio-muted); }
+.guideBar>a { color:var(--studio-accent); }
+.guideBar>a:hover { background:var(--studio-soft); }
+.banner :is(a,button):focus-visible,.dialog :is(a,button):focus-visible,.guideBar>a:focus-visible { outline-color:var(--studio-accent); }
+.savedCard { box-shadow:var(--studio-shadow); }

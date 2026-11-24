@@ -15,7 +15,6 @@ import {
   MessageSquare,
   Newspaper,
   ScrollText,
-  Sparkles,
   Webhook,
 } from 'lucide-react';
 import {
@@ -1181,29 +1180,9 @@ export function DashboardClient({
 
   return (
     <>
-      <PageHeader helpTopic="workspace" title="Workspace setup" subtitle="Manage your publishing address, email delivery, and connections" />
+      <PageHeader helpTopic="workspace" title="Customise" subtitle="Manage your publishing address, email delivery, and connections" />
       <div className="mx-auto max-w-7xl space-y-5">
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">{error}</p>}
-
-        <section className="dashboard-hero-panel overflow-hidden rounded-2xl border border-ink-200 bg-[radial-gradient(circle_at_6%_0%,rgba(254,111,52,0.13),transparent_32%),linear-gradient(135deg,#fff,#faf9f7)] px-5 py-6 shadow-[0_18px_60px_-48px_rgba(17,17,17,0.5)] sm:px-7 sm:py-7">
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div className="max-w-xl">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-orange/20 bg-brand-orange/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-700">
-                <Sparkles className="h-3 w-3 text-brand-orange" />
-                Workspace essentials
-              </span>
-              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-ink-950 sm:text-3xl">Set up once, then get back to creating</h2>
-              <p className="mt-2 text-sm leading-6 text-ink-600 sm:text-base">Your Magnets URL is the only required setting. Domains and integrations stay out of the way until you need them.</p>
-            </div>
-            <div className="dashboard-glass-stat min-w-0 rounded-xl border border-white bg-white/85 px-4 py-3 shadow-sm backdrop-blur md:w-72">
-              <div className="flex items-center gap-2">
-                <span className={cn('h-2 w-2 rounded-full', account.username ? 'bg-emerald-500' : 'bg-amber-500')} />
-                <p className="text-xs font-semibold text-ink-900">{account.username ? 'Public URL ready' : 'Choose your public URL'}</p>
-              </div>
-              <p className="mt-1 truncate font-mono text-xs text-ink-500">{account.domainAttachedHost ? pageHost : platformHost}</p>
-            </div>
-          </div>
-        </section>
 
         <AceternityCard className="overflow-hidden rounded-2xl p-0">
           <div className="p-5 sm:p-7">
@@ -1366,7 +1345,7 @@ export function DashboardClient({
               <section>
                 <div className="mb-2 flex items-center justify-between gap-3 px-1">
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Email &amp; scheduling</h3>
+                    <h3 data-dashboard-tour="workspace-delivery" className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Email &amp; scheduling</h3>
                     <p className="mt-1 text-xs text-ink-500">Where messages come from and when sequences should stop.</p>
                   </div>
                   <ConnectionStatus tone={account.resendManagedByPlatform ? 'platform' : account.resendConfigured ? 'connected' : 'pending'}>
@@ -1425,7 +1404,7 @@ export function DashboardClient({
 
               <section>
                 <div className="mb-2 px-1">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Automations</h3>
+                  <h3 data-dashboard-tour="workspace-automations" className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Automations</h3>
                   <p className="mt-1 text-xs text-ink-500">Send each new signup to the tools your team already uses.</p>
                 </div>
                 <div className="grid items-start gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 lg:grid-cols-2">
@@ -1554,7 +1533,7 @@ export function DashboardClient({
               <div className="flex min-w-0 items-start gap-3">
                 <ConnectionIcon icon={ScrollText} tone="orange" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-950">Legal links</p>
+                  <p data-dashboard-tour="workspace-legal" className="text-sm font-semibold text-ink-950">Legal links</p>
                   <p className="mt-1 text-sm leading-6 text-ink-600">
                     Optionally add your own privacy policy and terms to every page footer.
                   </p>

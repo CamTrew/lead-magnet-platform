@@ -89,7 +89,7 @@ function ProfileCard({
           <UserRound className="h-4 w-4" />
         </span>
         <div className="flex-1">
-          <h2 className="text-base font-semibold text-ink-950">Who you are</h2>
+          <h2 data-dashboard-tour="account-profile" className="text-base font-semibold text-ink-950">Who you are</h2>
           <p className="mt-1 text-sm text-ink-600">{userEmail}</p>
 
           <form className="mt-5 grid gap-4 sm:max-w-md" onSubmit={submit}>
@@ -185,7 +185,7 @@ function PasswordCard() {
           <KeyRound className="h-4 w-4" />
         </span>
         <div className="flex-1">
-          <h2 className="text-base font-semibold text-ink-950">Change password</h2>
+          <h2 data-dashboard-tour="account-password" className="text-base font-semibold text-ink-950">Change password</h2>
           <p className="mt-1 text-sm text-ink-600">
             Use at least 8 characters. Pick something you don&apos;t reuse elsewhere.
           </p>
@@ -287,7 +287,7 @@ function DangerZoneCard() {
           <AlertTriangle className="h-4 w-4" />
         </span>
         <div className="flex-1">
-          <h2 className="text-base font-semibold text-red-700">Danger zone</h2>
+          <h2 data-dashboard-tour="account-danger" className="text-base font-semibold text-red-700">Danger zone</h2>
           <p className="mt-1 text-sm text-ink-600">
             Deleting your account removes your magnets, signups, integrations, and any custom domains attached to
             your account. This is permanent. There is no recovery.

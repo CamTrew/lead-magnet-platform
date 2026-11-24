@@ -28,10 +28,21 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:campaign-creation": "tsx scripts/campaign-creation-smoke.ts",
+    "test:campaign-mcp": "tsx scripts/campaign-mcp-http-smoke.ts",
+    "test:website-brand": "tsx scripts/website-brand-smoke.ts",
+    "test:creation-limit": "tsx scripts/lead-magnet-creation-limit-smoke.ts",
+    "test:creator-username": "tsx scripts/creator-username-smoke.ts",
+    "test:workspace-mcp": "tsx scripts/workspace-mcp-http-smoke.ts",
+    "check:production-config": "node scripts/check-production-config.mjs",
+    "test:production-config": "node scripts/production-config-smoke.mjs",
+    "test:follow-up-upgrade": "node scripts/run-tsx.mjs scripts/follow-up-upgrade-smoke.ts"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.11",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@pdf-lib/fontkit": "^1.1.1",
     "@tiptap/extension-placeholder": "^3.26.1",
     "@tiptap/react": "^3.26.1",
     "@tiptap/starter-kit": "^3.26.1",
@@ -43,11 +54,13 @@
     "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
     "next": "^15.1.4",
+    "pdf-lib": "^1.17.1",
     "pg": "^8.21.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^4.0.1",
+    "saxes": "6.0.0",
     "sharp": "^0.34.5",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"
@@ -66,6 +79,7 @@
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "4.22.4",
     "typescript": "^5"
   }
 }

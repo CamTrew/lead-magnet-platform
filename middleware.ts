@@ -20,6 +20,12 @@ const PUBLIC_API_PREFIXES = [
 
 const RESERVED_PUBLIC_PATHS = new Set([
   'api',
+  'create',
+  'preview',
+  'oauth',
+  'mcp',
+  'campaign-resources',
+  'campaign-covers',
   'dashboard',
   'email-images',
   'favicon.ico',
@@ -58,6 +64,7 @@ function isPublicApi(pathname: string) {
 }
 
 function applySecurityHeaders(response: NextResponse, request: NextRequest) {
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1' || process.env.VERCEL_ENV === 'preview') response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -76,6 +83,17 @@ function applySecurityHeaders(response: NextResponse, request: NextRequest) {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // A design preview must not call account, email, or customer-data routes,
+  // even if someone accidentally adds a service credential later.
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') {
+    const allowed = pathname === '/preview' || pathname.startsWith('/preview/') || pathname === '/' || ['/register', '/login', '/create', '/privacy', '/terms', '/robots.txt'].includes(pathname)
+      || pathname.startsWith('/_next/') || pathname.startsWith('/brand/') || pathname.startsWith('/fonts/');
+    if (!allowed) {
+      const response = NextResponse.json({ error: 'This action is unavailable in the isolated staging preview.' }, { status: 503 });
+      response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      return applySecurityHeaders(response, request);
+    }
+  }
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
   const publicApi = isPublicApi(pathname);
   const publicSegments = pathname.split('/').filter(Boolean);

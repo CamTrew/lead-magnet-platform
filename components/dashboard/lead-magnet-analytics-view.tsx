@@ -180,7 +180,7 @@ export function LeadMagnetAnalyticsView({
             return (
               <section className="rounded-lg border border-ink-200 bg-white p-5" key={metric.label}>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-medium text-ink-500">{metric.label}</p>
+                  <p data-dashboard-tour="analytics-metrics" className="text-xs font-medium text-ink-500">{metric.label}</p>
                   <span className="flex h-8 w-8 items-center justify-center rounded-md bg-ink-50 text-ink-700">
                     <Icon className="h-4 w-4" />
                   </span>
@@ -195,7 +195,7 @@ export function LeadMagnetAnalyticsView({
         <section className="overflow-hidden rounded-lg border border-ink-200 bg-white">
           <div className="flex flex-col gap-1 border-b border-ink-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-ink-950">Visits over the last 30 days</h2>
+              <h2 data-dashboard-tour="analytics-chart" className="text-sm font-semibold text-ink-950">Visits over the last 30 days</h2>
               <p className="mt-1 text-xs text-ink-500">Each bar is one day. Orange shows tracked conversions.</p>
             </div>
             <div className="mt-2 flex items-center gap-4 text-[11px] text-ink-500 sm:mt-0">

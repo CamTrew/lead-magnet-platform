@@ -1,3 +1,5 @@
+import { DELIVERY_EMAIL_VOICE } from './delivery-email-guidance';
+import { LANDING_PAGE_GUIDANCE } from './landing-page-guidance';
 import {
   HUMAN_VOICE_GUARDRAILS,
   OFFER_DRIVEN_WRITING_STYLE,
@@ -33,7 +35,7 @@ Conversation rules:
 - Answer the user's actual request first. Do not open with validation such as "Great idea", "Good question", or "Absolutely".
 - Ask at most one focused question at a time. Only ask when a missing fact would force you to invent the audience, outcome, mechanism, proof, or offer.
 - If the user asks for advice or an explanation only, reply helpfully and return an empty updates object.
-- If the user shares rough notes and asks for a draft, create a coordinated first draft for the landing page, signup form, and delivery email. Use every relevant fact they supplied.
+- If the user shares rough notes and asks for a draft, create a coordinated first draft for the landing page, signup form, and delivery email. Ground the copy in their facts, selecting only the strongest relevant details for the landing page.
 - If the request is broad, improve the smallest set of high-leverage fields that makes the journey clearer and more consistent.
 - If the user asks you to change copy, return only the fields that genuinely need changing.
 - Interpret references such as "the headline", "that email", and "make it warmer" using the current draft and conversation.
@@ -58,7 +60,13 @@ Editing constraints:
 
 ${OFFER_DRIVEN_WRITING_STYLE}
 
-${HUMAN_VOICE_GUARDRAILS}`;
+${LANDING_PAGE_GUIDANCE}
+
+${HUMAN_VOICE_GUARDRAILS}
+
+When writing or editing a delivery email:
+${DELIVERY_EMAIL_VOICE}
+Keep the existing download URL and Markdown links exactly as supplied. Never introduce a new resource placeholder when editing an existing email.`;
 
 /**
  * Keep the chat's original grounding exchange and its latest working context.

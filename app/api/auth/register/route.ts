@@ -14,6 +14,7 @@ import {
   requestIp,
 } from '@/lib/rate-limit';
 import { subscribeToPlatformNewsletter } from '@/lib/platform-newsletter';
+import { SecretConfigurationError } from '@/lib/secrets';
 
 const schema = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
@@ -24,16 +25,6 @@ const schema = z.object({
   }),
   newsletterOptIn: z.boolean().optional().default(false),
 }).strict();
-
-function verificationUrl(request: NextRequest, token: string) {
-  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  const baseUrl = configuredSiteUrl || (
-    process.env.NODE_ENV === 'production' ? 'https://magnets.so' : request.nextUrl.origin
-  );
-  const url = new URL('/verify-email/confirm', baseUrl);
-  url.searchParams.set('token', token);
-  return url.toString();
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,7 +60,7 @@ export async function POST(request: NextRequest) {
     try {
       await sendEmailVerificationEmail({
         to: verification.email,
-        verificationUrl: verificationUrl(request, verification.token),
+        code: verification.code,
       });
     } catch (error) {
       // The account and verification token are still valid. Sending the user
@@ -105,6 +96,13 @@ export async function POST(request: NextRequest) {
       return rateLimitResponse(err);
     }
 
-    throw err;
+    log.error('Registration failed', {
+      route: '/api/auth/register', method: 'POST', status: err instanceof SecretConfigurationError ? 503 : 500,
+      extra: { error: err },
+    });
+    return NextResponse.json(
+      { error: 'We couldn’t finish setting up your account. Please try again shortly using the same email and password.' },
+      { status: err instanceof SecretConfigurationError ? 503 : 500 }
+    );
   }
 }

@@ -3,7 +3,8 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
-import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { AuthSurface } from './auth-surface';
+import styles from './auth-scene.module.css';
 import { AceternityButton, AceternityInput } from '@/components/ui/aceternity';
 
 export function ForgotPasswordCard() {
@@ -35,18 +36,17 @@ export function ForgotPasswordCard() {
   }
 
   return (
-    <main className="brand-soft-bg relative flex min-h-screen items-center justify-center px-4 py-10 text-ink-900">
-      <div className="relative w-full max-w-sm">
+    <AuthSurface>
+      <div className={styles.recovery}>
         <div className="mb-8 flex flex-col items-center gap-4">
-          <MagnetsLogoMark className="h-12 w-12" />
           <div className="text-center">
-            <h1 className="text-2xl font-semibold text-ink-950">Reset your password</h1>
+            <h1 className="text-3xl font-semibold text-ink-950">Reset your password</h1>
             <p className="mt-1.5 text-sm text-ink-600">We will email you a link to choose a new one.</p>
           </div>
         </div>
 
         {sent ? (
-          <div className="rounded-lg border border-ink-200 bg-white p-6 text-center shadow-[0_24px_70px_-56px_rgba(17,17,17,0.75)]">
+          <div className={styles.recoveryNotice} role="status">
             <p className="text-sm leading-6 text-ink-700">
               Check your inbox. If an account exists for that email, you will receive a password reset link shortly.
             </p>
@@ -55,9 +55,9 @@ export function ForgotPasswordCard() {
             </Link>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-ink-200 bg-white p-6 shadow-[0_24px_70px_-56px_rgba(17,17,17,0.75)]">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-ink-700">Email</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink-700">Email</span>
               <AceternityInput
                 autoComplete="email"
                 autoFocus
@@ -71,12 +71,12 @@ export function ForgotPasswordCard() {
             </label>
 
             {error && (
-              <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+              <p role="alert" className={styles.verificationError}>
                 {error}
               </p>
             )}
 
-            <AceternityButton className="w-full" disabled={isSubmitting} size="md">
+            <AceternityButton className={styles.verificationSubmit} disabled={isSubmitting} size="md">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {isSubmitting ? 'Sending link...' : 'Email me a reset link'}
             </AceternityButton>
@@ -90,6 +90,6 @@ export function ForgotPasswordCard() {
           </Link>
         </p>
       </div>
-    </main>
+    </AuthSurface>
   );
 }

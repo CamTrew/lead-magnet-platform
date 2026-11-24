@@ -51,10 +51,10 @@ export function scrubResendErrorMessage(message: string) {
 
 export async function sendEmailVerificationEmail({
   to,
-  verificationUrl,
+  code,
 }: {
   to: string;
-  verificationUrl: string;
+  code: string;
 }) {
   const resendApiKey = platformResendApiKey();
   if (!resendApiKey) {
@@ -62,8 +62,8 @@ export async function sendEmailVerificationEmail({
   }
 
   const resend = new Resend(resendApiKey);
-  const text = `Verify your Magnets email\n\nConfirm this email address to finish creating your account:\n${verificationUrl}\n\nThis link expires in 24 hours. If you did not create a Magnets account, you can ignore this email.`;
-  const html = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;background:#f5f5f4"><tr><td align="center" style="padding:40px 16px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px"><tr><td style="padding:36px 30px;font-family:Arial,sans-serif;color:#111827"><h1 style="margin:0 0 12px;font:700 26px/32px Arial,sans-serif;color:#111827">Verify your email</h1><p style="margin:0 0 24px;font:16px/24px Arial,sans-serif;color:#4b5563">Confirm this email address to finish creating your Magnets account.</p><p style="margin:0 0 24px"><a href="${escapeHtml(verificationUrl)}" style="display:inline-block;padding:12px 18px;background:#111111;border-radius:7px;font:600 15px/20px Arial,sans-serif;color:#ffffff;text-decoration:none">Verify email address</a></p><p style="margin:0;font:13px/20px Arial,sans-serif;color:#78716c">This link expires in 24 hours. If you did not create a Magnets account, you can ignore this email.</p></td></tr></table></td></tr></table>`;
+  const text = `Your Magnets verification code: ${code}\n\nEnter this six-digit code on the verification page to finish creating your account. It expires in 10 minutes.\n\nIf you did not create a Magnets account, you can ignore this email.`;
+  const html = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;background:#111111"><tr><td align="center" style="padding:40px 16px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:#202020;border:1px solid #404040;border-radius:12px"><tr><td style="padding:36px 30px;font-family:Arial,sans-serif;color:#f5f1eb"><h1 style="margin:0 0 16px;font:700 26px/32px Arial,sans-serif;color:#f5f1eb">Verify your email</h1><p style="margin:0 0 24px;font:16px/24px Arial,sans-serif;color:#d1c8bb">Enter this code on the Magnets verification page.</p><p style="margin:0 0 24px;font:700 38px/48px monospace;letter-spacing:8px;color:#ffffff">${escapeHtml(code)}</p><p style="margin:0;font:14px/22px Arial,sans-serif;color:#bdb4a7">This code expires in 10 minutes. If you did not create a Magnets account, you can ignore this email.</p></td></tr></table></td></tr></table>`;
 
   try {
     const result = await resend.emails.send({

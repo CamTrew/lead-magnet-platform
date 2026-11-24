@@ -1,3 +1,4 @@
+import { SITE_SOCIAL_IMAGE } from '@/lib/site-social';
 import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/legal-page';
 
@@ -11,13 +12,13 @@ export const metadata: Metadata = {
     title: 'Magnets - Terms of Service',
     description: 'The terms covering use of Magnets.',
     url: `${SITE_URL}/terms`,
-    images: ['/landing-dashboard.png'],
+    images: [SITE_SOCIAL_IMAGE],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Magnets - Terms of Service',
     description: 'The terms covering use of Magnets.',
-    images: ['/landing-dashboard.png'],
+    images: [SITE_SOCIAL_IMAGE],
   },
 };
 

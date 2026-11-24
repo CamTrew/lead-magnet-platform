@@ -1,0 +1,92 @@
+/* Size the public page against usable browser height, not physical screen inches.
+   Long copy and browser zoom must still scroll naturally instead of clipping. */
+.page { min-height:100svh; }
+/* Independent desktop columns prevent tall media from stretching the copy.
+   On mobile, display:contents allows the form to sit before supporting detail. */
+.page .grid { display:flex; flex-direction:column; }
+.page .copy { display:contents; }
+.page .details { order:2; }
+.page .aside { order:1; }
+.page .header { padding-block:clamp(12px,2.2svh,24px); }
+.page .main { padding-bottom:clamp(16px,3svh,32px); }
+.page .footer { padding-block:16px; }
+.page .media { display:flex; flex-direction:column; gap:18px; }
+.page .media > * { margin-top:0!important; }
+.page .capture { padding:22px; }
+.page .capture h2 { font-size:26px; }
+.page .capture > p { margin-bottom:20px; }
+.page .capture :global(.magnet-form-input) { height:48px; }
+.page .capture :global(.magnet-form) > button { min-height:48px; }
+.page .capture :global(.magnet-form) > * + * { margin-top:12px; }
+.page .capture :global(.magnet-form.flex) { gap:12px; }
+.page .capture :global(.magnet-form.flex) > * { margin-top:0; }
+.page .capture :global(.magnet-form.flex) > div { width:44px; height:44px; }
+.page .capture :global(.magnet-form.flex) h3 { font-size:22px; }
+.page .capture :global(.magnet-form.flex) p { font-size:15px; line-height:1.6; }
+
+@media(min-width:1024px) {
+  .page .copy { display:block; min-width:0; }
+  .page .header :global(.magnet-page-heading) { font-size:clamp(28px,4.8svh,40px); }
+  .page .header img { max-height:clamp(32px,6svh,56px); }
+  .page .shell { padding:clamp(24px,4svh,40px); }
+  .page .grid { display:grid; grid-template-rows:auto; column-gap:clamp(24px,3vw,48px); }
+  .page .title { font-size:clamp(34px,6.2svh,52px); margin-bottom:16px; }
+  .page .subtitle { font-size:17px; line-height:1.5; margin-bottom:20px; }
+  .page .description { margin-bottom:24px; }
+  .page .description > * + * { margin-top:12px; }
+  .page .description p { line-height:1.65; }
+  .page .bulletsHeading { margin-bottom:12px; }
+  .page .bullets > * + * { margin-top:10px; }
+  .page .bullets li > :global(.magnet-page-copy) { line-height:1.6; }
+  .page .aside { top:16px; }
+  .page .media :global(.magnet-image) > div { aspect-ratio:auto; height:clamp(120px,23svh,240px); }
+  .page .media :global(.magnet-image) img { object-fit:contain; }
+}
+@media(min-width:1024px) and (max-height:750px) {
+  .page .header { padding-block:12px; }
+  .page .main { padding-bottom:16px; }
+  .page .shell { padding:24px; }
+  .page .title { font-size:38px; }
+  .page .subtitle { margin-bottom:18px; font-size:16px; }
+  .page .description { margin-bottom:18px; }
+  .page .media { gap:12px; }
+  .page .capture { padding:18px; }
+  .page .capture h2 { font-size:24px; }
+  .page .capture > p { margin-bottom:14px; line-height:1.5; }
+  .page .capture :global(.magnet-form-input) { height:44px; }
+  .page .capture :global(.magnet-form) > button { min-height:44px; }
+  .page .capture :global(.magnet-form) > * + * { margin-top:10px; }
+  .page .footer { padding-block:12px; }
+}
+@media(max-width:1023px) {
+  /* Keep the signup action ahead of optional artwork on narrow screens. */
+  .page .capture { order:-1; }
+  .page .title { font-size:clamp(30px,5vw,44px); margin-bottom:14px; }
+  .page .subtitle { font-size:16px; margin-bottom:20px; line-height:1.55; }
+  .page .aside { margin-bottom:24px; }
+  .page .media :global(.magnet-image) > div { aspect-ratio:auto; height:clamp(160px,25svh,260px); }
+  .page .media :global(.magnet-image) img { object-fit:contain; }
+}
+@media(max-width:600px) {
+  .page .header :global(.magnet-page-heading) { font-size:28px; }
+  .page .header img { max-height:44px; }
+  .page .shell { padding:20px; }
+  .page .capture { padding:20px; }
+  .page .capture h2 { font-size:24px; }
+}
+@media(min-width:1024px) {
+  /* Keep optional artwork proportional instead of stretching a shallow banner. */
+  .page .media :global(.magnet-image) {
+    align-self:center;
+    width:min(100%, calc(clamp(120px,23svh,240px) * 1.6));
+    background:transparent!important;
+    border:0;
+    border-radius:12px;
+  }
+}
+@media(min-width:1024px) and (max-width:1100px) and (max-height:750px) {
+  .page .header { padding-block:8px; }
+  .page .shell { padding:20px; }
+  .page .main { padding-bottom:12px; }
+  .page .footer { padding-block:8px; }
+}

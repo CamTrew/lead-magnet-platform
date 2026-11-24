@@ -5,6 +5,7 @@ import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useL
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { uploadPresigned } from '@vercel/blob/client';
+import { IMAGE_BLOB_ACCESS } from '@/lib/image-storage';
 import {
   ArrowLeft,
   BarChart3,
@@ -84,6 +85,7 @@ import type {
   LeadMagnetVersionSnapshot,
 } from '@/lib/types';
 import { PageHeader } from '@/components/dashboard/app-shell';
+import { BrandLogo } from '@/components/brand-logo';
 import { AbTestingPanel } from '@/components/dashboard/ab-testing-panel';
 import {
   AceternityButton,
@@ -447,9 +449,12 @@ function EditorWorkflowNav({
 export function PageEditorClient({
   initialData,
   initialLeadMagnet,
+  campaignCoverPreview,
 }: {
   initialData: DashboardBasePayload;
   initialLeadMagnet: LeadMagnet;
+  // Display-only: autosave retains the durable public campaign cover URL.
+  campaignCoverPreview?: string;
 }) {
   const router = useRouter();
   const [leadMagnet, setLeadMagnet] = useState(initialLeadMagnet);
@@ -830,7 +835,7 @@ export function PageEditorClient({
       const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/image`;
       const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/${safeImageName(file)}`;
       const blob = await uploadPresigned(pathname, file, {
-        access: 'public',
+        access: IMAGE_BLOB_ACCESS,
         contentType: file.type,
         handleUploadUrl,
         multipart,
@@ -890,7 +895,7 @@ export function PageEditorClient({
         const handleUploadUrl = `/api/lead-magnets/${leadMagnet.id}/email-image`;
         const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/email-images/${safeImageName(file)}`;
         const blob = await uploadPresigned(pathname, file, {
-          access: 'public',
+          access: IMAGE_BLOB_ACCESS,
           contentType: file.type,
           handleUploadUrl,
           multipart,
@@ -964,7 +969,7 @@ export function PageEditorClient({
     try {
       const pathname = `lead-magnets/${account.id}/${leadMagnet.id}/email-images/ab-test-${safeImageName(file)}`;
       const blob = await uploadPresigned(pathname, file, {
-        access: 'public',
+        access: IMAGE_BLOB_ACCESS,
         contentType: file.type,
         handleUploadUrl: `/api/lead-magnets/${leadMagnet.id}/email-image`,
         multipart: file.size > 8_000_000,
@@ -1066,6 +1071,7 @@ export function PageEditorClient({
                       ? 'text-ink-500'
                       : 'text-ink-400'
                   )}
+                  data-dashboard-tour="editor-save"
                   role="status"
                 >
                   {saveState === 'saving' || saveState === 'retrying' || isUploadingImage || isUploadingEmailImage
@@ -1210,11 +1216,13 @@ export function PageEditorClient({
                 brandIntensity={brand.highlightIntensity}
                 brandPrimary={brandTextColor(brand.primary)}
                 leadMagnet={leadMagnet}
+                imagePreviewUrl={leadMagnet.imageUrl === initialLeadMagnet.imageUrl ? campaignCoverPreview : undefined}
                 onPatch={patchLeadMagnet}
                 onPickImage={() => fileInputRef.current?.click()}
               />
               <AbTestingPanel
                 leadMagnet={leadMagnet}
+                imagePreviewUrl={leadMagnet.imageUrl === initialLeadMagnet.imageUrl ? campaignCoverPreview : undefined}
                 onPatch={patchLeadMagnet}
                 onPickImage={(index) => {
                   abImageVariantIndexRef.current = index;
@@ -1305,6 +1313,7 @@ function PageCanvas({
   brandIntensity,
   brandPrimary,
   leadMagnet,
+  imagePreviewUrl,
   onPatch,
   onPickImage,
 }: {
@@ -1314,6 +1323,7 @@ function PageCanvas({
   brandIntensity: number;
   brandPrimary: string;
   leadMagnet: LeadMagnet;
+  imagePreviewUrl?: string;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   onPickImage: () => void;
 }) {
@@ -1378,7 +1388,7 @@ function PageCanvas({
                 <InlineText
                   ariaLabel="Page subheadline"
                   as="p"
-                  className="magnet-page-muted mb-10 block max-w-2xl text-lg font-medium leading-relaxed text-gray-600"
+                  className="magnet-page-muted mb-5 block max-w-2xl text-lg font-medium leading-relaxed text-gray-600"
                   emptyPlaceholder="Short subhead. say what they will get"
                   maxLength={220}
                   multiline
@@ -1393,7 +1403,7 @@ function PageCanvas({
                     ctaText={leadMagnet.ctaText}
                     formHeading={leadMagnet.formHeading}
                     formSubtext={leadMagnet.formSubtext}
-                    imageUrl={leadMagnet.imageUrl}
+                    imageUrl={imagePreviewUrl || leadMagnet.imageUrl}
                     onPickImage={onPickImage}
                     onRemoveImage={() => onPatch({ imageUrl: '' })}
                     onPatch={onPatch}
@@ -1401,7 +1411,7 @@ function PageCanvas({
                   />
                 </div>
 
-                <div className="mb-11 max-w-2xl">
+                <div className="mb-6 max-w-2xl">
                   <InlineParagraphs
                     ariaLabel="Page description"
                     className="magnet-page-muted text-[15px] leading-7 text-gray-600"
@@ -1494,7 +1504,7 @@ function PageCanvas({
                   ctaText={leadMagnet.ctaText}
                   formHeading={leadMagnet.formHeading}
                   formSubtext={leadMagnet.formSubtext}
-                  imageUrl={leadMagnet.imageUrl}
+                  imageUrl={imagePreviewUrl || leadMagnet.imageUrl}
                   onPickImage={onPickImage}
                   onRemoveImage={() => onPatch({ imageUrl: '' })}
                   onPatch={onPatch}
@@ -1539,8 +1549,7 @@ function BrandPreviewLockup({
   if (accountHasLogo) {
     return (
       <div className="inline-flex min-h-10 max-w-full items-center justify-center gap-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img alt="" className="h-8 w-auto max-w-[52px] object-contain sm:h-10" src={account.logoUrl} />
+        <BrandLogo size={account.brand.logoSize} src={account.logoUrl} />
         {logoText && (
           <span className="magnet-page-heading min-w-0 max-w-[72vw] truncate text-[32px] font-bold leading-none text-gray-950 sm:text-[44px] lg:text-[48px]">
             {logoText}

@@ -1,3 +1,4 @@
+import { assistantWorkspaceContext, workspaceMagnetVersion } from '@/lib/assistant-workspace-context';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
@@ -467,6 +468,12 @@ export async function PUT(
 
     return await withLeadMagnetMutationLock(payload.account.id, id, async () => {
       const previousLeadMagnet = await findLeadMagnetForAccount(payload.account.id, id);
+      const assistant = assistantWorkspaceContext.getStore();
+      if (assistant) {
+        if (!previousLeadMagnet) return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+        if (assistant.expectedMagnetVersion !== workspaceMagnetVersion(previousLeadMagnet)) return NextResponse.json({ error: 'This lead magnet changed. Read it again before editing.', code: 'version_conflict' }, { status: 409 });
+        if ((previousLeadMagnet.published || parsed.data.published) && !assistant.confirmLiveEdit) return NextResponse.json({ error: 'Explain the live change and obtain permission before setting confirmLiveEdit:true.' }, { status: 412 });
+      }
       const previousTemplates = new Map(
         previousLeadMagnet?.followUpEmails.map((email) => [email.id, email.resendTemplateId]) || []
       );

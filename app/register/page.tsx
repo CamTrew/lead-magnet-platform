@@ -1,3 +1,4 @@
+import { SITE_SOCIAL_IMAGE } from '@/lib/site-social';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -12,19 +13,21 @@ export const metadata: Metadata = {
     'Create a free Magnets account and start publishing branded lead-magnet pages on your own domain. No credit card.',
   alternates: { canonical: `${SITE_URL}/register` },
   robots: { index: false, follow: true },
+  twitter: { card: 'summary_large_image', title: 'Create your free Magnets account', images: [SITE_SOCIAL_IMAGE] },
   openGraph: {
     title: 'Create your free Magnets account',
     description:
-      'Free, forever lead-magnet platform. Build branded capture pages on your own domain with your own keys.',
+      'Create a free account to turn your idea into a lead magnet, landing page and delivery email. No credit card needed.',
     url: `${SITE_URL}/register`,
+    images: [SITE_SOCIAL_IMAGE],
   },
 };
 
 export default async function RegisterPage() {
   const cookieStore = await cookies();
-  if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
+  if (process.env.MAGNETS_STAGING_PREVIEW !== '1' && cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
     redirect('/dashboard/pages');
   }
 
-  return <AuthCard mode="register" />;
+  return <AuthCard stagingPreview={process.env.MAGNETS_STAGING_PREVIEW === '1'} mode="register" />;
 }

@@ -1,4 +1,5 @@
 import { createDeepSeek } from '@ai-sdk/deepseek';
+import { LANDING_PAGE_GUIDANCE } from './landing-page-guidance';
 import { APICallError, generateText, Output } from 'ai';
 import { z } from 'zod';
 import {
@@ -58,9 +59,9 @@ ${businessContext ? `Account context:\n${businessContext}\n\n` : ''}User's lead-
 Return exactly one JSON object with this shape:
 {
   "title": "short outcome-focused title",
-  "subtitle": "one or two clear sentences",
-  "description": "two or three short paragraphs separated by blank lines",
-  "bullets": ["specific benefit 1", "specific benefit 2", "specific benefit 3"],
+  "subtitle": "one supporting sentence, roughly 12 to 18 words",
+  "description": "one short sentence adding a reason to download, around 20 words",
+  "bullets": ["short specific benefit 1", "short specific benefit 2", "short specific benefit 3"],
   "bulletsHeading": "short heading for the benefits",
   "ctaText": "short button text",
   "formHeading": "clear signup heading",
@@ -92,6 +93,8 @@ export async function generateLeadMagnetCopy({
     const writingInstructions = `You write concise, credible conversion copy. Follow the requested schema exactly.
 
 ${OFFER_DRIVEN_WRITING_STYLE}
+
+${LANDING_PAGE_GUIDANCE}
 
 ${HUMAN_VOICE_GUARDRAILS}`;
     const writingPrompt = promptFor({ account, brief });

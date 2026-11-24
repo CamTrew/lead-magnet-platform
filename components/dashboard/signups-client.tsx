@@ -24,6 +24,7 @@ import {
   AceternityInput,
   Field,
 } from '@/components/ui/aceternity';
+import { StyledSelect } from '@/components/ui/styled-select';
 import { useModalAccessibility } from '@/components/ui/use-modal-accessibility';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import { parseCsv } from '@/lib/csv';
@@ -227,7 +228,7 @@ export function SignupsClient({
   }
 
   async function startSequence(signup: AccountSignup) {
-    if (startingEmail) return;
+    if (startingEmail || !signup.followUpConfigured) return;
     setStartingEmail(signup.email);
     setActionError('');
     try {
@@ -266,7 +267,7 @@ export function SignupsClient({
 
   return (
     <>
-      <PageHeader helpTopic="signups" title="Signups" subtitle="Everyone who has signed up to a magnet" />
+      <PageHeader helpTopic="signups" title="Signups" subtitle="See everyone who signed up, with one row per email across your lead magnets." />
 
       {manualOpen && (
         <ManualAddModal
@@ -333,28 +334,16 @@ export function SignupsClient({
 
         <AceternityCard className="overflow-hidden">
           <div className="border-b border-ink-200 bg-white p-5">
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-ink-950">All signups</h2>
-              <p className="mt-1 text-sm text-ink-500">
-                One row per email, deduplicated across every magnet on this account.
-              </p>
-            </div>
-            <div className="mt-4 grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto_auto]">
+            <div className="grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto_auto]">
               <div className="relative min-w-0">
                 <ListFilter className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-                <select
-                  aria-label="Filter signups by lead magnet"
-                  className="h-9 w-full rounded-md border border-ink-200 bg-white py-0 pl-8 pr-8 text-sm text-ink-900 outline-none transition focus:border-ink-950 focus:ring-1 focus:ring-ink-950"
-                  onChange={(event) => setLeadMagnetFilter(event.target.value)}
+                <StyledSelect
+                  ariaLabel="Filter signups by lead magnet"
+                  className="pl-8"
+                  onChange={setLeadMagnetFilter}
                   value={leadMagnetFilter}
-                >
-                  <option value="">All lead magnets</option>
-                  {leadMagnets.map((magnet) => (
-                    <option key={magnet.id} value={magnet.id}>
-                      {magnet.title} (/{magnet.slug})
-                    </option>
-                  ))}
-                </select>
+                  options={[{ value: '', label: 'All lead magnets' }, ...leadMagnets.map(magnet => ({ value: magnet.id, label: `${magnet.title} (/${magnet.slug})` }))]}
+                />
               </div>
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
@@ -379,6 +368,7 @@ export function SignupsClient({
               <AceternityButton
                 className="w-full shrink-0 sm:w-auto"
                 disabled={!hasMagnets}
+                data-dashboard-tour="signup-import"
                 onClick={() => setImportOpen(true)}
                 size="md"
                 variant="secondary"
@@ -394,6 +384,7 @@ export function SignupsClient({
                     ? 'pointer-events-none inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-ink-200 bg-white px-3.5 text-sm font-medium text-ink-400 opacity-60 sm:w-auto'
                     : 'inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-ink-950 bg-ink-950 px-3.5 text-sm font-medium text-white transition hover:bg-ink-800 sm:w-auto'
                 }
+                data-dashboard-tour="signup-export"
                 href={exportHref}
                 download
               >
@@ -551,7 +542,7 @@ export function SignupsClient({
                       </td>
                       <td className="mt-4 block xl:mt-0 xl:table-cell xl:px-4 xl:py-3">
                         <div className="flex gap-1 xl:justify-end">
-                          {(signup.followUpStatus === 'none' || signup.followUpStatus === 'failed') && (
+                          {signup.followUpConfigured && (signup.followUpStatus === 'none' || signup.followUpStatus === 'failed') && (
                             <button
                               aria-label={`Start sequence for ${signup.email}`}
                               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-ink-950 bg-ink-950 px-2.5 text-xs font-medium text-white transition hover:bg-ink-800 disabled:opacity-50"
@@ -629,7 +620,7 @@ export function SignupsClient({
 function SequenceStatus({ signup }: { signup: AccountSignup }) {
   const status = signup.followUpStatus;
   if (status === 'none') {
-    return <span className="text-xs text-ink-400">None</span>;
+    return <span className="whitespace-nowrap text-xs text-ink-500">{signup.followUpConfigured ? 'Not started' : 'No follow-ups'}</span>;
   }
 
   const className =
@@ -772,17 +763,12 @@ function MagnetSelect({
   value: string;
 }) {
   return (
-    <select
-      className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:h-9"
-      onChange={(event) => onChange(event.target.value)}
+    <StyledSelect
+      ariaLabel="Attach signups to magnet"
+      onChange={onChange}
       value={value}
-    >
-      {leadMagnets.map((magnet) => (
-        <option key={magnet.id} value={magnet.id}>
-          {magnet.title} (/{magnet.slug})
-        </option>
-      ))}
-    </select>
+      options={leadMagnets.map(magnet => ({ value: magnet.id, label: `${magnet.title} (/${magnet.slug})` }))}
+    />
   );
 }
 
@@ -1018,14 +1004,12 @@ function ImportModal({
               <MagnetSelect leadMagnets={leadMagnets} onChange={setLeadMagnetId} value={leadMagnetId} />
             </Field>
             <Field label="First row">
-              <select
-                className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:h-9"
-                onChange={(event) => setHasHeader(event.target.value === 'header')}
+              <StyledSelect
+                ariaLabel="First row"
+                onChange={value => setHasHeader(value === 'header')}
                 value={hasHeader ? 'header' : 'data'}
-              >
-                <option value="header">Is a header row</option>
-                <option value="data">Contains data (no header)</option>
-              </select>
+                options={[{ value: 'header', label: 'Is a header row' }, { value: 'data', label: 'Contains data (no header)' }]}
+              />
             </Field>
           </div>
 
@@ -1146,24 +1130,11 @@ function ColumnSelect({
   value: number | null;
 }) {
   return (
-    <select
-      className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900 outline-none focus:border-ink-950 focus:ring-1 focus:ring-ink-950 sm:h-9"
-      onChange={(event) => {
-        const raw = event.target.value;
-        if (raw === '') onChange(null);
-        else {
-          const index = Number.parseInt(raw, 10);
-          onChange(Number.isNaN(index) ? null : index);
-        }
-      }}
+    <StyledSelect
+      ariaLabel={emptyLabel === 'No name column' ? 'Name column (optional)' : 'Email column'}
+      onChange={raw => onChange(raw === '' ? null : Number.parseInt(raw, 10))}
       value={value == null ? '' : String(value)}
-    >
-      <option value="">{emptyLabel}</option>
-      {columns.map((label, index) => (
-        <option key={index} value={index}>
-          {label || `Column ${index + 1}`}
-        </option>
-      ))}
-    </select>
+      options={[{ value: '', label: emptyLabel }, ...columns.map((label, index) => ({ value: String(index), label: label || `Column ${index + 1}` }))]}
+    />
   );
 }

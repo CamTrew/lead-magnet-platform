@@ -3,7 +3,10 @@
 import { type ChangeEvent, type CSSProperties, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { uploadPresigned } from '@vercel/blob/client';
+import { IMAGE_BLOB_ACCESS } from '@/lib/image-storage';
 import { Check, Loader2, Moon, Palette, Sun, Trash2, Upload } from 'lucide-react';
+import { BrandImport } from '@/components/creation/brand-import';
+import { BrandLogo } from '@/components/brand-logo';
 import { AceternityButton, AceternityCard, AceternityInput } from '@/components/ui/aceternity';
 import { PageHeader } from '@/components/dashboard/app-shell';
 import { blobUploadErrorMessage } from '@/lib/blob-upload-error';
@@ -86,9 +89,11 @@ function safeLogoName(file: File) {
 export function BrandClient({
   initialData,
   previewLeadMagnet,
+  websiteImportEnabled = false,
 }: {
   initialData: DashboardBasePayload;
   previewLeadMagnet: LeadMagnet | null;
+  websiteImportEnabled?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<AccountSettings>(initialData.account);
@@ -133,7 +138,7 @@ export function BrandClient({
         `brand-logos/${draft.id}/${safeLogoName(file)}`,
         file,
         {
-          access: 'public',
+          access: IMAGE_BLOB_ACCESS,
           contentType: file.type,
           handleUploadUrl: '/api/account/logo',
           multipart: file.size > 8_000_000,
@@ -204,12 +209,17 @@ export function BrandClient({
                 <Palette className="h-4 w-4" />
               </span>
               <div>
-                <h2 className="text-base font-semibold text-ink-950">Brand settings</h2>
+                <h2 data-dashboard-tour="brand-identity" className="text-base font-semibold text-ink-950">Identity</h2>
                 <p className="mt-1 text-sm leading-6 text-ink-600">
                   These apply to every live page and preview on this account.
                 </p>
               </div>
             </div>
+
+            {websiteImportEnabled && <BrandImport currentBrand={{logoText:draft.logoText,logoUrl:draft.logoUrl,primary:draft.brand.primary,accent:draft.brand.accent,pageTheme:draft.brand.pageTheme}} onApplied={(_brand,changes) => {
+              setDraft(current=>({...current,logoText:changes.name??current.logoText,logoUrl:changes.logo??current.logoUrl,brand:{...current.brand,...(changes.primary?{primary:changes.primary}:{}),...(changes.accent?{accent:changes.accent}:{})}}));
+              setSaveState('idle');setError('');router.refresh();
+            }} />}
 
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-ink-700">Business name</span>
@@ -266,7 +276,34 @@ export function BrandClient({
               </p>
             </div>
 
-            <div className="max-w-[280px]">
+            {draft.logoUrl && (
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-ink-700">Logo size</span>
+                <div className="grid grid-cols-3 gap-2 rounded-lg border border-ink-200 bg-ink-50 p-1">
+                  {(['small', 'medium', 'large'] as const).map((size) => (
+                    <button
+                      aria-pressed={draft.brand.logoSize === size}
+                      className={`inline-flex h-10 items-center justify-center rounded-md text-sm font-medium capitalize transition ${
+                        draft.brand.logoSize === size
+                          ? 'bg-white text-ink-950 shadow-sm'
+                          : 'text-ink-600 hover:text-ink-950'
+                      }`}
+                      disabled={saving}
+                      key={size}
+                      onClick={() => patchBrand({ logoSize: size })}
+                      type="button"
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs leading-5 text-ink-500">
+                  Choose how prominently the logo appears on every page.
+                </p>
+              </div>
+            )}
+
+            <div data-dashboard-tour="brand-colours" className="max-w-[280px]">
               <ColorField
                 label="Primary"
                 onChange={(value) => patchBrand({ primary: value })}
@@ -333,7 +370,7 @@ export function BrandClient({
         <AceternityCard className="p-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-ink-950">Preview</h2>
+              <h2 data-dashboard-tour="brand-preview" className="text-base font-semibold text-ink-950">Preview</h2>
               <p className="mt-1 text-sm text-ink-600">How your brand appears on a full magnet page.</p>
             </div>
           </div>
@@ -406,8 +443,7 @@ function BrandPagePreview({
     >
       <div className="flex items-center justify-center gap-1.5 px-4 py-5">
         {account.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img alt="" src={account.logoUrl} className="h-8 w-auto max-w-[52px] object-contain" />
+          <BrandLogo compact size={account.brand.logoSize} src={account.logoUrl} />
         ) : (
           <span className="h-10 w-10 rounded-lg border border-dashed border-ink-300 bg-white" />
         )}

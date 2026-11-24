@@ -27,6 +27,7 @@ export const defaultBrand: BrandSettings = {
   success: '#7FD4DD',
   highlightIntensity: 100,
   pageTheme: 'light',
+  logoSize: 'small',
   privacyPolicyUrl: '',
   termsUrl: '',
 };
@@ -505,3 +506,50 @@ export const followUpRunsRelations = relations(followUpRuns, ({ one }) => ({
     references: [leadMagnets.id],
   }),
 }));
+
+// Additive creation workspace. Existing magnets never depend on these tables.
+export const campaigns = pgTable('magnets_campaigns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  leadMagnetId: uuid('lead_magnet_id').references(() => leadMagnets.id, { onDelete: 'cascade' }),
+  requestId: text('request_id').notNull(),
+  brief: text('brief').notNull().default(''),
+  content: jsonb('content').notNull(),
+  publicToken: uuid('public_token').defaultRandom().notNull(),
+  coverData: text('cover_data').notNull().default(''),
+  revision: integer('revision').notNull().default(1),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex('magnets_campaigns_request_unique').on(table.accountId, table.requestId), uniqueIndex('magnets_campaigns_public_token_unique').on(table.publicToken)]);
+
+export const assistantClients = pgTable('magnets_assistant_clients', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  redirectUris: jsonb('redirect_uris').$type<string[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const assistantGrants = pgTable('magnets_assistant_grants', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  clientId: text('client_id').notNull().references(() => assistantClients.id, { onDelete: 'cascade' }),
+  resource: text('resource').notNull(),
+  redirectUri: text('redirect_uri').notNull(),
+  challenge: text('challenge').notNull(),
+  codeHash: text('code_hash'),
+  accessHash: text('access_hash'),
+  refreshHash: text('refresh_hash'),
+  codeExpiresAt: timestamp('code_expires_at', { withTimezone: true }).notNull(),
+  accessExpiresAt: timestamp('access_expires_at', { withTimezone: true }),
+  refreshExpiresAt: timestamp('refresh_expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex('magnets_assistant_code_unique').on(table.codeHash), uniqueIndex('magnets_assistant_access_unique').on(table.accessHash), uniqueIndex('magnets_assistant_refresh_unique').on(table.refreshHash), index('magnets_assistant_account_idx').on(table.accountId)]);
+
+export const creationBriefs = pgTable('magnets_creation_briefs', {
+  accountId: uuid('account_id').primaryKey().references(() => accounts.id, { onDelete: 'cascade' }),
+  requestId: uuid('request_id').defaultRandom().notNull(),
+  brief: text('brief').notNull(),
+  format: text('format').notNull().default('checklist'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

@@ -1,0 +1,23 @@
+.home{width:100%;max-width:1180px;min-width:0;margin:0 auto;display:grid;gap:22px;padding:12px 0 32px}.heading>span{font-size:11px;letter-spacing:1.5px;color:#b39c87}.heading h1{font-size:clamp(28px,3vw,38px);font-weight:600;letter-spacing:-1.2px;line-height:1.2;margin:10px 0;color:inherit}.heading p{font-size:16px;opacity:.7}.shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.card{min-width:0;padding:26px;border:1px solid #3d3d3d;border-radius:18px;background:#191919;color:#f5f0e8;transition:transform .25s,border-color .25s}.card>svg{color:#ffb17c}.card h2{font-size:23px;letter-spacing:-.6px;font-weight:600;margin:16px 0 9px}.card p{font-size:16px;line-height:1.65;color:#bcb3a6;max-width:390px}.card>span{display:flex;align-items:center;gap:10px;font-size:15px;color:#ffbc8d;margin-top:23px}.card:hover{transform:translateY(-3px);border-color:#a07855}.card:hover>span svg{transform:translateX(4px)}.card>span svg{transition:transform .25s}.bottom{display:flex;align-items:center;justify-content:space-between;gap:25px;padding:8px 4px}.bottom>div{display:flex;gap:14px;max-width:620px;color:#bcb3a6}.bottom>div>svg{flex-shrink:0;margin-top:4px}.bottom h2{font-size:16px;font-weight:500;color:#e5d9c9;margin-bottom:5px}.bottom p{font-size:14px;line-height:1.65}.bottom>a{display:flex;align-items:center;justify-content:center;gap:9px;min-height:48px;padding:12px 18px;border:1px solid #484848;border-radius:10px;color:#efc3a0;font-size:14px;flex-shrink:0}.home a:focus-visible{outline:2px solid #ffbd8b;outline-offset:4px}@media(max-width:850px){.bottom{flex-direction:column;align-items:stretch}.bottom>a{align-self:flex-start}}@media(max-width:600px){.home{gap:18px;padding-top:8px}.shortcuts{grid-template-columns:1fr;gap:16px}.card{padding:24px}.bottom{padding:8px 2px}.bottom>a{align-self:stretch}.heading h1{font-size:30px}.heading p{font-size:15px}}@media(prefers-reduced-motion:reduce){.home *{transition:none!important}}
+/* Home also remains legible when an existing user keeps their light dashboard preference. */
+:global(html:not(.dark)) .bottom>div{color:#5d5d5d}
+:global(html:not(.dark)) .bottom h2{color:#2b2b2b}
+:global(html:not(.dark)) .bottom>a{color:#704225;border-color:#b9a28f}
+:global(html:not(.dark)) .heading>span{color:#75604d}
+
+.home { container-type:inline-size; }
+@media(max-width:600px) and (max-height:740px) {
+  .home { gap:14px; padding-top:0; }
+  .heading>span { display:none; }
+  .heading h1 { font-size:27px; margin-top:0; margin-bottom:7px; }
+}
+
+/* Follow the dashboard preference instead of embedding dark-only panels. */
+.card { color:var(--studio-text); background:var(--studio-panel); border-color:var(--studio-line); box-shadow:var(--studio-shadow); }
+.card p { color:var(--studio-muted); }
+.card>svg,.card>span { color:var(--studio-accent); }
+.card:hover { border-color:var(--studio-line-strong); }
+.bottom>div { color:var(--studio-muted); }
+.bottom h2 { color:var(--studio-text); }
+.bottom>a { color:var(--studio-accent); border-color:var(--studio-line); background:var(--studio-panel); }
+.home a:focus-visible { outline-color:var(--studio-accent); }

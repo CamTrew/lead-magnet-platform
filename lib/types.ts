@@ -12,6 +12,7 @@ export interface BrandSettings {
   success: string;
   highlightIntensity: number;
   pageTheme: 'light' | 'dark';
+  logoSize: 'small' | 'medium' | 'large';
   privacyPolicyUrl: string;
   termsUrl: string;
 }
@@ -298,6 +299,7 @@ export interface AccountSignup {
   firstSignupAt: string;
   latestSignupAt: string;
   signupCount: number;
+  followUpConfigured: boolean;
   followUpStatus: FollowUpStatus;
   followUpStoppedAt: string | null;
   followUpStopReason: string;
@@ -318,4 +320,13 @@ export interface DashboardBasePayload {
 
 export interface DashboardPayload extends DashboardBasePayload {
   leadMagnets: LeadMagnet[];
+}
+
+/** Appearance-only context shared with the creation assistant. Never account secrets. */
+export interface CreationBrand {
+  logoText: string;
+  logoUrl: string;
+  primary: string;
+  accent: string;
+  pageTheme: 'light' | 'dark';
 }

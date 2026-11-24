@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     if (!started.started && started.reason === 'not_configured') {
       return NextResponse.json(
-        { error: 'This sequence is not ready. Open the magnet, check the sequence, and save it first.' },
+        { error: 'This lead magnet has no enabled follow-up emails. Its delivery email does not need a sequence.' },
         { status: 409 }
       );
     }

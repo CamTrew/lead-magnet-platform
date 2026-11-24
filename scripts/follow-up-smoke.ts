@@ -215,6 +215,7 @@ const account: AccountSettings = {
     success: '#22c55e',
     highlightIntensity: 100,
     pageTheme: 'light',
+    logoSize: 'small',
     privacyPolicyUrl: '',
     termsUrl: '',
   },

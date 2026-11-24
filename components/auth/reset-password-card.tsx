@@ -3,7 +3,8 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
-import { MagnetsLogoMark } from '@/components/magnets-logo-mark';
+import { AuthSurface } from './auth-surface';
+import styles from './auth-scene.module.css';
 import { AceternityButton, AceternityInput } from '@/components/ui/aceternity';
 
 export function ResetPasswordCard({ token }: { token: string }) {
@@ -43,34 +44,33 @@ export function ResetPasswordCard({ token }: { token: string }) {
   const invalidToken = token.length < 32;
 
   return (
-    <main className="brand-soft-bg relative flex min-h-screen items-center justify-center px-4 py-10 text-ink-900">
-      <div className="relative w-full max-w-sm">
+    <AuthSurface>
+      <div className={styles.recovery}>
         <div className="mb-8 flex flex-col items-center gap-4">
-          <MagnetsLogoMark className="h-12 w-12" />
           <div className="text-center">
-            <h1 className="text-2xl font-semibold text-ink-950">Choose a new password</h1>
+            <h1 className="text-3xl font-semibold text-ink-950">Choose a new password</h1>
             <p className="mt-1.5 text-sm text-ink-600">This will sign you out on your other devices.</p>
           </div>
         </div>
 
         {complete ? (
-          <div className="rounded-lg border border-ink-200 bg-white p-6 text-center shadow-[0_24px_70px_-56px_rgba(17,17,17,0.75)]">
+          <div className={styles.recoveryNotice} role="status">
             <p className="text-sm leading-6 text-ink-700">Your password has been updated. You can now sign in.</p>
             <Link className="mt-5 inline-block text-sm font-medium text-ink-950 underline-offset-4 hover:underline" href="/login">
               Go to sign in
             </Link>
           </div>
         ) : invalidToken ? (
-          <div className="rounded-lg border border-ink-200 bg-white p-6 text-center shadow-[0_24px_70px_-56px_rgba(17,17,17,0.75)]">
+          <div className={styles.recoveryNotice} role="status">
             <p className="text-sm leading-6 text-ink-700">This reset link is invalid or has expired.</p>
             <Link className="mt-5 inline-block text-sm font-medium text-ink-950 underline-offset-4 hover:underline" href="/forgot-password">
               Request another link
             </Link>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-ink-200 bg-white p-6 shadow-[0_24px_70px_-56px_rgba(17,17,17,0.75)]">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-ink-700">New password</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink-700">New password</span>
               <AceternityInput
                 autoComplete="new-password"
                 autoFocus
@@ -84,7 +84,7 @@ export function ResetPasswordCard({ token }: { token: string }) {
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-ink-700">Confirm new password</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink-700">Confirm new password</span>
               <AceternityInput
                 autoComplete="new-password"
                 disabled={isSubmitting}
@@ -98,18 +98,18 @@ export function ResetPasswordCard({ token }: { token: string }) {
             </label>
 
             {error && (
-              <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+              <p role="alert" className={styles.verificationError}>
                 {error}
               </p>
             )}
 
-            <AceternityButton className="w-full" disabled={isSubmitting} size="md">
+            <AceternityButton className={styles.verificationSubmit} disabled={isSubmitting} size="md">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {isSubmitting ? 'Updating password...' : 'Update password'}
             </AceternityButton>
           </form>
         )}
       </div>
-    </main>
+    </AuthSurface>
   );
 }

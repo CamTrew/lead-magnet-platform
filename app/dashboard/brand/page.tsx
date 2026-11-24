@@ -6,5 +6,5 @@ export default async function BrandPage() {
   const payload = await requireDashboardBase();
   const previewLeadMagnet = await findLatestPublishedLeadMagnetForAccount(payload.account.id);
 
-  return <BrandClient initialData={payload} previewLeadMagnet={previewLeadMagnet} />;
+  return <BrandClient websiteImportEnabled={process.env.MAGNETS_CREATION_ENABLED === '1'} initialData={payload} previewLeadMagnet={previewLeadMagnet} />;
 }

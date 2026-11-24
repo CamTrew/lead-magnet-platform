@@ -140,7 +140,10 @@ export const OFFER_DRIVEN_WRITING_STYLE = `Write like a blunt, commercially shar
 - Use numbers only when the user supplied them. Never manufacture proof, scarcity, authority, outcomes, or guarantees.
 - Sound confident and direct, not aggressive, theatrical, or performative.`;
 
+export const NO_EM_DASH_RULE = 'Do not use em dashes (Unicode U+2014), including HTML-encoded versions or double/triple em-dash characters, in any newly written visible text. This includes titles, landing pages, bullets, resources, emails, posts, captions, image prompts and text drawn inside images. Rewrite the sentence with a full stop, comma, colon or parentheses. Before attaching generated artwork, inspect all visible text and regenerate it if an em dash appears. Never claim an image was checked unless you actually inspected it.';
+
 export const HUMAN_VOICE_GUARDRAILS = `Human voice rules for every title, heading, description, bullet, email, suggestion, and chat reply:
+${NO_EM_DASH_RULE}
 - Never use em dashes, en dashes, double hyphens, or spaced hyphens as clause connectors. Rewrite with periods, commas, semicolons, colons, or parentheses.
 - Use sentence case for titles and headings.
 - Say the point directly. Remove throat-clearing, empty validation, manufactured suspense, fake drama, hollow one-line poetry, and assistant pleasantries.
@@ -186,7 +189,7 @@ export function humanVoiceViolations(value: unknown) {
     const lower = checked.toLowerCase();
     const label = path.join('.') || 'text';
 
-    if (/[—–]|--|\s-\s/.test(checked)) violations.push(`${label}: disallowed dash punctuation`);
+    if (/[—–\uFE58\u2E3A\u2E3B]|&(?:mdash|ndash|#0*821[12]|#x0*201[34]);?|--|\s-\s/i.test(checked)) violations.push(`${label}: disallowed dash punctuation`);
 
     const phrase = bannedPhrases.find((candidate) => lower.includes(candidate));
     if (phrase) violations.push(`${label}: disallowed stock phrase`);

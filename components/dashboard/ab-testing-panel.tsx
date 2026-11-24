@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, Image as ImageIcon, Plus, Trash2, Trophy } from 'lucide-react';
+import { BarChart3, ChevronDown, Image as ImageIcon, Plus, Trash2, Trophy } from 'lucide-react';
 import {
   AB_TEST_MINIMUM_DAYS,
   AB_TEST_MINIMUM_VISITS_PER_VERSION,
@@ -13,6 +13,7 @@ type VariantResult = LeadMagnetAnalytics['variants'][number];
 
 type AbTestingPanelProps = {
   leadMagnet: LeadMagnet;
+  imagePreviewUrl?: string;
   onPatch: (updates: Partial<LeadMagnet>) => void;
   onPickImage: (variantIndex: number) => void;
 };
@@ -68,7 +69,7 @@ function ResultSummary({ result, winner }: { result?: VariantResult; winner: boo
  * Keeps experiment editing and live results together while the parent editor
  * remains responsible only for persistence, uploads, and undo/redo history.
  */
-export function AbTestingPanel({ leadMagnet, onPatch, onPickImage }: AbTestingPanelProps) {
+export function AbTestingPanel({ leadMagnet, imagePreviewUrl, onPatch, onPickImage }: AbTestingPanelProps) {
   const [analytics, setAnalytics] = useState<Pick<LeadMagnetAnalytics, 'variants'> | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const variantIdsKey = leadMagnet.abTestVariants.map((variant) => variant.id).join(',');
@@ -141,7 +142,17 @@ export function AbTestingPanel({ leadMagnet, onPatch, onPickImage }: AbTestingPa
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-[0_18px_45px_-38px_rgba(17,17,17,0.45)]">
+    <details className="group overflow-hidden rounded-xl border border-ink-200 bg-white shadow-[0_18px_45px_-38px_rgba(17,17,17,0.45)]">
+      <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-5 py-4 text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-500 sm:px-6 [&::-webkit-details-marker]:hidden">
+        <BarChart3 aria-hidden="true" className="h-5 w-5 shrink-0 text-ink-500" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">A/B testing</span>
+          <span className="mt-1 block text-xs leading-5 text-ink-500">Optional: compare titles and images to see what gets more signups.</span>
+          {(leadMagnet.abTestEnabled || completed) && <span className="mt-1 block text-xs font-medium text-emerald-700">{leadMagnet.abTestEnabled ? 'Test running' : `${winnerLabel} won`}</span>}
+        </span>
+        <ChevronDown aria-hidden="true" className="h-5 w-5 shrink-0 text-ink-500 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+      </summary>
+      <div className="border-t border-ink-200">
       <div className="flex flex-col gap-4 border-b border-ink-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <div className="flex items-center gap-2">
@@ -187,7 +198,7 @@ export function AbTestingPanel({ leadMagnet, onPatch, onPickImage }: AbTestingPa
               : 'border-ink-200'
           )}>
             <div className="relative aspect-video overflow-hidden border-b border-ink-200">
-              <PreviewImage imageUrl={leadMagnet.imageUrl} label="Control" />
+              <PreviewImage imageUrl={imagePreviewUrl || leadMagnet.imageUrl} label="Control" />
               <div className="absolute left-3 top-3">
                 <VersionLabel inverse>{`Control · ${trafficShare}`}</VersionLabel>
               </div>
@@ -210,7 +221,7 @@ export function AbTestingPanel({ leadMagnet, onPatch, onPickImage }: AbTestingPa
                 : 'border-ink-200'
             )} key={variant.id}>
               <div className="group relative aspect-video overflow-hidden border-b border-ink-200">
-                <PreviewImage imageUrl={variant.imageUrl || leadMagnet.imageUrl} label={variant.name} />
+                <PreviewImage imageUrl={variant.imageUrl || imagePreviewUrl || leadMagnet.imageUrl} label={variant.name} />
                 <div className="absolute left-3 top-3">
                   <VersionLabel>{`Version ${String.fromCharCode(66 + index)} · ${trafficShare}`}</VersionLabel>
                 </div>
@@ -302,6 +313,7 @@ export function AbTestingPanel({ leadMagnet, onPatch, onPickImage }: AbTestingPa
           </div>
         )}
       </div>
-    </section>
+      </div>
+    </details>
   );
 }

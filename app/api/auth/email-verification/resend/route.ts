@@ -15,18 +15,8 @@ const schema = z.object({
 }).strict();
 
 const genericSuccess = {
-  message: 'If that account still needs verification, we have sent a new link.',
+  message: 'If that account still needs verification, we have sent a new code.',
 };
-
-function verificationUrl(request: NextRequest, token: string) {
-  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  const baseUrl = configuredSiteUrl || (
-    process.env.NODE_ENV === 'production' ? 'https://magnets.so' : request.nextUrl.origin
-  );
-  const url = new URL('/verify-email/confirm', baseUrl);
-  url.searchParams.set('token', token);
-  return url.toString();
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,7 +48,7 @@ export async function POST(request: NextRequest) {
     try {
       await sendEmailVerificationEmail({
         to: verification.email,
-        verificationUrl: verificationUrl(request, verification.token),
+        code: verification.code,
       });
     } catch (error) {
       // Keep the response generic so this endpoint cannot reveal whether an

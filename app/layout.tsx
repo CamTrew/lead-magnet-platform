@@ -1,24 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from 'react';
-import localFont from 'next/font/local';
+import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { NavigationProgress } from '@/components/navigation-progress';
 import { AppThemeBoundary } from '@/components/app-theme-boundary';
 import { ThemeProvider } from '@/components/theme-provider';
+import { DARK_FLOW_ROUTES } from '@/lib/app-route-theme';
+import { SITE_SOCIAL_IMAGE, SITE_SOCIAL_TITLE, SITE_SOCIAL_DESCRIPTION } from '@/lib/site-social';
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so';
 const SITE_NAME = 'Magnets';
-const DEFAULT_TITLE = 'Magnets. Lead magnets that bring in leads';
-const DEFAULT_DESCRIPTION =
-  'Build branded lead-magnet landing pages, deliver the resource by email, collect signups, and follow up from one place.';
-
-const MagnetsGeist = localFont({
-  src: './fonts/geist-vf.ttf',
-  display: 'swap',
-  variable: '--font-magnets-geist',
-  weight: '100 900',
-});
+const DEFAULT_TITLE = SITE_SOCIAL_TITLE;
+const DEFAULT_DESCRIPTION = SITE_SOCIAL_DESCRIPTION;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -41,20 +35,13 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
-    images: [
-      {
-        url: '/landing-dashboard.png',
-        width: 1280,
-        height: 720,
-        alt: 'Magnets lead magnet builder dashboard',
-      },
-    ],
+    images: [SITE_SOCIAL_IMAGE],
   },
   twitter: {
     card: 'summary_large_image',
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
-    images: ['/landing-dashboard.png'],
+    images: [SITE_SOCIAL_IMAGE],
   },
   robots: {
     index: true,
@@ -87,11 +74,17 @@ export const viewport: Viewport = {
   colorScheme: 'light dark',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#F7F5F1' },
-    { media: '(prefers-color-scheme: dark)', color: '#0f0f11' },
+    { media: '(prefers-color-scheme: dark)', color: '#111111' },
   ],
 };
 
 const themeScript = `
+  var path = window.location.pathname;
+  document.documentElement.toggleAttribute('data-magnets-flow',
+    ${JSON.stringify(DARK_FLOW_ROUTES)}.some(function(route) {
+      return path === route || (route !== '/' && path.indexOf(route + '/') === 0);
+    })
+  );
   try {
     var saved = localStorage.getItem('magnets-theme');
     var theme = saved === 'light' || saved === 'dark'
@@ -111,10 +104,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${MagnetsGeist.variable} ${GeistMono.variable}`}
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
       <head>
+        <style>{`html[data-magnets-flow],html[data-magnets-flow] body{background:#111111!important;color-scheme:dark!important}`}</style>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="antialiased font-sans">

@@ -1,3 +1,4 @@
+import { LeadMagnetCreationLimitError, leadMagnetCreationLimitResponse } from '@/lib/lead-magnet-creation-limit';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ leadMagnet });
   } catch (err) {
+    if (err instanceof LeadMagnetCreationLimitError) return leadMagnetCreationLimitResponse(err);
     if (err instanceof RateLimitError) {
       log.warn('Rate limited', { route: ROUTE, method: 'POST', status: 429, userId, accountId });
       return rateLimitResponse(err);

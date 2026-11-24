@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { requireDashboardBase } from '@/lib/auth';
@@ -15,15 +16,20 @@ export const dynamic = 'force-dynamic';
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const payload = await requireDashboardBase();
   const setupComplete = isSetupComplete(payload.account);
+  const assistantCreationEnabled = process.env.MAGNETS_CREATION_ENABLED === '1';
+  // Existing configured accounts must never repeat onboarding to access their work.
+  if (assistantCreationEnabled && !setupComplete && !payload.account.onboardingCompletedAt) redirect('/create');
 
   return (
     <DashboardLayoutShell
       setupComplete={setupComplete}
+      assistantCreationEnabled={assistantCreationEnabled}
+      brandLogoUrl={payload.account.logoUrl}
       userEmail={payload.user.email}
       userName={payload.user.name}
     >
       {children}
-      {!payload.account.onboardingCompletedAt && (
+      {!assistantCreationEnabled && !payload.account.onboardingCompletedAt && (
         <OnboardingGate userName={payload.user.name} />
       )}
     </DashboardLayoutShell>

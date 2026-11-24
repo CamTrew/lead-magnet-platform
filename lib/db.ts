@@ -10,6 +10,13 @@ declare global {
 const CONNECTION_TIMEOUT_MS = 10_000;
 const CONNECTION_ATTEMPTS = 3;
 
+function isReadOnlyDatabase() {
+  // Design previews may inspect a shared database, but must never mutate it.
+  return process.env.MAGNETS_DATABASE_READ_ONLY === '1'
+    || process.env.MAGNETS_STAGING_PREVIEW === '1';
+}
+
+
 function isConnectionAcquisitionTimeout(error: unknown) {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current; depth += 1) {
@@ -75,6 +82,11 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   values: unknown[] = []
 ) {
+  // Explicit transactions keep READ ONLY attached to the query even behind
+  // Neon's transaction pooler. Session settings alone are not sufficient.
+  if (isReadOnlyDatabase()) {
+    return withTransaction((client) => client.query<T>(text, values));
+  }
   return retryAfterConnectionTimeout((pool) => pool.query<T>(text, values));
 }
 
@@ -90,7 +102,7 @@ export async function withTransaction<T>(callback: (client: QueryRunner) => Prom
   let discardClient = false;
 
   try {
-    await client.query('begin');
+    await client.query(isReadOnlyDatabase() ? 'begin read only' : 'begin');
     const result = await callback(client);
     await client.query('commit');
     return result;
@@ -122,6 +134,9 @@ export async function withAdvisoryLock<T>(
 }
 
 export function db() {
+  if (isReadOnlyDatabase()) {
+    throw new Error('Direct ORM access is disabled in read-only staging. Use the transaction-protected query helper.');
+  }
   if (!globalThis.magnetsDrizzle) {
     globalThis.magnetsDrizzle = drizzle(getPool(), { schema });
   }

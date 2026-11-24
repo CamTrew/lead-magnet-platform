@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://magnets.so').replace(/\/$/, '');
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1' || process.env.VERCEL_ENV === 'preview') return { rules: { userAgent: '*', disallow: '/' } };
   const requestHeaders = await headers();
   const requestHost = requestHeaders.get('host') || '';
   const hostname = cleanHostname(requestHost);
