@@ -1,3 +1,4 @@
+import { sampleWorkspace, sampleMagnet } from '@/lib/sample-workspace';
 import { notFound } from 'next/navigation';
 import { PageEditorClient } from '@/components/dashboard/page-editor-client';
 import { requireDashboardBase } from '@/lib/auth';
@@ -10,6 +11,10 @@ export default async function EditPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') {
+    if (id !== sampleMagnet.id) notFound();
+    return <PageEditorClient initialData={sampleWorkspace} initialLeadMagnet={sampleMagnet} designPreview />;
+  }
   const payload = await requireDashboardBase();
   const leadMagnet = await findLeadMagnetForAccount(payload.account.id, id);
 

@@ -1,3 +1,4 @@
+import { sampleMagnetId } from '@/lib/sample-workspace';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { ProductPreview } from '@/components/preview/product-preview';
@@ -12,6 +13,11 @@ export default async function PreviewPage({ params }: { params: Promise<{ screen
   if (process.env.MAGNETS_STAGING_PREVIEW !== '1') notFound();
   const { screen } = await params;
   const selected = screen?.[0] || 'home';
+  if ((screen?.length || 0) <= 1) {
+    if (selected === 'signup-fields' || selected === 'home') redirect('/dashboard/home');
+    if (selected === 'magnets') redirect('/dashboard/pages');
+    if (selected === 'page') redirect(`/dashboard/pages/${sampleMagnetId}`);
+  }
   if ((screen?.length || 0) > 1 || !screens.has(selected)) notFound();
   return <ProductPreview screen={selected} />;
 }

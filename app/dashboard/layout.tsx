@@ -1,3 +1,4 @@
+import { sampleWorkspace } from '@/lib/sample-workspace';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const payload = await requireDashboardBase();
+  const payload = process.env.MAGNETS_STAGING_PREVIEW === '1' ? sampleWorkspace : await requireDashboardBase();
   const setupComplete = isSetupComplete(payload.account);
   const assistantCreationEnabled = process.env.MAGNETS_CREATION_ENABLED === '1';
   // Existing configured accounts must never repeat onboarding to access their work.

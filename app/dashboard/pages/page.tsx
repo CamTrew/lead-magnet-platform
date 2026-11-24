@@ -1,3 +1,4 @@
+import { sampleWorkspace, sampleMagnet } from '@/lib/sample-workspace';
 import { redirect } from 'next/navigation';
 import { requireDashboardBase } from '@/lib/auth';
 import { listLeadMagnetSummaries, listCampaignPageLinks } from '@/lib/platform-store';
@@ -9,6 +10,9 @@ export default async function PagesPage({
 }: {
   searchParams: Promise<{ new?: string; assistant?: string }>;
 }) {
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') {
+    return <PagesClient initialData={sampleWorkspace} initialLeadMagnets={[sampleMagnet]} assistantCreationEnabled />;
+  }
   const payload = await requireDashboardBase();
   if (!isSetupComplete(payload.account)) {
     redirect('/dashboard?setup=incomplete');

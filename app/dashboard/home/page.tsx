@@ -1,3 +1,4 @@
+import { sampleWorkspace } from '@/lib/sample-workspace';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowRight, Download, FileText, Pencil, Users } from 'lucide-react';
@@ -9,10 +10,11 @@ import { AssistantEntry } from '@/components/dashboard/assistant-entry';
 import styles from '@/components/dashboard/home.module.css';
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ assistant?: string }> }) {
-  if (process.env.MAGNETS_CREATION_ENABLED !== '1') redirect('/dashboard/pages');
-  const { account } = await requireDashboardBase();
+  const preview = process.env.MAGNETS_STAGING_PREVIEW === '1';
+  if (!preview && process.env.MAGNETS_CREATION_ENABLED !== '1') redirect('/dashboard/pages');
+  const { account } = preview ? sampleWorkspace : await requireDashboardBase();
   const { assistant } = await searchParams;
-  const connections = (await listAssistantGrants(account.id))
+  const connections = preview ? [] : (await listAssistantGrants(account.id))
     .filter(connection => connection.access === 'workspace');
   const selectedConnection = connections.find(connection => connection.provider === assistant)
     || connections.find(connection => connection.provider !== null);
@@ -20,7 +22,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   return <>
     <PageHeader helpTopic="start" title="Home" subtitle="Create in your chat. Manage everything here." />
     <div className={styles.home}>
-    <AssistantEntry connectionOrigin={assistantOrigin()} provider={provider} resumeSavedIdea={Boolean(provider && assistant === provider)} />
+    <AssistantEntry connectionOrigin={preview ? "https://magnets.so" : assistantOrigin()} provider={provider} resumeSavedIdea={Boolean(provider && assistant === provider)} />
     <section className={styles.shortcuts} aria-label="Your workspace">
       <Link data-dashboard-tour="library" href="/dashboard/pages" className={styles.card}><FileText size={25}/><h2>My lead magnets</h2><p>Open your drafts, edit your pages and share your live links.</p><span>See my lead magnets <ArrowRight size={17}/></span></Link>
       <Link data-dashboard-tour="audience" href="/dashboard/signups" className={styles.card}><Users size={25}/><h2>My signups</h2><p>See who signed up. Download your audience as a CSV whenever you need it.</p><span>See my signups <ArrowRight size={17}/></span></Link>

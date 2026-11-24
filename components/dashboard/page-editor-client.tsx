@@ -450,10 +450,12 @@ function EditorWorkflowNav({
 export function PageEditorClient({
   initialData,
   initialLeadMagnet,
+  designPreview = false,
   campaignCoverPreview,
 }: {
   initialData: DashboardBasePayload;
   initialLeadMagnet: LeadMagnet;
+  designPreview?: boolean;
   // Display-only: autosave retains the durable public campaign cover URL.
   campaignCoverPreview?: string;
 }) {
@@ -496,13 +498,14 @@ export function PageEditorClient({
   });
 
   const markDirty = useCallback(() => {
+    if (designPreview) return;
     editRevisionRef.current += 1;
     dirtyRef.current = true;
     setError('');
     if (!saveInFlightRef.current) {
       setSaveState((current) => current === 'retrying' ? 'retrying' : 'idle');
     }
-  }, []);
+  }, [designPreview]);
 
   const updatePageEditorHistoryAvailability = useCallback(() => {
     const history = pageEditorHistoryRef.current;
@@ -1080,7 +1083,7 @@ export function PageEditorClient({
                   {saveState === 'saving' || saveState === 'retrying' || isUploadingImage || isUploadingEmailImage
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     : <Check className="h-3.5 w-3.5" />}
-                  {isUploadingImage
+                  {designPreview ? 'Sample edits reset when you leave' : isUploadingImage
                     ? imageUploadProgress > 0
                       ? `Uploading ${imageUploadProgress}%…`
                       : 'Uploading image…'
@@ -1191,7 +1194,7 @@ export function PageEditorClient({
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                     : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50'
                 )}
-                disabled={saveState === 'saving' || isUploadingImage || isUploadingEmailImage}
+                disabled={designPreview || saveState === 'saving' || isUploadingImage || isUploadingEmailImage}
                 onClick={() => saveLeadMagnet({ published: !leadMagnet.published })}
                 type="button"
               >
@@ -1310,12 +1313,12 @@ export function PageEditorClient({
  * components/lead-magnet-page-view.tsx.
  */
 type CanvasAccount = Pick<DashboardBasePayload['account'], 'brand' | 'logoText' | 'logoUrl'>;
-export type CanvasMagnet = Pick<LeadMagnet,
+type CanvasMagnet = Pick<LeadMagnet,
   'title' | 'subtitle' | 'description' | 'bullets' | 'bulletsHeading' |
   'ctaText' | 'formHeading' | 'formSubtext' | 'signupFields' | 'imageUrl'
 >;
 
-export function PageCanvas({
+function PageCanvas({
   account,
   accountHasLogo,
   accountLogoFallback,

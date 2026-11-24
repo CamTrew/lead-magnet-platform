@@ -26,7 +26,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (process.env.MAGNETS_STAGING_PREVIEW === '1') redirect('/preview/signup-fields');
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') redirect('/dashboard/home');
   const cookieStore = await cookies();
   if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
     redirect('/dashboard/pages');

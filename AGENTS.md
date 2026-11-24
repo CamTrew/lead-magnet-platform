@@ -768,7 +768,6 @@ text opens the app picker or selects Magnets. The handoff instructs users to
 select Magnets through ChatGPT's + menu before sending. No automatic consent
 or automatic message submission is claimed.
 
-The isolated design preview at `/preview/signup-fields` lets reviewers edit arbitrary signup questions and try the visitor form in memory. It requires visual staging mode and never calls the public submission endpoint.
-On this feature branch, the design-preview home link and auth routes open the signup-fields demo directly, before any session lookup.
+In visual staging, Home, Lead magnets, and the editor for one fixed sample ID use their normal dashboard URLs and components with fictional data. Field edits are in memory only. The previous standalone signup-fields demo redirects to Home. Keep all other customer routes and API mutations behind the staging guard.
 
 The shared campaign writing guide includes original paired landing-page and delivery-email examples. For both chat clients, optional page.signupFields are configured through normal versioned campaign and workspace tools. IDs survive renames. Public submissions validate against the current magnet before sending mail and store answer labels and values together. Design previews stay read-only. Apply migration 0036 before enabling functional code connected to a database.

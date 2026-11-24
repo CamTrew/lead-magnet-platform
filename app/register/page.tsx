@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RegisterPage() {
-  if (process.env.MAGNETS_STAGING_PREVIEW === '1') redirect('/preview/signup-fields');
+  if (process.env.MAGNETS_STAGING_PREVIEW === '1') redirect('/dashboard/home');
   const cookieStore = await cookies();
   if (cookieStore.has(sessionCookieName) && (await getCurrentDashboardBase())) {
     redirect('/dashboard/pages');

@@ -1,3 +1,4 @@
+import { sampleMagnetId } from './lib/sample-workspace';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'magnets_session';
@@ -86,6 +87,12 @@ export function middleware(request: NextRequest) {
   // A design preview must not call account, email, or customer-data routes,
   // even if someone accidentally adds a service credential later.
   if (process.env.MAGNETS_STAGING_PREVIEW === '1') {
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      if (pathname === '/dashboard') return applySecurityHeaders(NextResponse.redirect(new URL('/dashboard/home', request.url)), request);
+      if (['/dashboard/home', '/dashboard/pages', `/dashboard/pages/${sampleMagnetId}`].includes(pathname)) {
+        return applySecurityHeaders(NextResponse.next(), request);
+      }
+    }
     const allowed = pathname === '/preview' || pathname.startsWith('/preview/') || pathname === '/' || ['/register', '/login', '/create', '/privacy', '/terms', '/robots.txt'].includes(pathname)
       || pathname.startsWith('/_next/') || pathname.startsWith('/brand/') || pathname.startsWith('/fonts/');
     if (!allowed) {
