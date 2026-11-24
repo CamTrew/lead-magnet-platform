@@ -1679,12 +1679,6 @@ export function CaptureCardPreview({
         value={formSubtext}
       />
       <div className="space-y-4">
-        <div className="magnet-form-input flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
-          Name
-        </div>
-        <div className="magnet-form-input flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
-          Email
-        </div>
         <SignupFieldEditor fields={signupFields || []} onChange={fields => onPatch({ signupFields: fields })} />
         <EditableHotspot label="CTA button">
           <div className="flex min-h-14 items-center justify-center rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-sm font-semibold leading-tight text-white shadow-xl shadow-gray-900/30">

@@ -8,6 +8,7 @@ export const signupFieldsSchema = z.array(z.object({
   label: z.string().trim().min(1).max(100),
   format: z.enum(['text', 'url', 'choice']),
   required: z.boolean(),
+  before: z.enum(['name', 'email']).optional().describe('Place the question before this built-in field. Omit to place it after Email. Preserve when editing.'),
   choices: z.array(z.string().trim().min(1).max(100)).max(MAX_DROPDOWN_OPTIONS).default([]),
 }).strict()).max(12).superRefine((fields, ctx) => {
   const labels = new Set(['name', 'email']);
@@ -22,6 +23,26 @@ export const signupFieldsSchema = z.array(z.object({
   }
 });
 export type SignupField = z.infer<typeof signupFieldsSchema>[number];
+export type SignupFormRow = SignupField | 'name' | 'email';
+
+export function signupFormRows(fields: SignupField[]): SignupFormRow[] {
+  return [
+    ...fields.filter(field => field.before === 'name'), 'name',
+    ...fields.filter(field => field.before === 'email'), 'email',
+    ...fields.filter(field => !field.before),
+  ];
+}
+
+export function fieldsFromSignupRows(rows: SignupFormRow[]): SignupField[] {
+  const fields: SignupField[] = [];
+  let before: SignupField['before'];
+  for (const row of rows.slice().reverse()) {
+    if (typeof row === 'string') before = row;
+    else fields.push({ ...row, before });
+  }
+  return fields.reverse();
+}
+
 export type SignupAnswer = { id: string; label: string; value: string };
 export const submittedFieldsSchema = z.array(z.object({ id: fieldId, value: z.string().trim().max(2048) }).strict()).max(12);
 

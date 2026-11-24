@@ -1,11 +1,16 @@
-.controls { display:grid; gap:.65rem; color:var(--magnet-text,inherit); }
-.row,.add,.actions,.check { display:flex; align-items:center; gap:.6rem; }
-.row,.add { border:1px solid currentColor; border-radius:.6rem; padding:.65rem .8rem; text-align:left; }
-.row { width:100%; min-height:48px; }
-.row strong { overflow-wrap:anywhere; font-weight:500; }
-.row svg { flex-shrink:0; }
-.row small { margin-left:auto; }
-.add { justify-self:start; border-style:dashed; font-size:.875rem; min-height:40px; }
+.controls { display:grid; gap:1rem; color:var(--magnet-text,inherit); }
+.add,.actions,.check { display:flex; align-items:center; gap:.6rem; }
+.add { justify-self:start; border:1px dashed currentColor; border-radius:.6rem; padding:.65rem .8rem; font-size:.875rem; min-height:40px; }
+.field { min-width:0; position:relative; }
+.field[data-dragging] { z-index:2; outline:2px solid var(--brand-primary,currentColor); }
+.grip,.editField { display:flex; align-items:center; min-height:48px; }
+.grip { justify-content:center; width:36px; flex:none; touch-action:none; cursor:grab; }
+.grip:active { cursor:grabbing; }
+.editField { flex:1; gap:.5rem; min-width:0; text-align:left; padding:.5rem .875rem .5rem 0; }
+.editField span { flex:1; overflow-wrap:anywhere; }
+.editField svg { flex-shrink:0; }
+.pencil { opacity:0; }
+.field:hover .pencil,.field:focus-within .pencil { opacity:1; }
 .editor { display:grid; gap:12px; padding:16px; border:1px solid #aaa7; border-radius:12px; }
 .editor label,.label { display:block; font-size:.875rem; font-weight:550; }
 .editor input:not([type=checkbox]) { display:block; margin-top:5px; padding:9px 11px; width:100%; border:1px solid #999; border-radius:7px; color:#171717; background:white; font-size:16px; }

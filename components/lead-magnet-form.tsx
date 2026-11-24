@@ -5,6 +5,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { useLeadMagnetExperience } from '@/components/lead-magnet-experience';
 import { resolvePostSignupExperience } from '@/lib/post-signup';
 import { getLeadMagnetAbVariantId, getLeadMagnetAnalyticsSessionId } from '@/lib/lead-magnet-analytics-client';
+import { signupFormRows } from '@/lib/signup-fields';
 import type { LeadMagnet } from '@/lib/types';
 
 function DefaultSuccess() {
@@ -99,36 +100,21 @@ export function LeadMagnetForm({
 
   return (
     <form onSubmit={handleSubmit} className="magnet-form space-y-4">
-      <input
-        type="text"
-        name="name"
-        aria-label="Name"
-        autoComplete="name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
-        placeholder="Name"
-        required
-      />
-      <input
-        type="email"
-        name="email"
-        aria-label="Email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]"
-        placeholder="Email"
-        required
-      />
-
-      {(magnet.signupFields || []).map(field => {
-        const props = {name:'field-' + field.id, required:field.required, className:'magnet-form-input mt-1 w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900'};
-        return <label key={field.id} className="block text-sm font-medium">
-          {field.label}{field.required ? '' : ' (optional)'}
-          {field.format === 'choice' ? <select {...props} defaultValue=""><option value="">Choose an option</option>{field.choices.map(choice => <option key={choice}>{choice}</option>)}</select>
-            : <input {...props} type={field.format} maxLength={2048} placeholder={field.format === 'url' ? 'https://example.com' : undefined} />}
-        </label>;
+      {signupFormRows(magnet.signupFields || []).map(row => {
+        const className = 'magnet-form-input h-14 w-full rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-base text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-500 focus:border-[var(--brand-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-primary-soft)]';
+        if (typeof row === 'string') {
+          const isName = row === 'name';
+          const label = isName ? 'Name' : 'Email';
+          return <input key={':' + row} name={row} aria-label={label} autoComplete={row}
+            type={isName ? 'text' : 'email'} value={isName ? name : email}
+            onChange={event => (isName ? setName : setEmail)(event.target.value)}
+            className={className} placeholder={label} required />;
+        }
+        const label = row.label + (row.required ? '' : ' (optional)');
+        const props = { name: 'field-' + row.id, required: row.required, 'aria-label': label, className };
+        return row.format === 'choice'
+          ? <select key={row.id} {...props} defaultValue=""><option value="">{label}</option>{row.choices.map(choice => <option key={choice}>{choice}</option>)}</select>
+          : <input key={row.id} {...props} type={row.format} maxLength={2048} placeholder={label} />;
       })}
       {error && (
         <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
