@@ -23,11 +23,16 @@ function rowId(row: SignupFormRow) {
   return typeof row === 'string' ? ':' + row : row.id;
 }
 
+function rowLabel(row: SignupFormRow) {
+  if (typeof row !== 'string') return row.label;
+  return row === 'name' ? 'Name' : 'Email';
+}
+
 function FormRow({ row, onEdit }: { row: SignupFormRow; onEdit: (field: Field) => void }) {
   const fixed = typeof row === 'string';
   const sort = useSortable({ id: rowId(row), disabled: { draggable: fixed, droppable: false } });
   const style = { transform: CSS.Transform.toString(sort.transform), transition: sort.transition };
-  const label = fixed ? (row === 'name' ? 'Name' : 'Email') : row.label;
+  const label = rowLabel(row);
   return (
     <div ref={sort.setNodeRef} style={style} data-dragging={sort.isDragging || undefined}
       className={`magnet-form-input flex min-h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 text-[15px] text-gray-500 shadow-sm ${styles.field}`}>
@@ -48,6 +53,7 @@ function FormRow({ row, onEdit }: { row: SignupFormRow; onEdit: (field: Field) =
 
 export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange: (next: Field[]) => void}) {
   const [draft, setDraft] = useState<Field | null>(null);
+  const [placement, setPlacement] = useState<string | null>(null);
   const [error, setError] = useState('');
   const focusOption = useRef<number | null>(null);
   const contextId = useId();
@@ -59,7 +65,18 @@ export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange
   const ids = rows.map(rowId);
   const editing = fields.some(field => field.id === draft?.id);
 
+  const otherRows = rows.filter(row => rowId(row) !== draft?.id);
+  const currentIndex = draft ? ids.indexOf(draft.id) : -1;
+  const originalIndex = currentIndex < 0 ? otherRows.length : currentIndex;
+  const positionOptions = [
+    { value: ':first', label: 'First on the form' },
+    ...otherRows.map(row => ({ value: rowId(row), label: 'After ' + rowLabel(row) })),
+  ];
+  const selectedPosition = placement && positionOptions.some(option => option.value === placement)
+    ? placement : positionOptions[originalIndex].value;
+
   function open(field: Field) {
+    setPlacement(null);
     setError('');
     setDraft(field);
   }
@@ -68,7 +85,10 @@ export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange
     event.preventDefault();
     if (!draft) return;
     const next = { ...draft, choices: draft.format === 'choice' ? draft.choices.filter(choice => choice.trim()) : [] };
-    const result = signupFieldsSchema.safeParse(editing ? fields.map(field => field.id === next.id ? { ...next, before: field.before } : field) : [...fields, next]);
+    const reordered = [...otherRows];
+    const insertAt = positionOptions.findIndex(option => option.value === selectedPosition);
+    reordered.splice(insertAt, 0, next);
+    const result = signupFieldsSchema.safeParse(fieldsFromSignupRows(reordered));
     if (!result.success) return setError(result.error.issues[0].message);
     onChange(result.data);
     setDraft(null);
@@ -80,7 +100,10 @@ export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange
         if (!over || active.id === over.id) return;
         const from = ids.indexOf(String(active.id));
         const to = ids.indexOf(String(over.id));
-        if (from >= 0 && to >= 0) onChange(fieldsFromSignupRows(arrayMove(rows, from, to)));
+        if (from >= 0 && to >= 0) {
+          setPlacement(null);
+          onChange(fieldsFromSignupRows(arrayMove(rows, from, to)));
+        }
       }}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         {rows.map(row => <FormRow key={rowId(row)} row={row} onEdit={open} />)}
@@ -135,6 +158,10 @@ export function SignupFieldEditor({fields, onChange}: {fields: Field[]; onChange
                 ><Plus size={16} /> Add option</button>
               </fieldset>
             )}
+            <div>
+              <span className={styles.label}>Position</span>
+              <StyledSelect ariaLabel="Position" value={selectedPosition} options={positionOptions} onChange={setPlacement} />
+            </div>
             <label className={styles.check}><input type="checkbox" checked={draft.required} onChange={e => setDraft({ ...draft, required: e.target.checked })} /> Require an answer</label>
             {error && <p role="alert">{error}</p>}
             <div className={styles.actions}><button className={styles.dark} type="submit">{editing ? 'Save changes' : 'Add field'}</button><button type="button" onClick={() => setDraft(null)}>Cancel</button>

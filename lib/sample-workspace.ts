@@ -25,7 +25,8 @@ export const sampleWorkspace: DashboardBasePayload = {
 
 export const sampleMagnet: LeadMagnet = {
   ...exampleCampaign.page, id: sampleMagnetId, accountId: sampleWorkspace.account.id,
-  slug: 'project-pricing-checklist', title: exampleCampaign.title, imageUrl: '', signupFields: [],
+  slug: 'project-pricing-checklist', title: exampleCampaign.title, imageUrl: '',
+  signupFields: [{ id: 'business-website', label: 'Business website', format: 'url', required: false, choices: [] }],
   downloadLink: '', emailSubject: exampleCampaign.delivery.subject, emailPreview: exampleCampaign.delivery.preview,
   emailBody: exampleCampaign.delivery.body, followUpEnabled: false, followUpStopOnBooking: false, followUpEmails: [],
   resendFollowUpAutomationId: '', resendFollowUpRenderVersion: 0, postSignupMode: 'message',
