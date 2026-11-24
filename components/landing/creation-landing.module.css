@@ -398,37 +398,13 @@
   align-items: center;
   justify-content: space-between;
 }
-.coverSculpture {
+.coverArrow {
   position: absolute;
-  width: 120px;
-  height: 120px;
-  right: -17px;
-  bottom: 34px;
-  transform: rotate(-25deg);
-}
-.coverSculpture i {
-  position: absolute;
-  inset: 10px;
-  border: 14px solid #401d10;
-  border-radius: 50%;
-  box-shadow:
-    inset 2px 3px 2px #ffb17180,
-    3px 4px 4px #6c2f1b50;
-  transform: rotateX(55deg) rotateY(-10deg);
-  animation: sculpture 9s ease-in-out infinite;
-}
-.coverSculpture i:nth-child(2) {
-  inset: 22px;
-  transform: rotateX(55deg) translateZ(15px);
-}
-.coverSculpture i:nth-child(3) {
-  inset: 34px;
-  transform: rotateX(55deg) translateZ(30px);
-}
-.coverSculpture i:nth-child(4) {
-  inset: 46px;
-  background: #401d10;
-  transform: rotateX(55deg) translateZ(45px);
+  right: 12px;
+  bottom: 40px;
+  width: 72px;
+  height: 72px;
+  color: #171717;
 }
 .objectLabel {
   display: block;
@@ -747,11 +723,6 @@
 @keyframes spin {
   to {
     rotate: 360deg;
-  }
-}
-@keyframes sculpture {
-  50% {
-    rotate: 12deg;
   }
 }
 @media (min-width: 1500px) {

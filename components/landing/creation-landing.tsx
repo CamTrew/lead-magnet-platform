@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
+  ArrowUpRight,
   ArrowRight,
   Check,
   CheckCheck,
@@ -139,12 +140,7 @@ export function CreationLanding() {
                   <br />
                   clients.
                 </span>
-                <div className={styles.coverSculpture}>
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </div>
+                <ArrowUpRight className={styles.coverArrow} aria-hidden="true" strokeWidth={2.8} />
                 <span className={styles.bookBottom}>
                   A little knowledge.
                   <br />A lot of possibility. <ArrowDown size={20} />
