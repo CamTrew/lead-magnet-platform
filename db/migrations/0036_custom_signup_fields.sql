@@ -1,0 +1,2 @@
+ALTER TABLE "magnets_lead_magnets" ADD COLUMN "signup_fields" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "magnets_submissions" ADD COLUMN "signup_answers" jsonb DEFAULT '[]'::jsonb NOT NULL;

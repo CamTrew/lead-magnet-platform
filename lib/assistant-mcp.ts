@@ -257,7 +257,7 @@ export async function handleAssistantMcp(request: Request, workspace = false) {
     server.registerTool(
       "update_campaign",
       {
-        description: "Edit only requested copy in an existing campaign: resource, title, landing page, delivery email or image prompt. First read get_campaign and supply editVersion. Published copy changes go live immediately and require explicit user permission via confirmLiveEdit. Follow-ups can only be added/removed on never-published drafts with no automation; use the editor for existing sequences. Does not send emails or change publishing, images, domains, subscribers or settings.",
+        description: "Edit only requested copy in an existing campaign: resource, title, landing page, delivery email or image prompt, or manage extra signup questions in changes.page.signupFields. First read get_campaign and supply editVersion. Published copy changes go live immediately and require explicit user permission via confirmLiveEdit. Follow-ups can only be added/removed on never-published drafts with no automation; use the editor for existing sequences. Does not send emails or change publishing, images, domains, subscribers or settings.",
         inputSchema: {
           campaignId: z.string().uuid(),
           editVersion: z.string().regex(/^[a-f0-9]{64}$/),

@@ -97,6 +97,7 @@ export function CreationLanding({ designPreview = false }: { designPreview?: boo
           <MagnetsLogo variant="light" />
         </Link>
         <nav aria-label="Main navigation" className={styles.nav}>
+          {designPreview && <a href="https://magnets.so/login">Sign in on magnets.so</a>}
           <Link href={designPreview ? "/preview/signup-fields" : "/login"} prefetch>
             {designPreview ? "Try the signup form" : "Sign in"} <ArrowRight size={15} />
           </Link>

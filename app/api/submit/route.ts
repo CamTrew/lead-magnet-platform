@@ -1,3 +1,4 @@
+import { resolveSignupAnswers, submittedFieldsSchema } from '@/lib/signup-fields';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addToBeehiiv } from '@/lib/beehiiv';
@@ -31,6 +32,7 @@ const schema = z.object({
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9-]+$/),
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254),
+  signupAnswers: submittedFieldsSchema.default([]),
   analyticsSessionId: z.string().uuid().optional(),
   abVariantId: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).optional(),
 }).strict();
@@ -88,7 +90,7 @@ async function runPostSubmissionWork({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
-    const { accountId, analyticsSessionId, abVariantId, leadMagnetId, slug, name, email } = schema.parse(body);
+    const { accountId, analyticsSessionId, abVariantId, leadMagnetId, slug, name, email, signupAnswers } = schema.parse(body);
     const normalizedEmail = email.toLowerCase();
 
     await enforceRateLimits([{
@@ -102,6 +104,13 @@ export async function POST(request: NextRequest) {
 
     if (!result || result.leadMagnet.slug !== slug || !result.leadMagnet.published) {
       return NextResponse.json({ error: 'Lead magnet not found' }, { status: 404 });
+    }
+
+    let answers;
+    try {
+      answers = resolveSignupAnswers(result.leadMagnet.signupFields || [], signupAnswers);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Check your signup answers.' }, { status: 400 });
     }
 
     await enforceRateLimits([
@@ -178,6 +187,7 @@ export async function POST(request: NextRequest) {
       leadMagnetId,
       name,
       email: normalizedEmail,
+      signupAnswers: answers,
     });
 
     if (analyticsSessionId) {

@@ -11,7 +11,7 @@ import { hasWorkspaceAssistantConnection } from '../lib/assistant-provider';
 async function main() {
   const db=new URL(process.env.DATABASE_URL || '');
   assert.equal(db.hostname,'127.0.0.1');assert.equal(db.port,'55439');assert.equal(db.pathname,'/magnets_staging_test');
-  const origin='http://127.0.0.1:3108',resource=origin+'/mcp/workspace';
+  const origin='http://127.0.0.1:'+(process.env.MCP_TEST_PORT || '3108'),resource=origin+'/mcp/workspace';
   const users=[randomUUID(),randomUUID()],accounts=[randomUUID(),randomUUID()],clients:Client[]=[],clientIds:string[]=[];
   const cookies:string[]=[];
   const seedSecret='re_workspace_local_secret_never_return';
@@ -63,8 +63,8 @@ async function main() {
     const before=await read();assert.equal(before.fields.title,'Existing checklist');
     await call(b.client,'read_workspace',{what:'lead_magnet',id},true);
     await call(b.client,'update_lead_magnet',{id,editVersion:before.editVersion,changes:{title:'Cross-account edit'}},true);
-    const updated=await call(a.client,'update_lead_magnet',{id,editVersion:before.editVersion,changes:{title:'A better checklist',subtitle:'A practical checklist for your next project',description:'Define the scope of your next project.',bullets:['Define your scope'],bulletsHeading:'What is inside',ctaText:'Get the checklist',formHeading:'Send me the checklist',formSubtext:'Enter your email to receive it.',emailPreview:'Start with your project scope.',emailSubject:'Your checklist',emailBody:'Hi {name},\n\nHere is your checklist: https://example.com/original.pdf'}});assert.equal(updated.status,200);
-    const after=await read();assert.equal(after.fields.title,'A better checklist');assert.equal(after.fields.downloadLink,before.fields.downloadLink);assert.deepEqual(after.fields.followUpEmails,before.fields.followUpEmails);
+    const updated=await call(a.client,'update_lead_magnet',{id,editVersion:before.editVersion,changes:{signupFields:[{id:'company',label:'Company name',format:'text',required:false}],title:'A better checklist',subtitle:'A practical checklist for your next project',description:'Define the scope of your next project.',bullets:['Define your scope'],bulletsHeading:'What is inside',ctaText:'Get the checklist',formHeading:'Send me the checklist',formSubtext:'Enter your email to receive it.',emailPreview:'Start with your project scope.',emailSubject:'Your checklist',emailBody:'Hi {name},\n\nHere is your checklist: https://example.com/original.pdf'}});assert.equal(updated.status,200);
+    const after=await read();assert.equal(after.fields.signupFields[0].label,'Company name');assert.equal(after.fields.title,'A better checklist');assert.equal(after.fields.downloadLink,before.fields.downloadLink);assert.deepEqual(after.fields.followUpEmails,before.fields.followUpEmails);
     await call(a.client,'update_lead_magnet',{id,editVersion:before.editVersion,changes:{title:'Stale overwrite'}},true);
     await call(a.client,'update_lead_magnet',{id,editVersion:after.editVersion,changes:{accountId:accounts[1]}},true);
     await call(a.client,'update_lead_magnet',{id,editVersion:after.editVersion,changes:{title:'A bad — dash'}},true);

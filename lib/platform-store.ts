@@ -1,3 +1,4 @@
+import type { SignupField, SignupAnswer } from './signup-fields';
 import { withoutLegacyLaunchPost } from "./campaign-content";
 import { suggestLeadMagnetSlug } from './lead-magnet-slug';
 import { LeadMagnetCreationLimitError, leadMagnetCreationScope } from './lead-magnet-creation-limit';
@@ -222,6 +223,7 @@ type LeadMagnetRow = {
   post_signup_quiz_enabled: boolean;
   post_signup_quiz_title: string;
   post_signup_quiz_description: string;
+  signup_fields?: SignupField[];
   post_signup_quiz_questions: unknown | string | null;
   ab_test_enabled: boolean;
   ab_test_variants: unknown | string | null;
@@ -862,6 +864,7 @@ function mapLeadMagnet(row: LeadMagnetRow): LeadMagnet {
     ctaText: row.cta_text,
     formHeading: row.form_heading,
     formSubtext: row.form_subtext,
+    signupFields: row.signup_fields || [],
     imageUrl: leadMagnetImageProxyUrl(row),
     downloadLink: row.download_link,
     emailSubject: row.email_subject,
@@ -2425,6 +2428,7 @@ async function updateLeadMagnetWithRunner(
         ab_test_completed_at = case when $32 then null else ab_test_completed_at end,
         ab_test_winner_id = case when $32 then '' else ab_test_winner_id end,
         published = $34,
+        signup_fields = coalesce($35::jsonb, signup_fields),
         updated_at = now()
       where account_id = $1
         and id = $2
@@ -2472,6 +2476,7 @@ async function updateLeadMagnetWithRunner(
       updates.abTestEnabled,
       JSON.stringify(updates.abTestVariants || []),
       updates.published,
+      updates.signupFields === undefined ? null : JSON.stringify(updates.signupFields),
     ]
   );
 
@@ -3793,6 +3798,7 @@ type SignupRow = {
   follow_up_status: FollowUpStatus;
   follow_up_stopped_at: Date | null;
   follow_up_stop_reason: string;
+  signup_answers: SignupAnswer[];
   quiz_answers: SignupQuizAnswer[] | string | null;
   total_count: string;
   cursor_latest_signup_at: string;
@@ -3848,6 +3854,7 @@ function mapSignup(row: SignupRow): AccountSignup {
     followUpStoppedAt: row.follow_up_stopped_at ? iso(row.follow_up_stopped_at) : null,
     followUpStopReason: row.follow_up_stop_reason,
     quizAnswers,
+    signupAnswers: row.signup_answers || [],
   };
 }
 
@@ -3895,6 +3902,7 @@ async function queryAccountSignups(
       ranked as (
         select
           s.email,
+          s.signup_answers,
           s.name,
           s.created_at,
           lm.id as lead_magnet_id,
@@ -3921,6 +3929,7 @@ async function queryAccountSignups(
         select
           latest.email,
           latest.name,
+          latest.signup_answers,
           first.lead_magnet_id as first_lead_magnet_id,
           first.lead_magnet_title as first_lead_magnet_title,
           first.lead_magnet_slug as first_lead_magnet_slug,
@@ -3957,6 +3966,7 @@ async function queryAccountSignups(
       select
         paged.email,
         paged.name,
+        paged.signup_answers,
         (
           select coalesce(
             jsonb_agg(
@@ -4104,14 +4114,14 @@ export async function deleteAccountSignup(accountId: string, email: string) {
   return Number(result.rows[0]?.deleted || 0);
 }
 
-export async function recordSubmission(submission: Omit<Submission, 'id' | 'createdAt'>) {
+export async function recordSubmission(submission: Omit<Submission, 'id' | 'createdAt'> & { signupAnswers?: SignupAnswer[] }) {
   const result = await query<SubmissionRow>(
     `
-      insert into public.magnets_submissions (account_id, lead_magnet_id, name, email)
-      values ($1, $2, $3, $4)
+      insert into public.magnets_submissions (account_id, lead_magnet_id, name, email, signup_answers)
+      values ($1, $2, $3, $4, $5::jsonb)
       returning *
     `,
-    [submission.accountId, submission.leadMagnetId, submission.name, submission.email]
+    [submission.accountId, submission.leadMagnetId, submission.name, submission.email, JSON.stringify(submission.signupAnswers || [])]
   );
 
   return mapSubmission(result.rows[0]);
@@ -4621,7 +4631,7 @@ async function readCampaignForEditing(runner: QueryRunner, accountId: string, id
   const magnet = (await withoutPlaceholderCovers([mapLeadMagnet(row.magnet)], runner))[0];
   const content = { ...row.content, title: magnet.title,
     page: { subtitle: magnet.subtitle, description: magnet.description, bullets: magnet.bullets,
-      bulletsHeading: magnet.bulletsHeading, ctaText: magnet.ctaText, formHeading: magnet.formHeading, formSubtext: magnet.formSubtext },
+      bulletsHeading: magnet.bulletsHeading, ctaText: magnet.ctaText, formHeading: magnet.formHeading, formSubtext: magnet.formSubtext, signupFields: magnet.signupFields || [] },
     delivery: { subject: magnet.emailSubject, preview: magnet.emailPreview, body: magnet.emailBody },
     followUps: magnet.followUpEmails.map(email => ({ subject: email.subject, preview: email.preview, body: email.body })),
   };
@@ -4658,9 +4668,9 @@ export async function updateCampaignCopy(accountId: string, id: string, expected
       values.push(json ? JSON.stringify(value) : value); columns.push(`${column}=$${values.length}${json ? '::jsonb' : ''}`);
     };
     if (changes.title !== undefined) set('title', changes.title);
-    const pageColumns = { subtitle:'subtitle', description:'description', bullets:'bullets', bulletsHeading:'bullets_heading', ctaText:'cta_text', formHeading:'form_heading', formSubtext:'form_subtext' } as const;
+    const pageColumns = { subtitle:'subtitle', description:'description', bullets:'bullets', bulletsHeading:'bullets_heading', ctaText:'cta_text', formHeading:'form_heading', formSubtext:'form_subtext', signupFields:'signup_fields' } as const;
     for (const key of Object.keys(pageColumns) as (keyof typeof pageColumns)[]) {
-      if (changes.page?.[key] !== undefined) set(pageColumns[key], changes.page[key], key === 'bullets');
+      if (changes.page?.[key] !== undefined) set(pageColumns[key], changes.page[key], key === 'bullets' || key === 'signupFields');
     }
     if (changes.delivery?.subject !== undefined) set('email_subject', content.delivery.subject = cleanEmailHeaderText(changes.delivery.subject));
     if (changes.delivery?.preview !== undefined) set('email_preview', content.delivery.preview = cleanEmailHeaderText(changes.delivery.preview));

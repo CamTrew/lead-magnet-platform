@@ -1,5 +1,6 @@
 'use client';
 
+import { SignupFieldEditor } from './signup-field-editor';
 import type { CSSProperties, ChangeEvent, DragEvent as ReactDragEvent, ReactNode } from 'react';
 import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -683,6 +684,8 @@ export function PageEditorClient({
           bullets: payload.bullets,
           bulletsHeading: payload.bulletsHeading,
           ctaText: payload.ctaText,
+          signupFields: JSON.stringify(payload.signupFields) !== JSON.stringify(lastSavedRef.current.signupFields)
+            ? payload.signupFields : undefined,
           formHeading: payload.formHeading,
           formSubtext: payload.formSubtext,
           imageUrl: payload.imageUrl,
@@ -1401,6 +1404,7 @@ function PageCanvas({
                     brandIntensity={brandIntensity}
                     brandPrimary={brandPrimary}
                     ctaText={leadMagnet.ctaText}
+                    signupFields={leadMagnet.signupFields}
                     formHeading={leadMagnet.formHeading}
                     formSubtext={leadMagnet.formSubtext}
                     imageUrl={imagePreviewUrl || leadMagnet.imageUrl}
@@ -1502,7 +1506,8 @@ function PageCanvas({
                   brandIntensity={brandIntensity}
                   brandPrimary={brandPrimary}
                   ctaText={leadMagnet.ctaText}
-                  formHeading={leadMagnet.formHeading}
+                  signupFields={leadMagnet.signupFields}
+                    formHeading={leadMagnet.formHeading}
                   formSubtext={leadMagnet.formSubtext}
                   imageUrl={imagePreviewUrl || leadMagnet.imageUrl}
                   onPickImage={onPickImage}
@@ -1570,6 +1575,7 @@ function MediaAndCapturePreview({
   brandIntensity,
   brandPrimary,
   ctaText,
+  signupFields,
   formHeading,
   formSubtext,
   imageUrl,
@@ -1581,6 +1587,7 @@ function MediaAndCapturePreview({
   brandIntensity: number;
   brandPrimary: string;
   ctaText: string;
+  signupFields?: LeadMagnet['signupFields'];
   formHeading: string;
   formSubtext: string;
   imageUrl: string;
@@ -1603,6 +1610,7 @@ function MediaAndCapturePreview({
         brandIntensity={brandIntensity}
         brandPrimary={brandPrimary}
         ctaText={ctaText}
+        signupFields={signupFields}
         formHeading={formHeading}
         formSubtext={formSubtext}
         onPatch={onPatch}
@@ -1611,10 +1619,11 @@ function MediaAndCapturePreview({
   );
 }
 
-function CaptureCardPreview({
+export function CaptureCardPreview({
   brandIntensity,
   brandPrimary,
   ctaText,
+  signupFields,
   formHeading,
   formSubtext,
   onPatch,
@@ -1622,6 +1631,7 @@ function CaptureCardPreview({
   brandIntensity: number;
   brandPrimary: string;
   ctaText: string;
+  signupFields?: LeadMagnet['signupFields'];
   formHeading: string;
   formSubtext: string;
   onPatch: (updates: Partial<LeadMagnet>) => void;
@@ -1666,6 +1676,7 @@ function CaptureCardPreview({
         <div className="magnet-form-input flex h-14 items-center rounded-xl border-2 border-gray-200 bg-white/80 px-5 text-[15px] text-gray-500 shadow-sm">
           Email
         </div>
+        <SignupFieldEditor fields={signupFields || []} onChange={fields => onPatch({ signupFields: fields })} />
         <EditableHotspot label="CTA button">
           <div className="flex min-h-14 items-center justify-center rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3 text-center text-sm font-semibold leading-tight text-white shadow-xl shadow-gray-900/30">
             <InlineText

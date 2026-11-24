@@ -1,0 +1,16 @@
+.controls { display:grid; gap:.65rem; color:var(--magnet-text,inherit); }
+.row,.add,.actions,.check { display:flex; align-items:center; gap:.6rem; }
+.row,.add { border:1px solid currentColor; border-radius:.6rem; padding:.65rem .8rem; text-align:left; }
+.row { width:100%; min-height:48px; }
+.row strong { overflow-wrap:anywhere; font-weight:500; }
+.row svg { flex-shrink:0; }
+.row small { margin-left:auto; }
+.add { justify-self:start; border-style:dashed; font-size:.875rem; min-height:40px; }
+.editor { display:grid; gap:12px; padding:16px; border:1px solid #aaa7; border-radius:12px; }
+.editor label,.label { display:block; font-size:.875rem; font-weight:550; }
+.editor input:not([type=checkbox]),.editor textarea { display:block; margin-top:5px; padding:9px 11px; width:100%; border:1px solid #999; border-radius:7px; color:#171717; background:white; font-size:16px; }
+.label { margin-bottom:5px; }
+.editor .check { display:flex; min-height:32px; }
+.actions button { padding:6px 10px; min-height:40px; border-radius:6px; }
+.dark { background:#191919; color:white; }
+.remove { margin-left:auto; }

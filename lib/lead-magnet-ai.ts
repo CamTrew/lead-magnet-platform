@@ -1,4 +1,5 @@
 import { createDeepSeek } from '@ai-sdk/deepseek';
+import { DELIVERY_EMAIL_VOICE } from './delivery-email-guidance';
 import { LANDING_PAGE_GUIDANCE } from './landing-page-guidance';
 import { APICallError, generateText, Output } from 'ai';
 import { z } from 'zod';
@@ -95,6 +96,10 @@ export async function generateLeadMagnetCopy({
 ${OFFER_DRIVEN_WRITING_STYLE}
 
 ${LANDING_PAGE_GUIDANCE}
+
+${DELIVERY_EMAIL_VOICE}
+
+For this draft generator, the resource URL is supplied separately. Omit links and link placeholders from the delivery body.
 
 ${HUMAN_VOICE_GUARDRAILS}`;
     const writingPrompt = promptFor({ account, brief });

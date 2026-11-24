@@ -44,7 +44,7 @@ export function LeadMagnetForm({
   const experience = resolvePostSignupExperience(magnet);
   const pageExperience = useLeadMagnetExperience();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submittingRef.current) return;
     submittingRef.current = true;
@@ -52,6 +52,8 @@ export function LeadMagnetForm({
     setIsSubmitting(true);
 
     try {
+      const values = new FormData(e.currentTarget);
+      const signupAnswers = (magnet.signupFields || []).map(field => ({ id: field.id, value: String(values.get('field-' + field.id) || '') }));
       const response = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -61,6 +63,7 @@ export function LeadMagnetForm({
           slug: magnet.slug,
           name,
           email,
+          signupAnswers,
           analyticsSessionId: getLeadMagnetAnalyticsSessionId(magnet.id) || undefined,
           abVariantId: getLeadMagnetAbVariantId(
             magnet.id,
@@ -119,6 +122,14 @@ export function LeadMagnetForm({
         required
       />
 
+      {(magnet.signupFields || []).map(field => {
+        const props = {name:'field-' + field.id, required:field.required, className:'magnet-form-input mt-1 w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-base text-gray-900'};
+        return <label key={field.id} className="block text-sm font-medium">
+          {field.label}{field.required ? '' : ' (optional)'}
+          {field.format === 'choice' ? <select {...props} defaultValue=""><option value="">Choose an option</option>{field.choices.map(choice => <option key={choice}>{choice}</option>)}</select>
+            : <input {...props} type={field.format} maxLength={2048} placeholder={field.format === 'url' ? 'https://example.com' : undefined} />}
+        </label>;
+      })}
       {error && (
         <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}

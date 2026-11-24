@@ -15,7 +15,7 @@ async function main() {
   assert.equal(db.hostname, "127.0.0.1");
   assert.equal(db.port, "55439");
   assert.equal(db.pathname, "/magnets_staging_test");
-  const base = "http://127.0.0.1:3108";
+  const base = "http://127.0.0.1:" + (process.env.MCP_TEST_PORT || "3108");
   const unauthorized = await fetch(`${base}/mcp`, { method: "POST" });
   assert.equal(unauthorized.status, 401);
   assert.match(
@@ -352,7 +352,8 @@ async function main() {
     assert.equal((await fetch(`${base}/campaign-covers/${campaignRow.rows[0].public_token}`)).status, 404);
     // Fully configured creation publishes without a second MCP call.
     const autoRequest = randomUUID();
-    const auto = await client.callTool({ name: 'save_campaign', arguments: { requestId: autoRequest, brief: 'Automatic publication', campaign: exampleCampaign } });
+    const extra = {id:'business-website',label:'Business website',format:'url',required:true,choices:[]};
+    const auto = await client.callTool({ name: 'save_campaign', arguments: { requestId: autoRequest, brief: 'Automatic publication', campaign: {...exampleCampaign,page:{...exampleCampaign.page,signupFields:[extra]}} } });
     assert.ok(!auto.isError, JSON.stringify(auto));
     const autoContent = auto.structuredContent as { campaignId: string; status: string; publicUrl: string; publicationError: string | null };
     assert.equal(autoContent.status, 'published');
@@ -362,6 +363,18 @@ async function main() {
     assert.equal(autoContent.publicationError, null);
     assert.equal((await fetch(autoContent.publicUrl)).status, 200);
     const autoRow = (await query('select * from public.magnets_campaigns where id=$1', [autoContent.campaignId])).rows[0];
+    const readFields = async () => (await client.callTool({name:'get_campaign',arguments:{campaignId:autoContent.campaignId}})).structuredContent as {content:{page:{signupFields:unknown[]}},editVersion:string};
+    const originalFields = await readFields();
+    assert.deepEqual(originalFields.content.page.signupFields,[extra]);
+    const publicHtml = await (await fetch(autoContent.publicUrl)).text();
+    assert.match(publicHtml,/name="field-business-website"/);
+    const slug = (await query('select slug from magnets_lead_magnets where id=$1',[autoRow.lead_magnet_id])).rows[0].slug;
+    const missing = await fetch(base+'/api/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accountId:account,leadMagnetId:autoRow.lead_magnet_id,slug,name:'Sample',email:'sample@example.invalid'})});
+    assert.equal(missing.status,400);
+    assert.match(await missing.text(),/Business website/);
+    const remove = await client.callTool({name:'update_campaign',arguments:{campaignId:autoContent.campaignId,editVersion:originalFields.editVersion,changes:{page:{signupFields:[]}},confirmLiveEdit:true}});
+    assert.ok(!remove.isError,JSON.stringify(remove));
+    assert.deepEqual((await readFields()).content.page.signupFields,[]);
     assert.equal((await fetch(`${base}/campaign-resources/${autoRow.public_token}`)).status, 200);
     assert.equal((await client.callTool({ name: 'attach_campaign_cover', arguments: { campaignId: autoContent.campaignId, imageBase64: imageBytes.toString('base64') } })).isError, true);
     const liveImage = await client.callTool({ name: 'attach_campaign_cover', arguments: { campaignId: autoContent.campaignId, imageBase64: imageBytes.toString('base64'), confirmLiveEdit: true, brandVersion: refreshedImage.brandVersion } });

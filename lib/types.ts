@@ -1,3 +1,4 @@
+import type { SignupField, SignupAnswer } from './signup-fields';
 export interface PlatformUser {
   id: string;
   email: string;
@@ -149,6 +150,7 @@ export interface LeadMagnet {
   ctaText: string;
   formHeading: string;
   formSubtext: string;
+  signupFields?: SignupField[];
   imageUrl: string;
   downloadLink: string;
   emailSubject: string;
@@ -304,6 +306,7 @@ export interface AccountSignup {
   followUpStoppedAt: string | null;
   followUpStopReason: string;
   quizAnswers: SignupQuizAnswer[];
+  signupAnswers?: SignupAnswer[];
 }
 
 export interface PlatformData {

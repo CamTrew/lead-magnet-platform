@@ -501,6 +501,10 @@ export function SignupsClient({
                             </div>
                           ))}
                         </div>
+                        {!!signup.signupAnswers?.length && <details className="mt-2 text-sm">
+                          <summary className="cursor-pointer">Latest signup answers</summary>
+                          <dl className="mt-2 space-y-1">{signup.signupAnswers.map(answer => <div key={answer.id}><dt className="font-medium">{answer.label}</dt><dd className="break-words">{answer.value}</dd></div>)}</dl>
+                        </details>}
                         {signup.quizAnswers.length > 0 && (
                           <details className="group mt-2 max-w-xs text-xs text-ink-600">
                             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 font-medium text-ink-700 transition hover:bg-ink-50 hover:text-ink-950 [&::-webkit-details-marker]:hidden">

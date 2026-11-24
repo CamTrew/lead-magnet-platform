@@ -1,3 +1,4 @@
+import { signupFieldsSchema } from './signup-fields';
 import { CAMPAIGN_COMPLETION_GUIDANCE, withoutLegacyLaunchPost } from "./campaign-content";
 import { SAVED_LEAD_MAGNET_PROMPT } from "./assistant-provider";
 import { CAMPAIGN_ARTWORK_GUIDANCE } from "./campaign-artwork-guidance";
@@ -51,6 +52,7 @@ export const campaignPackageSchema = z
         ctaText: copy(80),
         formHeading: copy(140),
         formSubtext: copy(240),
+        signupFields: signupFieldsSchema.optional().describe("Extra visitor questions only when requested. Name and email are built in. Preserve other questions and stable IDs when editing."),
       })
       .strict().describe(LANDING_PAGE_GUIDANCE),
     delivery: z
@@ -110,6 +112,8 @@ ${DELIVERY_EMAIL_GUIDANCE}
 Before saving a NEW campaign, ask: "${FOLLOW_UP_CHOICE_QUESTION}" Wait for the user's answer before calling save_campaign, because creation publishes automatically. If the user already clearly chose in this conversation or in their saved brief, honour that answer without asking again. A request to create a lead magnet, silence, or a request for a complete campaign is not a choice about follow-up emails. Do not ask this again when retrying an already-saved campaign or editing unrelated content.
 
 If they choose just one email, create the delivery email, set followUps:[] and followUpsRequested:false. If they want follow-ups, clarify how many (one to three) unless they already specified a number. Before creation, explain that the delivery email goes immediately, and follow-ups go 1, 3, then 5 days after the PREVIOUS email (days 1, 4 and 9 after signup). Only create the selected number and set followUpsRequested:true. Do not silently substitute this schedule for different timing the user requested; explain the supported schedule and direct them to the editor for custom timing. If they decline or say to skip the optional extras, use delivery only. Each optional email must add a specific useful detail, not repeat the pitch. Only introduce a paid offer when the user supplied it. Never promise future emails that were not selected.
+
+For an explicit request like "Ask for their business website at signup", use page.signupFields in save_campaign or changes.page.signupFields in update_campaign. Read existing fields before editing. Preserve unchanged entries and IDs, omit a field to remove it, or use [] to remove all extras. Use format text, url or choice, a short label, required (default false when unspecified), and choices for a dropdown. Skip this topic entirely unless requested.
 
 For edits, call get_campaign first and use update_campaign with its exact editVersion and only the fields the user asked to change. Preserve all other copy, existing links and {name}. Do not use save_campaign to edit or create a replacement campaign. Published edits go live immediately: explain that and only set confirmLiveEdit:true when the user explicitly asks to change the live campaign. Follow-up sequences on a published or previously published campaign must be edited through editorUrl; never reset them through MCP.
 

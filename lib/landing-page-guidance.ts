@@ -8,4 +8,16 @@ export const LANDING_PAGE_GUIDANCE = `Write the landing page to earn the downloa
 - Give each line one job. Remove repeated benefits, model/version lists, exhaustive feature lists and unnecessary qualifications. Retain any qualification essential to an honest promise.
 - Use an action-specific CTA such as "Get the checklist". Keep the form heading and supporting line brief; state what happens next without repeating the pitch.
 - Never invent time savings, guaranteed results, proof, scarcity or urgency. No em dashes or hype. Useful specifics beat extra adjectives.
-Before returning the page, read it as someone deciding whether to give their email. Cut any sentence that adds no new reason to download. Keep the resource itself as detailed as needed; these short-copy defaults apply only to the landing page. When editing, preserve unrelated fields and user-approved copy unless asked to change them.`;
+Before returning the page, read it as someone deciding whether to give their email. Cut any sentence that adds no new reason to download. Keep the resource itself as detailed as needed; these short-copy defaults apply only to the landing page. When editing, preserve unrelated fields and user-approved copy unless asked to change them.
+Write like this when the resource is a freelance quote worksheet. This is an original example. Replace every detail with one from the actual resource:
+Headline: Price the revisions in your next quote
+Subtitle: A worksheet for freelancers who keep hearing “one more round” after the price is agreed.
+Description: Open your last estimate and see which edits you agreed to cover.
+Inside:
+- Draw the line between a correction and a new request.
+- Put a price on an extra round.
+- Copy the revisions clause into your next quote.
+Button: Send me the worksheet
+Form line: I'll email you the worksheet.
+
+For a different resource, name its actual pieces. If it includes a video and a template, tell the reader what they'll watch and what they'll fill in. The page earns the click; the delivery email helps them use what they requested.`;

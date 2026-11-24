@@ -1,3 +1,4 @@
+import { signupFieldsSchema } from '@/lib/signup-fields';
 import { assistantWorkspaceContext, workspaceMagnetVersion } from '@/lib/assistant-workspace-context';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -224,6 +225,7 @@ const schema = z.object({
   bullets: z.array(z.string().trim().min(1).max(220)).max(20),
   bulletsHeading: z.string().max(140),
   ctaText: z.string().trim().min(1).max(80),
+  signupFields: signupFieldsSchema.optional(),
   formHeading: z.string().max(140),
   formSubtext: z.string().max(240),
   imageUrl: imageSchema,

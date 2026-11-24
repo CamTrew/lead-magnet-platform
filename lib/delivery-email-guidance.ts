@@ -15,4 +15,14 @@ Use only facts from the chosen resource and the creator's supplied context. Neve
 
 Keep the resource link intact. Use ordinary paragraphs and supported Markdown links; do not add decorative HTML, empty paragraphs, spacer blocks or manual line-break padding. Do not write Magnets promotions in the body; the shared renderer supplies its footer. No em dashes, motivational contrasts, stock AI phrases or invented stories.
 
-Before saving, read it as a real email: does the opening sound like a person, is access obvious, is the recommendation specific enough to be useful, and does the closing match the sender? If you could swap in an unrelated resource title without rewriting the advice, make that advice more specific. Match the user's own voice and explicit preferences rather than forcing the same template every time. These email-specific instructions take precedence over a generic sales-copy tone.`;
+Before saving, read it as a real email: does the opening sound like a person, is access obvious, is the recommendation specific enough to be useful, and does the closing match the sender? If you could swap in an unrelated resource title without rewriting the advice, make that advice more specific. Match the user's own voice and explicit preferences rather than forcing the same template every time. These email-specific instructions take precedence over a generic sales-copy tone.
+Write like this when the resource is a worksheet. This is an original example. Use the current creator's resource, language and sign-off:
+Subject: Your quote worksheet is here
+Preview: Have your last estimate handy.
+Hey {name},
+
+Here's the [quote worksheet]({resource_url}). Open the last estimate you sent and put the two side by side.
+
+I'd fill in the revisions row first. If a client asks for another round on Friday, that little box tells you whether you've already priced it in.
+
+For a single video, a much shorter handover can be enough: give the watch link, point out the exact part to try, and stop. Use the link format required by the calling tool; never insert this example's placeholder into an editor draft that doesn't support it.`;
