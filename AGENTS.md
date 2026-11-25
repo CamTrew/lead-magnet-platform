@@ -105,6 +105,8 @@ Run both `pnpm test:email-compatibility` and `pnpm smoke:follow-up` after touchi
 
 ### Follow-up runs and duplicate prevention
 
+Creators can add and autosave incomplete follow-up emails while a sequence is off. The Sequence tab enables sending once every draft has a subject and body and the account can send. Removing the final email switches the sequence off.
+
 `magnets_follow_up_runs` is the durable per-recipient state. Its unique `(lead_magnet_id, email)` constraint is intentional. `startLeadMagnetFollowUpSequence` checks/creates state atomically enough for duplicate form posts and uses a sequence fingerprint to understand what version a run represents.
 
 - Multiple different people can join the same sequence.

@@ -4463,6 +4463,8 @@ function SequenceCanvas({
   const [previewOpen, setPreviewOpen] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
   const resendConfigured = account.resendConfigured;
+  const emailsReady = leadMagnet.followUpEmails.length > 0
+    && leadMagnet.followUpEmails.every(email => email.subject.trim() && email.body.trim());
   const calendarConnected = Boolean(account.calendarWebhookEnabled && account.calendarProvider);
   const calendarProviderLabel =
     account.calendarProvider === 'calendly'
@@ -4491,7 +4493,7 @@ function SequenceCanvas({
   }
 
   function addEmail() {
-    if (!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10) return;
+    if (leadMagnet.followUpEmails.length >= 10) return;
     const email = newFollowUpEmail();
     onPatch({
       followUpEmails: [
@@ -4520,7 +4522,9 @@ function SequenceCanvas({
     if (!activeEmail) return;
     const remaining = leadMagnet.followUpEmails.filter((email) => email.id !== activeEmail.id);
     setActiveEmailId(remaining[Math.min(activeIndex, remaining.length - 1)]?.id || '');
-    onPatch({ followUpEmails: remaining });
+    onPatch(remaining.length ? { followUpEmails: remaining } : {
+      followUpEmails: [], followUpEnabled: false, followUpStopOnBooking: false,
+    });
   }
 
   return (
@@ -4543,7 +4547,9 @@ function SequenceCanvas({
                 Send extra emails after the lead magnet email. Delays are counted from the previous email or from signup for the first one.
               </p>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-ink-500">
-                Magnets creates the events, templates, and automation for this sequence after your sender domain is ready.
+                {leadMagnet.followUpEnabled
+                  ? 'New signups will receive these follow-ups.'
+                  : 'Add a subject and message to each follow-up, then enable the sequence for new signups.'}
               </p>
             </div>
             <button
@@ -4554,7 +4560,7 @@ function SequenceCanvas({
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-ink-200 bg-white text-ink-600'
               )}
-              disabled={!resendConfigured}
+              disabled={!leadMagnet.followUpEnabled && (!resendConfigured || !emailsReady)}
               onClick={() => onPatch({
                 followUpEnabled: !leadMagnet.followUpEnabled,
                 ...(!leadMagnet.followUpEnabled ? {} : { followUpStopOnBooking: false }),
@@ -4567,7 +4573,7 @@ function SequenceCanvas({
                   leadMagnet.followUpEnabled ? 'bg-emerald-500' : 'bg-ink-300'
                 )}
               />
-              {leadMagnet.followUpEnabled ? 'Enabled' : 'Disabled'}
+              {leadMagnet.followUpEnabled ? 'Disable sequence' : 'Enable sequence'}
             </button>
           </div>
 
@@ -4615,7 +4621,7 @@ function SequenceCanvas({
           <div className="rounded-lg border border-dashed border-ink-300 bg-white p-8 text-center">
             <p className="text-sm font-semibold text-ink-950">No follow-up emails yet</p>
             <p className="mt-1 text-xs text-ink-500">Add up to 10 emails to build this magnet&apos;s sequence.</p>
-            <AceternityButton className="mt-4" disabled={!leadMagnet.followUpEnabled} onClick={addEmail} variant="secondary">
+            <AceternityButton className="mt-4" onClick={addEmail} variant="secondary">
               <Plus className="h-4 w-4" />
               Add first email
             </AceternityButton>
@@ -4628,7 +4634,7 @@ function SequenceCanvas({
                 <button
                   aria-label="Add email"
                   className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-600 hover:bg-white"
-                  disabled={!leadMagnet.followUpEnabled || leadMagnet.followUpEmails.length >= 10}
+                  disabled={leadMagnet.followUpEmails.length >= 10}
                   onClick={addEmail}
                   type="button"
                 >

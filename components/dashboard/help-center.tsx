@@ -819,9 +819,9 @@ function SequenceGuide({ onClose }: { onClose: () => void }) {
         apply what they downloaded, answer the next question, and introduce a relevant next step.
       </p>
       <ol className="mt-8 grid gap-6">
-        <Step detail="Open the Sequence tab and enable the sequence. Sending must be ready on the account first." number={1} title="Turn on follow-up" />
-        <Step detail="Add up to 10 emails. Give each one a focused subject, preview line, and message." number={2} title="Build the sequence" />
-        <Step detail="Choose the delay before each email. The first delay starts at signup, and later delays start after the previous email." number={3} title="Set the timing" />
+        <Step detail="Open the Sequence tab and choose Add first email. Give it a subject and message. Use Add email for each additional follow-up, up to 10." number={1} title="Write your follow-ups" />
+        <Step detail="Choose the delay before each email. The first delay starts at signup, and later delays start after the previous email." number={2} title="Set the timing" />
+        <Step detail="Once your emails and sending account are ready, choose Enable sequence to send follow-ups to new signups." number={3} title="Enable the sequence" />
         <Step detail="If Calendly or Cal.com is connected, you can stop this magnet's sequence when the same email books a call." number={4} title="Stop when someone books" />
       </ol>
       <p className="mt-7 rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm leading-6 text-ink-600">

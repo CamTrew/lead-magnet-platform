@@ -156,6 +156,7 @@ export function followUpAutomationNeedsProviderSync(magnet: LeadMagnet) {
 
 function followUpEmailsChanged(a: FollowUpEmail[], b: FollowUpEmail[]) {
   const contentSignature = (emails: FollowUpEmail[]) => normaliseFollowUpEmails(emails)
+    .filter((email) => email.subject && email.body)
     .map((email) => ({
       body: email.body,
       delayMinutes: email.delayMinutes,
@@ -671,9 +672,10 @@ export async function syncLeadMagnetFollowUpAutomation(
     automationId
   );
 
+  const templates = new Map(syncedEmails.map(email => [email.id, email.resendTemplateId]));
   return {
     automationId,
-    emails: syncedEmails,
+    emails: emails.map(email => ({ ...email, resendTemplateId: templates.get(email.id) || '' })),
     renderVersion: FOLLOW_UP_RENDER_VERSION,
   };
 }
@@ -711,6 +713,7 @@ export async function syncAccountFollowUpAutomationSenders(accountId: string) {
 
 export function followUpSequenceEndDate(magnet: Pick<LeadMagnet, 'followUpEmails'>) {
   const totalMinutes = normaliseFollowUpEmails(magnet.followUpEmails)
+    .filter((email) => email.subject && email.body)
     .reduce((total, email) => total + email.delayMinutes, 0);
 
   if (totalMinutes <= 0) return new Date();

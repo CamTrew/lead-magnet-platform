@@ -7,12 +7,14 @@ import {
   FollowUpSequenceError,
   followUpAutomationUsesResolvedSender,
   followUpAutomationNeedsSync,
+  followUpSequenceEndDate,
   startLeadMagnetFollowUpSequence,
   stopAccountFollowUpSequencesForEmail,
   stopLeadMagnetFollowUpSequence,
   syncLeadMagnetFollowUpAutomation,
 } from '../lib/follow-up-sequences';
 import { addToBeehiiv, beehiivLeadMagnetTag } from '../lib/beehiiv';
+import { followUpSequenceFingerprint } from '../lib/platform-store';
 import {
   appendEmailImage,
   insertEmailImages,
@@ -978,7 +980,14 @@ async function run() {
     }],
   });
   resetRequests();
-  const replacement = await syncLeadMagnetFollowUpAutomation(account, currentSyncedMagnet);
+  const blankStep = { ...synced.emails[0], id: 'new-draft', subject: '', body: '', resendTemplateId: '' };
+  const withDraft = { ...currentSyncedMagnet, followUpEmails: [...synced.emails, blankStep] };
+  assert.equal(followUpSequenceFingerprint(withDraft), followUpSequenceFingerprint(currentSyncedMagnet));
+  assert.ok(Math.abs(+followUpSequenceEndDate(withDraft) - +followUpSequenceEndDate(currentSyncedMagnet)) < 1000);
+  assert.equal(followUpAutomationNeedsSync(currentSyncedMagnet, withDraft), false,
+    'Adding an empty step must not replace the live automation during autosave.');
+  const replacement = await syncLeadMagnetFollowUpAutomation(account, withDraft);
+  assert.deepEqual(replacement.emails.at(-1), blankStep, 'Synchronizing ready emails preserves the empty editor step.');
   assert.equal(replacement.automationId, 'auto_2');
   assert.ok(
     replacement.emails.every(

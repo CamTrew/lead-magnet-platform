@@ -4347,7 +4347,7 @@ export function followUpSequenceFingerprint(leadMagnet: Pick<LeadMagnet, 'follow
   return createHash('sha256')
     .update(JSON.stringify({
       stopOnBooking: leadMagnet.followUpStopOnBooking,
-      emails: leadMagnet.followUpEmails.map((email) => ({
+      emails: leadMagnet.followUpEmails.filter(email => email.subject.trim() && email.body.trim()).map((email) => ({
         delayMinutes: email.delayMinutes,
         delayHours: email.delayHours,
         subject: email.subject,
