@@ -3880,10 +3880,11 @@ async function queryAccountSignups(
   options: ListAccountSignupsOptions & {
     cursor?: AccountSignupCursor;
     limit: number | null;
-  }
+  },
+  runner: QueryRunner = { query }
 ) {
   const normalizedSearch = options.search?.trim().toLowerCase() || null;
-  const result = await query<SignupRow>(
+  const result = await runner.query<SignupRow>(
     `
       with matching_emails as (
         select distinct lower(s.email) as email_key
@@ -4095,6 +4096,37 @@ export async function listAccountSignups(
     limit: null,
   });
   return rows.map(mapSignup);
+}
+
+export async function getSignupExportData(accountId: string, filters: ListAccountSignupsOptions) {
+  return withTransaction(async client => {
+    await client.query('set transaction isolation level repeatable read, read only');
+    const rows = await queryAccountSignups(accountId, { ...filters, limit: null }, client);
+    const signups = rows.map(mapSignup);
+    const magnetIds = filters.leadMagnetId ? [filters.leadMagnetId]
+      : [...new Set(signups.flatMap(signup => signup.leadMagnets.map(magnet => magnet.id)))];
+    const emails = signups.map(signup => signup.email.toLowerCase());
+    const allMagnets = !filters.leadMagnetId && !filters.search?.trim();
+    const magnets = await client.query<{ id: string; slug: string; fields: SignupField[] }>(
+      `select id, slug, signup_fields as fields from public.magnets_lead_magnets
+       where account_id = $1 and ($3::boolean or id = any($2::uuid[]))
+       order by slug, id`,
+      [accountId, magnetIds, allMagnets]
+    );
+    const answers = await client.query<{ email: string; magnet_id: string; answer: SignupAnswer }>(
+      `select email, magnet_id, answer from (
+         select distinct on (lower(s.email), s.lead_magnet_id, a.answer->>'id')
+           lower(s.email) as email, s.lead_magnet_id as magnet_id, a.answer, s.created_at, s.id
+         from public.magnets_submissions s
+         cross join lateral jsonb_array_elements(s.signup_answers) a(answer)
+         where s.account_id = $1 and s.lead_magnet_id = any($2::uuid[])
+           and lower(s.email) = any($3::text[])
+         order by lower(s.email), s.lead_magnet_id, a.answer->>'id', s.created_at desc, s.id desc
+       ) latest_answers order by created_at desc, id desc, answer->>'id'`,
+      [accountId, magnetIds, emails]
+    );
+    return { signups, magnets: magnets.rows, answers: answers.rows };
+  });
 }
 
 export async function deleteAccountSignup(accountId: string, email: string) {

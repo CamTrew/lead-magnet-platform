@@ -323,6 +323,8 @@ The dashboard import UI starts with the column-mapping dropdowns **empty** — t
 
 The signups dashboard uses stable cursor pagination over `(latest_signup_at, lower(email))`, loading 50 deduplicated emails at a time. Search and lead-magnet filters run in the database before pagination; do not replace them with filtering over the currently loaded client rows.
 
+The Signups CSV keeps one row per email and appends one column per exported magnet and custom field ID. Use the newest submitted answer per field within the filters, including retired fields. Use current labels when available, and disambiguate matching headers. Dashboard and MCP downloads use the same export route.
+
 ### Conventions
 
 - `'use client'` only where state/effects are needed. Most pages are server components; client logic lives in `components/dashboard/*-client.tsx`.

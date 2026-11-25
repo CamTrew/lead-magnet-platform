@@ -1,13 +1,14 @@
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireDashboardPayload } from '@/lib/auth';
-import { listAccountSignups } from '@/lib/platform-store';
+import { getSignupExportData } from '@/lib/platform-store';
 import {
   enforceRateLimits,
   rateLimitResponse,
   RateLimitError,
   requestIp,
 } from '@/lib/rate-limit';
+import { signupExportCsv } from '@/lib/signup-export-csv';
 import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -16,21 +17,6 @@ const exportFiltersSchema = z.object({
   leadMagnetId: z.string().uuid().optional(),
   search: z.string().trim().max(200).optional(),
 }).strict();
-
-function escapeCsvCell(value: string) {
-  if (value === '' || (!value.includes(',') && !value.includes('"') && !value.includes('\n') && !value.includes('\r'))) {
-    return value;
-  }
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-function toCsvRow(cells: string[]) {
-  return cells.map(escapeCsvCell).join(',');
-}
-
-function formatTimestamp(value: string) {
-  return new Date(value).toISOString();
-}
 
 export async function GET(request: NextRequest) {
   let userId: string | undefined;
@@ -68,21 +54,8 @@ export async function GET(request: NextRequest) {
     }
 
     const { leadMagnetId, search } = parsedFilters.data;
-    const signups = await listAccountSignups(payload.account.id, { leadMagnetId, search });
-
-    const header = toCsvRow(['Email', 'Name', 'Lead magnet', 'Lead magnet slug', 'Signed up at', 'Last signed up at', 'Signup count']);
-    const rows = signups.map((signup) =>
-      toCsvRow([
-        signup.email,
-        signup.name,
-        signup.firstLeadMagnetTitle,
-        signup.firstLeadMagnetSlug,
-        formatTimestamp(signup.firstSignupAt),
-        formatTimestamp(signup.latestSignupAt),
-        String(signup.signupCount),
-      ])
-    );
-    const csv = `${header}\n${rows.join('\n')}\n`;
+    const data = await getSignupExportData(payload.account.id, { leadMagnetId, search });
+    const csv = signupExportCsv(data);
     const filename = `magnets-signups-${new Date().toISOString().slice(0, 10)}.csv`;
 
     log.info('Signups exported', {
@@ -92,7 +65,7 @@ export async function GET(request: NextRequest) {
       userId,
       accountId,
       extra: {
-        count: signups.length,
+        count: data.signups.length,
         leadMagnetId: leadMagnetId || undefined,
         searchApplied: Boolean(search),
       },
