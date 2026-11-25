@@ -1,4 +1,4 @@
-import { CAMPAIGN_COMPLETION_GUIDANCE, CAMPAIGN_NEXT_STEP } from "./campaign-content";
+import { CAMPAIGN_COMPLETION_GUIDANCE, campaignNextStep } from "./campaign-content";
 import { platformLeadMagnetPath } from './platform-username';
 import {
   getAccountWithSecrets,
@@ -83,7 +83,7 @@ export async function publishCampaign(accountId: string, id: string) {
         publicUrl: url,
         audienceUrl: `${assistantOrigin()}/dashboard/signups`,
         reviewUrl: `${assistantOrigin()}/create?campaign=${id}`,
-        nextStep: CAMPAIGN_NEXT_STEP,
+        nextStep: campaignNextStep(magnet),
         message: CAMPAIGN_COMPLETION_GUIDANCE,
         editorUrl: `${assistantOrigin()}/dashboard/pages/${magnet.id}`,
       };
@@ -92,12 +92,13 @@ export async function publishCampaign(accountId: string, id: string) {
 }
 
 /** Only label a URL live when the owning page is currently published. */
-export async function campaignLinks(accountId: string, campaign: import('./platform-store').CampaignRecord, origin: string) {
+export async function campaignLinks(accountId: string, campaign: import('./platform-store').CampaignRecord, origin: string, includeNextStep = false) {
   const [magnet, username] = await Promise.all([
     campaign.lead_magnet_id ? findLeadMagnetForAccount(accountId, campaign.lead_magnet_id) : Promise.resolve(null),
     getAccountPlatformUsername(accountId),
   ]);
   return {
+    ...(includeNextStep ? { nextStep: magnet?.published ? campaignNextStep(magnet) : null } : {}),
     status: magnet?.published ? 'published' : 'draft',
     reviewUrl: `${origin}/create?campaign=${campaign.id}`,
     editorUrl: magnet ? `${origin}/dashboard/pages/${magnet.id}` : null,

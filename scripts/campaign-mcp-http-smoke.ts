@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { query } from "../lib/db";
-import { createHostedResource, saveCreationRequest, getCreationRequest, getCreationBrand, createDatabaseSession } from "../lib/platform-store";
+import { recordSubmission, listAccountSignups, createHostedResource, saveCreationRequest, getCreationRequest, getCreationBrand, createDatabaseSession } from "../lib/platform-store";
 import { pkceChallenge } from "../lib/assistant-auth";
-import { CAMPAIGN_NEXT_STEP, CAMPAIGN_COMPLETION_GUIDANCE } from "../lib/campaign-content";
+import { campaignNextStep, CAMPAIGN_COMPLETION_GUIDANCE } from "../lib/campaign-content";
 import { exampleCampaign } from "../lib/campaign-example";
 
 async function main() {
@@ -357,7 +357,7 @@ async function main() {
     assert.ok(!auto.isError, JSON.stringify(auto));
     const autoContent = auto.structuredContent as { campaignId: string; status: string; publicUrl: string; publicationError: string | null };
     assert.equal(autoContent.status, 'published');
-    assert.equal((auto.structuredContent as { nextStep: string }).nextStep, CAMPAIGN_NEXT_STEP);
+    assert.equal((auto.structuredContent as { nextStep: string }).nextStep, campaignNextStep({ signupFields: [extra], imageUrl: '' }));
     assert.equal((auto.structuredContent as { message: string }).message, CAMPAIGN_COMPLETION_GUIDANCE);
     assert.equal(Object.hasOwn(auto.structuredContent!, 'linkedinPost'), false);
     assert.equal(autoContent.publicationError, null);
@@ -372,9 +372,23 @@ async function main() {
     const missing = await fetch(base+'/api/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accountId:account,leadMagnetId:autoRow.lead_magnet_id,slug,name:'Sample',email:'sample@example.invalid'})});
     assert.equal(missing.status,400);
     assert.match(await missing.text(),/Business website/);
-    const remove = await client.callTool({name:'update_campaign',arguments:{campaignId:autoContent.campaignId,editVersion:originalFields.editVersion,changes:{page:{signupFields:[]}},confirmLiveEdit:true}});
+    const moved = {...extra, before:'email'};
+    const choices = {id:'team',label:'Team size',format:'choice',choices:['Solo','Small team'],required:false};
+    const move = await client.callTool({name:'update_campaign',arguments:{campaignId:autoContent.campaignId,editVersion:originalFields.editVersion,changes:{page:{signupFields:[choices,moved]}},confirmLiveEdit:true}});
+    assert.ok(!move.isError,JSON.stringify(move));
+    const revisedFields = await readFields();
+    assert.deepEqual(revisedFields.content.page.signupFields,[choices,moved]);
+    const reorderedHtml = await (await fetch(autoContent.publicUrl)).text();
+    const controls = Array.from(reorderedHtml.matchAll(/<(?:input|select)\b[^>]*?\bname="(name|email|field-[^"]+)"/g), match => match[1]);
+    assert.deepEqual(controls.slice(0,4), ['name','field-business-website','email','field-team']);
+    const reader = 'form-reader@example.invalid';
+    const answers = [{id:extra.id,label:extra.label,value:'https://example.org'}];
+    await recordSubmission({accountId:account, leadMagnetId:autoRow.lead_magnet_id, name:'Reader', email:reader, signupAnswers:answers});
+    const remove = await client.callTool({name:'update_campaign',arguments:{campaignId:autoContent.campaignId,editVersion:revisedFields.editVersion,changes:{page:{signupFields:[]}},confirmLiveEdit:true}});
     assert.ok(!remove.isError,JSON.stringify(remove));
     assert.deepEqual((await readFields()).content.page.signupFields,[]);
+    const storedSignup = (await listAccountSignups(account, {search:reader}))[0];
+    assert.deepEqual(storedSignup.signupAnswers,answers,'Removing a field retains past answers in Signups');
     assert.equal((await fetch(`${base}/campaign-resources/${autoRow.public_token}`)).status, 200);
     assert.equal((await client.callTool({ name: 'attach_campaign_cover', arguments: { campaignId: autoContent.campaignId, imageBase64: imageBytes.toString('base64') } })).isError, true);
     const liveImage = await client.callTool({ name: 'attach_campaign_cover', arguments: { campaignId: autoContent.campaignId, imageBase64: imageBytes.toString('base64'), confirmLiveEdit: true, brandVersion: refreshedImage.brandVersion } });

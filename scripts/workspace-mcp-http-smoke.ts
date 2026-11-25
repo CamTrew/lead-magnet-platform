@@ -81,6 +81,15 @@ async function main() {
     const restored=await call(a.client,'perform_workspace_action',{action:'restore_version',id,editVersion:latest.editVersion,body:{versionId:snapshotId},confirmed:true});assert.equal(restored.status,200);
     assert.equal((await read()).fields.published,true,'Restore preserves publishing state');
     // Follow-up editing works without exposing or accepting provider IDs, even on legacy pages.
+    const fieldState=await read();
+    const dropdown={id:'team',label:'Team size',format:'choice',choices:['Small team','Solo'],required:false,before:'name'};
+    const website={id:'website',label:'Website',format:'url',choices:[],required:false,before:'email'};
+    await call(a.client,'update_lead_magnet',{id,editVersion:fieldState.editVersion,changes:{signupFields:[dropdown,website]},confirmLiveEdit:true});
+    const withFields=await read();
+    assert.deepEqual(withFields.fields.signupFields,[dropdown,website]);
+    const moved={...dropdown,before:'email',choices:['Solo','Other']};
+    await call(a.client,'update_lead_magnet',{id,editVersion:withFields.editVersion,changes:{signupFields:[moved]},confirmLiveEdit:true});
+    assert.deepEqual((await read()).fields.signupFields,[moved]);
     const fresh=await read();
     const sequence=await call(a.client,'update_lead_magnet',{id,editVersion:fresh.editVersion,changes:{followUpEmails:[{id:'email-one',subject:'A useful next step',preview:'Your checklist',body:'Hi {name},\n\nHere is the checklist you asked for.',delayMinutes:1440}]},followUpsRequested:true,confirmLiveEdit:true});assert.equal(sequence.status,200);
     assert.equal((await findLeadMagnetForAccount(accounts[0],id))!.followUpEmails.length,1);

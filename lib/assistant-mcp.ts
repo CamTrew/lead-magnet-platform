@@ -1,4 +1,4 @@
-import { CAMPAIGN_COMPLETION_GUIDANCE, CAMPAIGN_NEXT_STEP } from "@/lib/campaign-content";
+import { CAMPAIGN_COMPLETION_GUIDANCE } from "@/lib/campaign-content";
 import { CAMPAIGN_ARTWORK_GUIDANCE, CAMPAIGN_ARTWORK_OFFER } from "@/lib/campaign-artwork-guidance";
 import { registerWorkspaceTools, WORKSPACE_ASSISTANT_INSTRUCTIONS } from '@/lib/assistant-workspace';
 import { uploadAssistantResource, ASSISTANT_FILE_MAX_BYTES } from '@/lib/assistant-resource-upload';
@@ -190,9 +190,8 @@ export async function handleAssistantMcp(request: Request, workspace = false) {
         }
         const { campaign: row, publicationError } = creation;
         const imageBrief = await campaignImageBrief(row.content, await getCreationBrand(grant.account_id));
-        const links = await campaignLinks(grant.account_id, row, origin);
+        const links = await campaignLinks(grant.account_id, row, origin, true);
         return result({
-          nextStep: links.publicUrl ? CAMPAIGN_NEXT_STEP : null,
           imageGeneration: imageBrief.imageGeneration,
           campaignId: row.id,
           publicationError,
@@ -257,7 +256,7 @@ export async function handleAssistantMcp(request: Request, workspace = false) {
     server.registerTool(
       "update_campaign",
       {
-        description: "Edit only requested copy in an existing campaign: resource, title, landing page, delivery email or image prompt, or manage extra signup questions in changes.page.signupFields. First read get_campaign and supply editVersion. Published copy changes go live immediately and require explicit user permission via confirmLiveEdit. Follow-ups can only be added/removed on never-published drafts with no automation; use the editor for existing sequences. Does not send emails or change publishing, images, domains, subscribers or settings.",
+        description: "Edit only requested copy in an existing campaign: resource, title, landing page, delivery email or image prompt, or add, rename, reorder or remove signup fields and dropdown options in changes.page.signupFields. Send the complete revised list with stable field IDs. Removing a question keeps past signup answers. First read get_campaign and supply editVersion. Published copy changes go live immediately and require explicit user permission via confirmLiveEdit. Follow-ups can only be added/removed on never-published drafts with no automation; use the editor for existing sequences. Does not send emails or change publishing, images, domains, subscribers or settings.",
         inputSchema: {
           campaignId: z.string().uuid(),
           editVersion: z.string().regex(/^[a-f0-9]{64}$/),
@@ -275,7 +274,7 @@ export async function handleAssistantMcp(request: Request, workspace = false) {
         invalidatePublishedLeadMagnetCache();
         return result({ updated: true, editVersion: edited.editVersion,
           ...await campaignLinks(grant.account_id, edited.campaign, origin),
-          message: 'The requested copy is saved. Return the edit link and the live link if present. No emails have been sent.' });
+          message: 'The requested changes are saved. Return the edit link and the live link if present. No emails have been sent.' });
       },
     );
     server.registerTool(

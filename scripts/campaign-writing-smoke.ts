@@ -1,5 +1,5 @@
 import { chatgptCreateUrl, claudeCreateUrl, SAVED_LEAD_MAGNET_PROMPT } from '../lib/assistant-provider';
-import { withoutLegacyLaunchPost, CAMPAIGN_COMPLETION_GUIDANCE, CAMPAIGN_SHARE_MESSAGE, CAMPAIGN_EDIT_OFFER, CAMPAIGN_NEXT_STEP, CAMPAIGN_IMAGE_OFFER } from '../lib/campaign-content';
+import { withoutLegacyLaunchPost, CAMPAIGN_COMPLETION_GUIDANCE, CAMPAIGN_SHARE_MESSAGE, CAMPAIGN_EDIT_OFFER, campaignNextStep, SIGNUP_FIELD_OFFER, CAMPAIGN_IMAGE_OFFER } from '../lib/campaign-content';
 import assert from 'node:assert/strict';
 import { exampleCampaign } from '../lib/campaign-example';
 import { CAMPAIGN_WRITING_INSTRUCTIONS, campaignPackageSchema, campaignChangesSchema, validateCampaignPackage } from '../lib/campaign-schema';
@@ -21,7 +21,12 @@ async function main() {
   assert.ok(CAMPAIGN_COMPLETION_GUIDANCE.includes(CAMPAIGN_EDIT_OFFER));
   assert.match(CAMPAIGN_COMPLETION_GUIDANCE, /do not ask whether they are ready to publish/);
   assert.match(CAMPAIGN_COMPLETION_GUIDANCE, /get_campaign and use update_campaign/);
-  assert.ok(CAMPAIGN_NEXT_STEP.includes(CAMPAIGN_IMAGE_OFFER));
+  const handoff = campaignNextStep({ imageUrl: '' });
+  assert.ok(handoff.includes(CAMPAIGN_IMAGE_OFFER));
+  assert.ok(handoff.includes(SIGNUP_FIELD_OFFER));
+  assert.ok(CAMPAIGN_COMPLETION_GUIDANCE.includes(SIGNUP_FIELD_OFFER));
+  const configured = campaignNextStep({ signupFields: [{}], imageUrl: 'https://example.org/cover.png' });
+  assert.ok(!configured.includes(SIGNUP_FIELD_OFFER) && !configured.includes(CAMPAIGN_IMAGE_OFFER));
   assert.equal(new URL(chatgptCreateUrl()).searchParams.get('prompt'), SAVED_LEAD_MAGNET_PROMPT);
   assert.equal(new URL(claudeCreateUrl()).searchParams.get('q'), SAVED_LEAD_MAGNET_PROMPT);
   assert.equal(new URL(chatgptCreateUrl(false)).searchParams.get('prompt'), 'Help me create a lead magnet with Magnets.');
